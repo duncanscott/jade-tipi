@@ -7,7 +7,7 @@ spring:
 
 server:
   port: ${backendPort}
-base-package: com.jadetipi.jadetipi
+base-package: org.jadetipi
 docs:
   url: https://github.com/duncanscott/jade-tipi
 
