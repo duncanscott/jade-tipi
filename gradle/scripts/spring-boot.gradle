@@ -9,8 +9,8 @@ tasks.withType(JavaCompile).configureEach {
     options.compilerArgs += ["-Xlint:all"]
 }
 
-bootJar {
-    archiveFileName = "${project.name}.jar"
+// Apply manifest attributes to all tasks that create a JAR (e.g., jar, bootJar)
+tasks.withType(Jar) {
     manifest {
         attributes(
                 "Implementation-Title": "Jade-Tipi",
@@ -20,6 +20,10 @@ bootJar {
                 "Project-URL": "https://jade-tipi.org"
         )
     }
+}
+
+bootJar {
+    archiveFileName = "${project.name}.jar"
 }
 
 tasks.register('printBootJar') {
