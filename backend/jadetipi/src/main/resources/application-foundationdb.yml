@@ -1,0 +1,5 @@
+# Configuration for FoundationDB profile
+# Note: Spring Boot does not have auto-configuration for FoundationDB.
+# These properties will be used by a custom configuration class that you will create.
+foundationdb:
+  cluster-file: /etc/foundationdb/fdb.cluster

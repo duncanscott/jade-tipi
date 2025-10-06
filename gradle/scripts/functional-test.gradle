@@ -1,0 +1,27 @@
+def functionalTest = sourceSets.create('functionalTest') {
+    java.srcDir 'src/functionalTest/java'
+    resources.srcDirs = ['src/functionalTest/resources', 'src/main/resources']
+    compileClasspath += sourceSets.main.output + sourceSets.test.output
+    runtimeClasspath += output + compileClasspath
+}
+
+configurations[functionalTest.implementationConfigurationName]
+        .extendsFrom(configurations.testImplementation)
+configurations[functionalTest.runtimeOnlyConfigurationName]
+        .extendsFrom(configurations.testRuntimeOnly)
+
+def functionalTestTask = tasks.register('functionalTest', Test) {
+    description = 'Runs functional tests.'
+    group = 'verification'
+    useJUnitPlatform()
+
+    testClassesDirs = functionalTest.output.classesDirs
+    classpath = configurations[functionalTest.runtimeClasspathConfigurationName] + functionalTest.output
+
+    // force integration tests to run
+    outputs.upToDateWhen { false }
+}
+
+dependencies {
+    functionalTestImplementation project
+}

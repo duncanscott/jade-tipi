@@ -1,0 +1,65 @@
+task deploy {
+    description = "Builds and deploys the application to the environment specified by the -Denv=<env> argument."
+    group = "Deployment"
+    dependsOn bootJar
+    doLast {
+        performDeployment()
+    }
+}
+
+task deployOnly {
+    description = "Deploys pre-built jar to the environment specified by the -Denv=<env> argument (skips building)."
+    group = "Deployment"
+    doLast {
+        performDeployment()
+    }
+}
+
+File resolveJarFile() {
+    File jarFile
+    
+    if (project.hasProperty('jarFile')) {
+        jarFile = file(project.property('jarFile'))
+    } else {
+        // Try to get jar from bootJar task first
+        def bootJarTask = tasks.findByName('bootJar')
+        if (bootJarTask?.archiveFile?.isPresent()) {
+            jarFile = bootJarTask.archiveFile.get().asFile
+        } else {
+            // Fallback to expected location
+            jarFile = layout.buildDirectory.file("libs/${rootProject.name}.jar").get().asFile
+        }
+    }
+    
+    if (!jarFile.exists()) {
+        throw new GradleException("Jar file not found at path: ${jarFile.absolutePath}. " +
+            "Run './gradlew bootJar' to build the jar, or specify -PjarFile=<path> to use an existing jar.")
+    }
+    
+    return jarFile
+}
+
+String resolveEnv() {
+    (project.findProperty('env') ?: System.getProperty('env') ?: System.getenv('ENV')) as String
+}
+
+
+def performDeployment() {
+    String env = resolveEnv()
+    File jarPath = resolveJarFile()
+
+    if (!env) {
+        throw new GradleException("The environment (env) property must be specified. Use -Denv=<env> to set it.")
+    }
+
+    if (!remotes.hasProperty(env)) {
+        throw new GradleException("No remote configuration found for env: ${env}")
+    }
+
+    ssh.run {
+        session(remotes."${env}") {
+            put from: jarPath, into: "springboot/service-jars"
+            execute "services/restart.sh ${rootProject.name}"
+        }
+    }
+}

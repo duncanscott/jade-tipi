@@ -1,0 +1,20 @@
+{
+  "name": "jadetipi",
+  "version": "0.0.1",
+  "description": "Jade Tipi proof of concept - Full stack application",
+  "private": true,
+  "scripts": {
+    "dev:backend": "./gradlew bootRun",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev": "cd frontend && npm run dev",
+    "build:backend": "./gradlew build",
+    "build:frontend": "cd frontend && npm run build",
+    "build": "npm run build:frontend",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

@@ -1,0 +1,23 @@
+
+repositories {
+    maven {
+        String artifactoryUrl = System.getenv('ARTIFACTORY_URL')
+        if (artifactoryUrl) {
+            url = artifactoryUrl
+        } else {
+            throw new GradleException("ARTIFACTORY_URL environment variable not set")
+        }
+
+        credentials {
+            String artifactoryUser = System.getenv('ARTIFACTORY_USER')
+            String artifactoryPassword = System.getenv('ARTIFACTORY_PASSWORD')
+
+            if (artifactoryUser && artifactoryPassword) {
+                username = artifactoryUser
+                password = artifactoryPassword
+            } else {
+                throw new GradleException("ARTIFACTORY_USER or ARTIFACTORY_PASSWORD environment variable not set")
+            }
+        }
+    }
+}

@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2025 Duncan Scott and Jade-Tipi contributors
+# See LICENSE or https://jade-tipi.org/license for details.
+
+<!-- SPDX-License-Identifier: AGPL-3.0-only
+     Copyright (c) 2025 Duncan Scott and Jade-Tipi contributors
+     See LICENSE or https://jade-tipi.org/license for details. -->

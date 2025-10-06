@@ -1,0 +1,3 @@
+rootProject.name = 'jade-tipi'
+
+include 'backend:jadetipi'

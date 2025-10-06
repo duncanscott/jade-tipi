@@ -1,0 +1,30 @@
+{
+  "entity": {
+    "name": "entity",
+    "abbreviation": "en"
+  },
+  "property": {
+    "name": "property",
+    "abbreviation": "pp"
+  },
+  "link": {
+    "name": "link",
+    "abbreviation": "ln"
+  },
+  "group": {
+    "name": "group",
+    "abbreviation": "gp"
+  },
+  "type": {
+    "name": "type",
+    "abbreviation": "ty"
+  },
+  "validation": {
+    "name": "validation",
+    "abbreviation": "va"
+  },
+  "transaction": {
+    "name": "transaction",
+    "abbreviation": "tx"
+  }
+}

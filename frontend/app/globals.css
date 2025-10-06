@@ -1,0 +1,197 @@
+@import "tailwindcss";
+
+/* ---- Variables ---- */
+:root {
+    --header-h: 54px;
+
+    /* Left tools panel width cap */
+    --sidebar-max: 500em;
+    --sidebar-width: clamp(16rem, 25vw, var(--sidebar-max));
+
+    --gap: 1rem;
+    --header-bg: #0f172a;
+    --header-fg: #ffffff;
+    --surface: #0b1220;
+    --panel: #0e1627;
+    --text: #e5e7eb;
+    --muted: #94a3b8;
+    --border: #1f2937;
+}
+
+/* ---- Resets ---- */
+*,
+*::before,
+*::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+    margin: 0;
+    background: var(--surface);
+    color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+/* ---- Page grid: header | (tools + main) ---- */
+.shell {
+    min-height: 100svh;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+    "header"
+    "content";
+}
+
+/* ---- Header (sticky) ---- */
+.header {
+    grid-area: header;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--gap);
+
+    min-height: var(--header-h);
+    padding: 0.5rem 1rem;
+    background: var(--header-bg);
+    color: var(--header-fg);
+    border-bottom: 1px solid var(--border);
+}
+
+.header h1 {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+}
+
+.nav {
+    display: flex;
+    gap: 0.75rem;
+}
+.nav a {
+    color: var(--header-fg);
+    text-decoration: none;
+    opacity: 0.9;
+}
+.nav a:hover { opacity: 1; }
+
+/* --- Content row: tools | handle | main --- */
+.content {
+    grid-area: content;
+    display: grid;
+    /* First column width comes from CSS var set by ResizableColumns */
+    grid-template-columns: var(--sidebar-px, 320px) 12px minmax(0, 1fr);
+    gap: var(--gap);
+    align-items: start;
+    padding: var(--gap);
+    min-height: 0; /* allow children to shrink/scroll within grid */
+}
+
+/* ---- Tools (sticky under header) ---- */
+.tools {
+    position: sticky;
+    top: calc(var(--header-h) + var(--gap));
+    align-self: start;
+    height: fit-content;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 1rem;
+    min-width: 0;
+    transition: padding 120ms ease, border-color 120ms ease, opacity 120ms ease;
+}
+
+.tools.is-collapsed {
+    padding: 0;
+    border-width: 0;
+    opacity: 0;
+    pointer-events: none; /* prevent interaction/focus */
+}
+
+/* ---- Subtle, non-obtrusive toggle button on the handle ---- */
+.collapse-btn {
+    display: grid;
+    place-items: center;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--muted);
+    line-height: 1;
+    padding: 0;
+    cursor: pointer;
+    user-select: none; /* not selectable */
+}
+.collapse-btn:hover {
+    background: rgba(255,255,255,0.03); /* very light */
+    border-color: var(--border);
+    color: var(--text);
+}
+.collapse-btn:focus-visible {
+    outline: 1px dashed #64748b; /* subtle focus */
+    outline-offset: 2px;
+}
+
+/* ---- Resize handle: ultra-minimal thin center rule ---- */
+.resize-handle {
+    position: relative;
+    cursor: col-resize;
+    width: 12px;
+    min-width: 12px;
+    height: 100%;
+    align-self: stretch;
+    background: transparent;      /* no fill by default */
+    touch-action: none;           /* prevent scroll interference during drag */
+    user-select: none;            /* not selectable */
+}
+
+.resize-handle::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 5px;                   /* thinner center line */
+    height: 100%;
+    background: #1f2937;          /* slate-800-ish */
+    border-radius: 1px;
+}
+
+.resize-handle:hover::before {
+    background: #334155;          /* very subtle hover */
+}
+
+.resize-handle:focus-visible {
+    outline: 1px dashed #64748b;  /* subtle keyboard focus */
+    outline-offset: 2px;
+}
+
+/* place the small toggle button near the top, centered */
+.resize-handle .handle-btn {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+/* ---- Main (independent scroll) ---- */
+.main {
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: auto;
+    border-radius: 0.75rem;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ---- Mobile: stack; hide handle ---- */
+@media (max-width: 800px) {
+    .content {
+        grid-template-columns: 1fr;
+    }
+    .resize-handle { display: none; }
+    .tools { order: -1; }
+}

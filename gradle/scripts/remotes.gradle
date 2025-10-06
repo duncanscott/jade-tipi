@@ -1,0 +1,22 @@
+remotes {
+    dev {
+        host = System.getenv('DEV_HOST');
+        user = System.getenv('DEV_USER');
+        identity = file("${System.getProperty('user.home')}/.ssh/id_rsa")
+        knownHosts = allowAnyHosts
+    }
+
+    int {
+        host = System.getenv('INT_HOST');
+        user = System.getenv('INT_USER');
+        identity = file("${System.getProperty('user.home')}/.ssh/id_rsa")
+        knownHosts = allowAnyHosts
+    }
+
+    prd {
+        host = System.getenv('PRD_HOST');
+        user = System.getenv('PRD_USER');
+        identity = file("${System.getProperty('user.home')}/.ssh/id_rsa")
+        knownHosts = allowAnyHosts
+    }
+}

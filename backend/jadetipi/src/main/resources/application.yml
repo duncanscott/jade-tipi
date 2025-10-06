@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: jadetipi
+    version: ${version}
+  profiles:
+    active: mongodb
+
+server:
+  port: ${backendPort}
+base-package: com.jadetipi.jadetipi
+docs:
+  url: https://github.com/duncanscott/jade-tipi
+
+# CORS and actuator configuration
+management:
+  info:
+    build:
+      enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: '*'
+      cors:
+        allowed-origins: "http://localhost:3000"
+        allowed-methods: "*"
+        allowed-headers: "*"
+  endpoint:
+    health:
+      show-details: always

@@ -1,0 +1,25 @@
+Jade-Tipi — Dual-License Policy
+===============================
+
+Copyright (c) 2025 Duncan Scott and Jade-Tipi contributors
+SPDX-License-Identifier: AGPL-3.0-only
+
+Jade-Tipi is offered under two distinct license options:
+
+1. **GNU Affero General Public License v3.0 (AGPL-3.0)**
+   You may use, modify, and redistribute Jade-Tipi under the terms of the AGPL-3.0,
+   provided that any network-accessible modified versions also make their source code available
+   to the users of those services.
+
+2. **Commercial License**
+   Organizations may acquire a commercial license to use Jade-Tipi without the requirements of the AGPL.
+   This option is appropriate for closed-source products, hosted SaaS offerings, or embedded systems
+   where code disclosure is not possible or desirable.
+
+To obtain a commercial license or to discuss collaboration, contact:
+licensing@jade-tipi.org or visit <https://jade-tipi.org/license>
+
+Trademarks
+----------
+“Jade-Tipi” and related marks are trademarks of their respective owners.
+The AGPL-3.0 license does not grant any trademark rights.

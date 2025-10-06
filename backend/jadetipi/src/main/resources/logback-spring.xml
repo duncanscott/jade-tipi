@@ -1,0 +1,52 @@
+<!--<configuration debug="true">-->
+<configuration>
+    <property name="DefaultPattern" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{5} - %msg%n"/>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <!-- encoders are assigned the type
+             ch.qos.logback.classic.encoder.PatternLayoutEncoder by default -->
+        <encoder>
+            <pattern>${DefaultPattern}</pattern>
+        </encoder>
+    </appender>
+    <springProperty name="applicationName" source="spring.application.name" scope="context"/>
+    <property name="LOG_FILE" value="${user.home}/logs/${applicationName}"/>
+    <appender name="ROLLER" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_FILE}.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.FixedWindowRollingPolicy">
+            <!-- daily rollover -->
+            <fileNamePattern>${LOG_FILE}.%i.log</fileNamePattern>
+            <minIndex>1</minIndex>
+            <maxIndex>21</maxIndex>
+        </rollingPolicy>
+        <triggeringPolicy
+                class="ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy">
+            <MaxFileSize>100MB</MaxFileSize>
+        </triggeringPolicy>
+        <encoder>
+            <pattern>${DefaultPattern}</pattern>
+        </encoder>
+    </appender>
+    <property name="LOG_FILE_JSON" value="${user.home}/json-logs/${applicationName}-json"/>
+    <appender name="JSON" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_FILE_JSON}.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.FixedWindowRollingPolicy">
+            <!-- daily rollover -->
+            <fileNamePattern>${LOG_FILE_JSON}.%i.log</fileNamePattern>
+            <minIndex>1</minIndex>
+            <maxIndex>21</maxIndex>
+        </rollingPolicy>
+        <triggeringPolicy
+                class="ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy">
+            <MaxFileSize>100MB</MaxFileSize>
+        </triggeringPolicy>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <timeZone>PST</timeZone>
+            <customFields>{"application-name":"${applicationName}"}</customFields>
+        </encoder>
+    </appender>
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+        <appender-ref ref="ROLLER"/>
+        <appender-ref ref="JSON"/>
+    </root>
+</configuration>

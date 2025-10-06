@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+KIT_DIR=".spdx-kit"
+if [[ ! -d "$KIT_DIR" ]]; then
+  echo "[spdx] Kit dir not found ($KIT_DIR). Skipping header enforcement."
+  exit 0
+fi
+
+"$KIT_DIR/scripts/spdx-header-injector.py" --root "." --header "$KIT_DIR/config/header-JavaLike.txt" --exts ".java,.groovy,.kt" --dry-run > /tmp/spdx-dry-run.txt
+if grep -q "WOULD UPDATE:" /tmp/spdx-dry-run.txt; then
+  echo "[spdx] Some files are missing SPDX headers. Run:"
+  echo "       $KIT_DIR/scripts/apply-headers.sh ."
+  echo "Then re-stage and commit."
+  exit 1
+fi
+
+exit 0

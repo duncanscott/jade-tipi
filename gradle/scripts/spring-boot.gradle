@@ -1,0 +1,33 @@
+apply from: "${rootProject.projectDir}/gradle/scripts/repository.gradle"
+apply from: "${rootProject.projectDir}/gradle/scripts/integration-test.gradle"
+apply from: "${rootProject.projectDir}/gradle/scripts/functional-test.gradle"
+apply from: "${rootProject.projectDir}/gradle/scripts/tag.gradle"
+apply from: "${rootProject.projectDir}/gradle/scripts/deploy.gradle"
+apply from: "${rootProject.projectDir}/gradle/scripts/remotes.gradle"
+
+bootJar {
+    archiveFileName = "${project.name}.jar"
+}
+
+tasks.register('printBootJar') {
+    doLast { println tasks.named('bootJar').get().archiveFile.get().asFile.absolutePath }
+}
+
+// expand properties in application.yml and services.properties
+processResources {
+    // Declare gradle.properties as an input so the task re-runs when version changes
+    inputs.file("${rootProject.projectDir}/gradle.properties")
+
+    doFirst() {
+        project.ext.gitCommit = "git rev-parse --verify HEAD".execute().text.trim()
+        project.ext.buildDate = "${new Date()}".trim()
+    }
+    filesMatching("**/service.properties") { FileCopyDetails fileCopyDetails ->
+        expand project.properties
+    }
+    filesMatching("**/application.yml") { FileCopyDetails fileCopyDetails ->
+        expand project.properties
+    }
+}
+compileJava.inputs.files(processResources)
+compileGroovy.inputs.files(processResources)

@@ -1,0 +1,27 @@
+// Root build file for jade-tipi
+
+// Task to generate .env.local for frontend with backend port configuration
+tasks.register('generateFrontendEnv') {
+    description = 'Generates .env.local file for frontend with backend port from gradle.properties'
+    group = 'build setup'
+
+    inputs.file("${rootProject.projectDir}/gradle.properties")
+    outputs.file("${rootProject.projectDir}/frontend/.env.local")
+
+    doLast {
+        def envFile = file("${rootProject.projectDir}/frontend/.env.local")
+        envFile.text = """# Auto-generated from gradle.properties - DO NOT EDIT MANUALLY
+NEXT_PUBLIC_API_URL=http://localhost:${backendPort}
+"""
+        println "Generated frontend/.env.local with NEXT_PUBLIC_API_URL=http://localhost:${backendPort}"
+    }
+}
+
+// Run generateFrontendEnv automatically when building the backend
+subprojects {
+    afterEvaluate {
+        if (project.path == ':backend:jadetipi') {
+            tasks.findByName('processResources')?.dependsOn(rootProject.tasks.named('generateFrontendEnv'))
+        }
+    }
+}

@@ -1,0 +1,9 @@
+spring:
+  data:
+    mongodb:
+      host: localhost
+      port: 27017
+      database: jdtp
+      # Write concern: acknowledged ensures MongoDB confirms writes before returning
+      # Use 'majority' for replica sets to ensure replication
+      write-concern: acknowledged

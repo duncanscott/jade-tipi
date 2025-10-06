@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: jadetipi-test
+  data:
+    mongodb:
+      # Use existing Docker MongoDB for tests
+      host: localhost
+      port: 27017
+      database: test_db
+      write-concern: acknowledged
+
+server:
+  port: 0  # Random port for tests
+
+docs:
+  url: http://localhost:8080/docs
