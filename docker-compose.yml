@@ -1,7 +1,7 @@
 services:
   mongodb:
     image: mongo:8.0
-    container_name: jdtp-mongodb
+    container_name: jade-tipi-mongo
     ports:
       - "127.0.0.1:27017:27017"
     environment:
@@ -12,26 +12,9 @@ services:
     profiles:
       - mongodb
 
-  foundationdb:
-    # This is a multi-architecture image. We explicitly specify the platform
-    # to ensure the correct version is used on Apple Silicon.
-    platform: linux/arm64
-    image: foundationdb/foundationdb:7.3.29
-    container_name: demo-foundationdb
-    ports:
-      - "4500:4500"
-    environment:
-      - FDB_CLUSTER_FILE=/etc/foundationdb/fdb.cluster
-    volumes:
-      - foundationdb_data:/var/lib/foundationdb/data
-    restart: unless-stopped
-    profiles:
-      - foundationdb
-    command: ["/usr/bin/fdb.bash", "--daemonize", "false"]
-
   mongo-express:
     image: mongo-express:latest
-    container_name: jdtp-mongo-express
+    container_name: jade-tipi-express
     ports:
       - "127.0.0.1:8081:8081"
     environment:
@@ -40,7 +23,8 @@ services:
     depends_on:
       - mongodb
     restart: unless-stopped
+    profiles:
+      - mongodb
 
 volumes:
   mongodb_data:
-  foundationdb_data:
