@@ -5,6 +5,22 @@ apply from: "${rootProject.projectDir}/gradle/scripts/tag.gradle"
 apply from: "${rootProject.projectDir}/gradle/scripts/deploy.gradle"
 apply from: "${rootProject.projectDir}/gradle/scripts/remotes.gradle"
 
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs += ["-Xlint:all"]
+}
+// Add SPDX to JAR manifest:
+jar {
+    manifest {
+        attributes(
+                "Implementation-Title": "Jade-Tipi",
+                "Implementation-Version": project.version,
+                "License": "AGPL-3.0-only",
+                "SPDX-License-Identifier": "AGPL-3.0-only",
+                "Project-URL": "https://jade-tipi.org"
+        )
+    }
+}
+
 bootJar {
     archiveFileName = "${project.name}.jar"
 }
