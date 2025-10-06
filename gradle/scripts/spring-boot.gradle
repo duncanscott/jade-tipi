@@ -8,8 +8,9 @@ apply from: "${rootProject.projectDir}/gradle/scripts/remotes.gradle"
 tasks.withType(JavaCompile).configureEach {
     options.compilerArgs += ["-Xlint:all"]
 }
-// Add SPDX to JAR manifest:
-jar {
+
+bootJar {
+    archiveFileName = "${project.name}.jar"
     manifest {
         attributes(
                 "Implementation-Title": "Jade-Tipi",
@@ -19,10 +20,6 @@ jar {
                 "Project-URL": "https://jade-tipi.org"
         )
     }
-}
-
-bootJar {
-    archiveFileName = "${project.name}.jar"
 }
 
 tasks.register('printBootJar') {
