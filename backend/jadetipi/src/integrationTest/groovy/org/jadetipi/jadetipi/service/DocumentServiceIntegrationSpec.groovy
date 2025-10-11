@@ -27,7 +27,7 @@ import reactor.test.StepVerifier
 @SpringBootTest
 @EnableSharedInjection
 @ActiveProfiles("test")
-class DocuementServiceIntegrationSpec extends Specification {
+class DocumentServiceIntegrationSpec extends Specification {
 
     @Autowired
     DocumentService documentServiceMongoDb
