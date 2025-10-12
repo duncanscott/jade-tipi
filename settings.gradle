@@ -1,3 +1,4 @@
 rootProject.name = 'jade-tipi'
 
 include 'backend:jadetipi'
+include 'backend:libraries:jade-tipi-id:lib'
