@@ -1,0 +1,46 @@
+jar {
+    manifest {
+        attributes 'Implementation-Title': project.name, 'Implementation-Version': project.version
+    }
+}
+
+tasks.register('sourcesJar', Jar) {
+    archiveClassifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            artifact sourcesJar
+
+            groupId = group
+            artifactId = project.name
+            version = version
+
+            // Optionally, you can also specify a POM file
+            pom {
+                name = pomName
+                description = pomDescription
+                url = pomUrl
+            }
+        }
+    }
+}
+
+
+artifactory {
+    publish {
+        contextUrl = System.getenv('ARTIFACTORY_CONTEXT_URL')
+        repository {
+            repoKey = version.endsWith('SNAPSHOT') ? 'libs-snapshot-local' : 'libs-release-local'
+            username = System.getenv('ARTIFACTORY_USER')
+            password = System.getenv('ARTIFACTORY_PASSWORD')
+        }
+        defaults {
+            publications('mavenJava')
+            publishPom = true
+        }
+    }
+}

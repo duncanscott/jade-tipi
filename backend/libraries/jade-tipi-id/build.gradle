@@ -1,0 +1,31 @@
+
+plugins {
+    id 'groovy'
+    id 'java-library'
+    id 'maven-publish'
+    id 'com.jfrog.artifactory' version "latest.release"
+}
+
+apply from: "${rootProject.projectDir}/gradle/scripts/library.gradle"
+
+dependencies {
+    // Use the latest Groovy version for Spock testing
+    testImplementation libs.groovy
+    testImplementation libs.spock.core
+    testImplementation libs.junit
+
+    //testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+/*
+tasks.named('test') {
+    // Use JUnit Platform for unit tests.
+    useJUnitPlatform()
+}
+*/
