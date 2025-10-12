@@ -8,5 +8,5 @@ dependencyResolutionManagement {
     }
 }
 
-include 'backend:jadetipi'
+include 'backend:jade-tipi'
 include 'backend:libraries:jade-tipi-id'
