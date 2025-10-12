@@ -1,0 +1,20 @@
+apply from: "${rootProject.projectDir}/gradle/scripts/repository.gradle"
+apply from: "${rootProject.projectDir}/gradle/scripts/integration-test.gradle"
+apply from: "${rootProject.projectDir}/gradle/scripts/tag.gradle"
+
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs += ["-Xlint:all"]
+}
+
+// Apply manifest attributes to all tasks that create a JAR (e.g., jar, bootJar)
+tasks.withType(Jar) {
+    manifest {
+        attributes(
+                "Implementation-Title": "Jade-Tipi-Id",
+                "Implementation-Version": project.version,
+                "License": "AGPL-3.0-only",
+                "SPDX-License-Identifier": "AGPL-3.0-only",
+                "Project-URL": "https://jade-tipi.org"
+        )
+    }
+}
