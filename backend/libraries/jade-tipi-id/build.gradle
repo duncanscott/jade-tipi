@@ -9,12 +9,21 @@ plugins {
 apply from: "${rootProject.projectDir}/gradle/scripts/library.gradle"
 
 dependencies {
+    // Jakarta Bean Validation API for custom validation annotations
+    api libs.jakarta.validation.api
+
     // Use the latest Groovy version for Spock testing
     testImplementation libs.groovy
     testImplementation libs.spock.core
     testImplementation libs.junit
 
-    //testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    // JUnit Jupiter for Java-based tests
+    testImplementation libs.junit.jupiter
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // Hibernate Validator for validation implementation in tests
+    testImplementation libs.hibernate.validator
+    testImplementation 'org.glassfish.expressly:expressly:5.0.0' // EL implementation required by Hibernate Validator
 }
 
 java {
@@ -23,9 +32,7 @@ java {
     }
 }
 
-/*
 tasks.named('test') {
     // Use JUnit Platform for unit tests.
     useJUnitPlatform()
 }
-*/
