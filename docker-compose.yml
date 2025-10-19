@@ -26,5 +26,22 @@ services:
     profiles:
       - mongodb
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: jade-tipi-keycloak
+    command: start-dev
+    environment:
+      KC_DB: dev-mem
+      KC_HOSTNAME: localhost
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+    profiles:
+      - keycloak
+
 volumes:
   mongodb_data:
