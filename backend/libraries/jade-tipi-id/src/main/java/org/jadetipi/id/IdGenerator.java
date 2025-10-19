@@ -13,6 +13,8 @@
 package org.jadetipi.id;
 
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -23,6 +25,9 @@ public class IdGenerator {
 
     private static final int PREFIX_LEN = 16;
     private static final int SEQ_LEN = 3;
+
+    private static final SecureRandom RNG = createSecureRandom();
+    private static final Base64.Encoder URL_ENCODER = Base64.getUrlEncoder().withoutPadding();
 
     // Packs [timestamp(ms) << SEQ_BITS | seq]
     private final AtomicLong state = new AtomicLong(0L);
@@ -37,10 +42,18 @@ public class IdGenerator {
         return randomLetters(PREFIX_LEN) + "~" + ts + "~" + toLetters(seq, SEQ_LEN);
     }
 
-    public String nextKey() throws NoSuchAlgorithmException {
-        var bytes = new byte[32];
-        java.security.SecureRandom.getInstanceStrong().nextBytes(bytes);
-        return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    public String nextKey() {
+        byte[] bytes = new byte[32];
+        RNG.nextBytes(bytes);
+        return URL_ENCODER.encodeToString(bytes);
+    }
+
+    private static SecureRandom createSecureRandom() {
+        try {
+            return SecureRandom.getInstanceStrong();
+        } catch (NoSuchAlgorithmException ignored) {
+            return new SecureRandom();
+        }
     }
 
     private long nextTimestampAndSeq() {
