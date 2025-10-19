@@ -14,10 +14,10 @@ package org.jadetipi.jadetipi.mongo.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
-import org.jadetipi.jadetipi.service.DocumentService
 import groovy.util.logging.Slf4j
 import org.bson.Document
 import org.bson.types.ObjectId
+import org.jadetipi.jadetipi.service.DocumentService
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
@@ -59,9 +59,9 @@ class DocumentServiceMongoDbImpl implements DocumentService {
         }
 
         return Mono.from(
-            mongoTemplate.mongoDatabase
-                .map(db -> db.getCollection(COLLECTION_NAME))
-                .flatMapMany(collection -> collection.find(new Document("_id", idValue)).limit(1))
+                mongoTemplate.mongoDatabase
+                        .map(db -> db.getCollection(COLLECTION_NAME))
+                        .flatMapMany(collection -> collection.find(new Document("_id", idValue)).limit(1))
         ).map(doc -> {
             // Convert BSON Document to plain Map, ensuring _id is a string
             def map = new LinkedHashMap(doc)

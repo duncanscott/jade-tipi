@@ -18,8 +18,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 @SpringBootApplication
 class JadetipiApplication {
 
-	static void main(String[] args) {
-		SpringApplication.run(JadetipiApplication, args)
-	}
+    static void main(String[] args) {
+        SpringApplication.run(JadetipiApplication, args)
+    }
 
 }

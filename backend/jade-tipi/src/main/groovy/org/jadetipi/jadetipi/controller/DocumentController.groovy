@@ -17,8 +17,8 @@ import org.jadetipi.jadetipi.service.DocumentService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
-import reactor.core.publisher.Mono
 import reactor.core.publisher.Flux
+import reactor.core.publisher.Mono
 
 @RestController
 @RequestMapping("/api/documents")
@@ -78,8 +78,8 @@ class DocumentController {
     Mono<ResponseEntity<Void>> deleteDocument(@PathVariable("id") String id) {
         return documentService.delete(id)
                 .map(deleted -> deleted ?
-                        ResponseEntity.noContent().<Void>build() :
-                        ResponseEntity.notFound().<Void>build())
+                        ResponseEntity.noContent().<Void> build() :
+                        ResponseEntity.notFound().<Void> build())
     }
 
     /**

@@ -21,8 +21,8 @@ import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.test.context.ActiveProfiles
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
-import spock.lang.Specification
 import reactor.test.StepVerifier
+import spock.lang.Specification
 
 @SpringBootTest
 @EnableSharedInjection

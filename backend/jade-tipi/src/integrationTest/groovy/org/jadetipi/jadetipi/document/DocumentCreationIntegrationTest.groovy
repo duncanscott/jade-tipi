@@ -43,29 +43,29 @@ class DocumentCreationIntegrationTest {
 
         // Step 1: Create document
         webTestClient.post()
-            .uri("/api/documents/{id}", documentId)
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(documentData)
-            .exchange()
-            .expectStatus().isCreated()
-            .expectBody()
-            .jsonPath('$._id').isEqualTo(documentId)
-            .jsonPath('$.name').isEqualTo('Test Document')
-            .jsonPath('$.value').isEqualTo(42)
+                .uri("/api/documents/{id}", documentId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(documentData)
+                .exchange()
+                .expectStatus().isCreated()
+                .expectBody()
+                .jsonPath('$._id').isEqualTo(documentId)
+                .jsonPath('$.name').isEqualTo('Test Document')
+                .jsonPath('$.value').isEqualTo(42)
 
         // Step 2: Small delay to allow for reactive stream completion and MongoDB write
         Thread.sleep(50)
 
         // Step 3: Verify document is readable (read-after-write)
         webTestClient.get()
-            .uri("/api/documents/{id}", documentId)
-            .exchange()
-            .expectStatus().isOk()
-            .expectBody()
-            .jsonPath('$._id').isEqualTo(documentId)
-            .jsonPath('$.name').isEqualTo('Test Document')
-            .jsonPath('$.value').isEqualTo(42)
-            .jsonPath('$.description').isEqualTo('Integration test')
+                .uri("/api/documents/{id}", documentId)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath('$._id').isEqualTo(documentId)
+                .jsonPath('$.name').isEqualTo('Test Document')
+                .jsonPath('$.value').isEqualTo(42)
+                .jsonPath('$.description').isEqualTo('Integration test')
     }
 
     @Test
@@ -73,9 +73,9 @@ class DocumentCreationIntegrationTest {
         def nonExistentId = UUID.randomUUID().toString()
 
         webTestClient.get()
-            .uri("/api/documents/{id}", nonExistentId)
-            .exchange()
-            .expectStatus().isNotFound()
+                .uri("/api/documents/{id}", nonExistentId)
+                .exchange()
+                .expectStatus().isNotFound()
     }
 
     @Test
@@ -86,38 +86,38 @@ class DocumentCreationIntegrationTest {
 
         // Create
         webTestClient.post()
-            .uri("/api/documents/{id}", documentId)
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(initialData)
-            .exchange()
-            .expectStatus().isCreated()
+                .uri("/api/documents/{id}", documentId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(initialData)
+                .exchange()
+                .expectStatus().isCreated()
 
         // Allow time for document to be persisted
         Thread.sleep(50)
 
         // Update
         webTestClient.put()
-            .uri("/api/documents/{id}", documentId)
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(updatedData)
-            .exchange()
-            .expectStatus().isOk()
-            .expectBody()
-            .jsonPath('$.name').isEqualTo('Updated')
-            .jsonPath('$.value').isEqualTo(2)
-            .jsonPath('$.newField').isEqualTo('added')
+                .uri("/api/documents/{id}", documentId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(updatedData)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath('$.name').isEqualTo('Updated')
+                .jsonPath('$.value').isEqualTo(2)
+                .jsonPath('$.newField').isEqualTo('added')
 
         // Allow time for update to be persisted
         Thread.sleep(50)
 
         // Verify
         webTestClient.get()
-            .uri("/api/documents/{id}", documentId)
-            .exchange()
-            .expectStatus().isOk()
-            .expectBody()
-            .jsonPath('$.name').isEqualTo('Updated')
-            .jsonPath('$.value').isEqualTo(2)
+                .uri("/api/documents/{id}", documentId)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath('$.name').isEqualTo('Updated')
+                .jsonPath('$.value').isEqualTo(2)
     }
 
     @Test
@@ -127,25 +127,25 @@ class DocumentCreationIntegrationTest {
 
         // Create
         webTestClient.post()
-            .uri("/api/documents/{id}", documentId)
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(documentData)
-            .exchange()
-            .expectStatus().isCreated()
+                .uri("/api/documents/{id}", documentId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(documentData)
+                .exchange()
+                .expectStatus().isCreated()
 
         // Allow time for document to be persisted
         Thread.sleep(50)
 
         // Delete
         webTestClient.delete()
-            .uri("/api/documents/{id}", documentId)
-            .exchange()
-            .expectStatus().isNoContent()
+                .uri("/api/documents/{id}", documentId)
+                .exchange()
+                .expectStatus().isNoContent()
 
         // Verify deletion
         webTestClient.get()
-            .uri("/api/documents/{id}", documentId)
-            .exchange()
-            .expectStatus().isNotFound()
+                .uri("/api/documents/{id}", documentId)
+                .exchange()
+                .expectStatus().isNotFound()
     }
 }

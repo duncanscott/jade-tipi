@@ -49,39 +49,39 @@ class DocumentListIntegrationTest {
 
         // Create documents
         webTestClient.post()
-            .uri("/api/documents/{id}", doc1Id)
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(doc1Data)
-            .exchange()
-            .expectStatus().isCreated()
+                .uri("/api/documents/{id}", doc1Id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(doc1Data)
+                .exchange()
+                .expectStatus().isCreated()
 
         webTestClient.post()
-            .uri("/api/documents/{id}", doc2Id)
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(doc2Data)
-            .exchange()
-            .expectStatus().isCreated()
+                .uri("/api/documents/{id}", doc2Id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(doc2Data)
+                .exchange()
+                .expectStatus().isCreated()
 
         webTestClient.post()
-            .uri("/api/documents/{id}", doc3Id)
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(doc3Data)
-            .exchange()
-            .expectStatus().isCreated()
+                .uri("/api/documents/{id}", doc3Id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(doc3Data)
+                .exchange()
+                .expectStatus().isCreated()
 
         // Small delay to allow for reactive stream completion
         Thread.sleep(100)
 
         // List all documents
         def response = webTestClient.get()
-            .uri("/api/documents")
-            .exchange()
-            .expectStatus().isOk()
-            .expectHeader().contentType(MediaType.APPLICATION_JSON)
-            .returnResult(Map)
-            .responseBody
-            .collectList()
-            .block()
+                .uri("/api/documents")
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().contentType(MediaType.APPLICATION_JSON)
+                .returnResult(Map)
+                .responseBody
+                .collectList()
+                .block()
 
         // Verify we got at least our 3 documents
         assert response.size() >= 3
@@ -113,9 +113,9 @@ class DocumentListIntegrationTest {
         // This test assumes a clean database or tests in isolation
         // For now, we just verify the endpoint returns a valid JSON array
         webTestClient.get()
-            .uri("/api/documents")
-            .exchange()
-            .expectStatus().isOk()
-            .expectHeader().contentType(MediaType.APPLICATION_JSON)
+                .uri("/api/documents")
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().contentType(MediaType.APPLICATION_JSON)
     }
 }

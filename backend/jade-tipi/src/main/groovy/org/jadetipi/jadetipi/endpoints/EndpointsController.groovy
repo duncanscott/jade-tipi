@@ -70,9 +70,9 @@ class EndpointsController {
     @GetMapping('/docs')
     Mono<ResponseEntity<Void>> docs() {
         return Mono.just(
-            ResponseEntity.status(HttpStatus.FOUND)
-                .header('Location', docsUrl)
-                .build()
+                ResponseEntity.status(HttpStatus.FOUND)
+                        .header('Location', docsUrl)
+                        .build()
         )
     }
 

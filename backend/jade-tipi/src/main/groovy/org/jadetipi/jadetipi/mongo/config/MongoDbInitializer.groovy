@@ -40,16 +40,16 @@ class MongoDbInitializer implements CommandLineRunner {
 
         // Check if collection exists, create if it doesn't
         mongoTemplate.collectionExists(COLLECTION_NAME)
-            .flatMap { exists ->
-                if (!exists) {
-                    log.info "Creating collection '{}'", COLLECTION_NAME
-                    mongoTemplate.createCollection(COLLECTION_NAME)
-                } else {
-                    log.info "Collection '{}' already exists", COLLECTION_NAME
-                    return mongoTemplate.getCollection(COLLECTION_NAME)
+                .flatMap { exists ->
+                    if (!exists) {
+                        log.info "Creating collection '{}'", COLLECTION_NAME
+                        mongoTemplate.createCollection(COLLECTION_NAME)
+                    } else {
+                        log.info "Collection '{}' already exists", COLLECTION_NAME
+                        return mongoTemplate.getCollection(COLLECTION_NAME)
+                    }
                 }
-            }
-            .block()
+                .block()
 
         // Load all JSON files from the tipi directory
         def resolver = new PathMatchingResourcePatternResolver()
@@ -73,13 +73,13 @@ class MongoDbInitializer implements CommandLineRunner {
 
                 // Upsert the document (update if exists, insert if not)
                 mongoTemplate.save(jsonContent, COLLECTION_NAME)
-                    .doOnSuccess { saved ->
-                        log.info "Successfully saved document with key '{}'", key
-                    }
-                    .doOnError { error ->
-                        log.error "Error saving document with key '{}': {}", key, error.message
-                    }
-                    .block()
+                        .doOnSuccess { saved ->
+                            log.info "Successfully saved document with key '{}'", key
+                        }
+                        .doOnError { error ->
+                            log.error "Error saving document with key '{}': {}", key, error.message
+                        }
+                        .block()
 
                 // If this is the collections document, create collections for each entry
                 if (key == "collections") {
@@ -89,16 +89,16 @@ class MongoDbInitializer implements CommandLineRunner {
                             def collectionName = collectionData.get("name")
                             if (collectionName) {
                                 mongoTemplate.collectionExists(collectionName)
-                                    .flatMap { exists ->
-                                        if (!exists) {
-                                            log.info "Creating collection '{}'", collectionName
-                                            mongoTemplate.createCollection(collectionName)
-                                        } else {
-                                            log.info "Collection '{}' already exists", collectionName
-                                            return mongoTemplate.getCollection(collectionName)
+                                        .flatMap { exists ->
+                                            if (!exists) {
+                                                log.info "Creating collection '{}'", collectionName
+                                                mongoTemplate.createCollection(collectionName)
+                                            } else {
+                                                log.info "Collection '{}' already exists", collectionName
+                                                return mongoTemplate.getCollection(collectionName)
+                                            }
                                         }
-                                    }
-                                    .block()
+                                        .block()
                             }
                         }
                     }
@@ -112,16 +112,16 @@ class MongoDbInitializer implements CommandLineRunner {
         // Create open-transactions collection
         def openTransactionsCollection = "open-transactions"
         mongoTemplate.collectionExists(openTransactionsCollection)
-            .flatMap { exists ->
-                if (!exists) {
-                    log.info "Creating collection '{}'", openTransactionsCollection
-                    mongoTemplate.createCollection(openTransactionsCollection)
-                } else {
-                    log.info "Collection '{}' already exists", openTransactionsCollection
-                    return mongoTemplate.getCollection(openTransactionsCollection)
+                .flatMap { exists ->
+                    if (!exists) {
+                        log.info "Creating collection '{}'", openTransactionsCollection
+                        mongoTemplate.createCollection(openTransactionsCollection)
+                    } else {
+                        log.info "Collection '{}' already exists", openTransactionsCollection
+                        return mongoTemplate.getCollection(openTransactionsCollection)
+                    }
                 }
-            }
-            .block()
+                .block()
 
         log.info "MongoDB initialization completed"
     }
