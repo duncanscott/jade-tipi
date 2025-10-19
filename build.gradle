@@ -20,7 +20,7 @@ NEXT_PUBLIC_API_URL=http://localhost:${backendPort}
 // Run generateFrontendEnv automatically when building the backend
 subprojects {
     afterEvaluate {
-        if (project.path == ':backend:jadetipi') {
+        if (project.path == ':backend:jade-tipi') {
             tasks.findByName('processResources')?.dependsOn(rootProject.tasks.named('generateFrontendEnv'))
         }
     }
