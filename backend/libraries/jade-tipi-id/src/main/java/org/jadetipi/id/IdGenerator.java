@@ -12,6 +12,7 @@
  */
 package org.jadetipi.id;
 
+import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -34,6 +35,12 @@ public class IdGenerator {
 
         //return randomLetters(PREFIX_LEN) + reverseDigits(ts) + toLetters(seq, SEQ_LEN);
         return randomLetters(PREFIX_LEN) + "~" + ts + "~" + toLetters(seq, SEQ_LEN);
+    }
+
+    public String nextKey() throws NoSuchAlgorithmException {
+        var bytes = new byte[32];
+        java.security.SecureRandom.getInstanceStrong().nextBytes(bytes);
+        return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
     private long nextTimestampAndSeq() {
