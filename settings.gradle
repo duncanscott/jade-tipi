@@ -10,3 +10,4 @@ dependencyResolutionManagement {
 
 include 'backend:jade-tipi'
 include 'backend:libraries:jade-tipi-id'
+include 'clients:tipi'

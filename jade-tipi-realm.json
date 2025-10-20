@@ -1,0 +1,31 @@
+{
+  "realm": "jade-tipi",
+  "enabled": true,
+  "displayName": "Jade Tipi",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "resetPasswordAllowed": true,
+  "clients": [
+    {
+      "clientId": "jade-tipi-backend",
+      "name": "Jade Tipi Backend",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "d84c91af-7f37-4b8d-9157-0f6c6a91fb45",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
+      "redirectUris": [
+        "http://localhost:8765/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ],
+      "attributes": {
+        "access.token.lifespan": "300"
+      }
+    }
+  ]
+}

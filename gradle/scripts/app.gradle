@@ -1,6 +1,5 @@
 apply from: "${rootProject.projectDir}/gradle/scripts/repository.gradle"
 apply from: "${rootProject.projectDir}/gradle/scripts/integration-test.gradle"
-apply from: "${rootProject.projectDir}/gradle/scripts/publish.gradle"
 
 tasks.withType(JavaCompile).configureEach {
     options.compilerArgs += ["-Xlint:all"]
