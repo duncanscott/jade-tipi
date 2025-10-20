@@ -42,8 +42,6 @@ services:
     volumes:
       - ./jade-tipi-realm.json:/opt/keycloak/data/import/jade-tipi-realm.json:ro
     restart: unless-stopped
-    profiles:
-      - keycloak
 
 volumes:
   mongodb_data:

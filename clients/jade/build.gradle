@@ -3,7 +3,9 @@ plugins {
     id 'groovy'
 }
 
-apply from: "${rootProject.projectDir}/gradle/scripts/app.gradle"
+repositories {
+    mavenCentral()
+}
 
 dependencies {
     implementation 'org.apache.groovy:groovy:4.0.21'
@@ -12,8 +14,8 @@ dependencies {
 }
 
 application {
-    mainClass = 'org.jadetipi.tipi.cli.TipiCli'
-    applicationName = 'tipi'
+    mainClass = 'org.jadetipi.jade.cli.JadeCli'
+    applicationName = 'jade'
 }
 
 def compilerConfig = file("${rootProject.projectDir}/gradle/groovyCompilerConfig.groovy")

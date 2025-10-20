@@ -1,0 +1,11 @@
+#!/bin/sh
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CLI_PATH="$SCRIPT_DIR/clients/jade/build/install/jade/bin/jade"
+
+if [ ! -x "$CLI_PATH" ]; then
+  echo "Jade CLI not installed. Run: ./gradlew :clients:jade:installDist" >&2
+  exit 1
+fi
+
+exec "$CLI_PATH" "$@"

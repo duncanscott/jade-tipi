@@ -10,7 +10,7 @@
  *
  * https://jade-tipi.org/license
  */
-package org.jadetipi.tipi.cli
+package org.jadetipi.jade.cli
 
 import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
@@ -25,12 +25,12 @@ import java.nio.charset.StandardCharsets
 import java.util.Arrays
 import java.util.Base64
 
-class TipiCli {
+class JadeCli {
 
-    private static final String DEFAULT_KEYCLOAK_URL = System.getenv('TIPI_KEYCLOAK_URL') ?: 'http://localhost:8484'
-    private static final String DEFAULT_REALM = System.getenv('TIPI_REALM') ?: 'jade-tipi'
-    private static final String DEFAULT_CLIENT_ID = System.getenv('TIPI_CLIENT_ID') ?: 'tipi-cli'
-    private static final String DEFAULT_CLIENT_SECRET = System.getenv('TIPI_CLIENT_SECRET') ?: '7e8d5df5-5afb-4cc0-8d56-9f3f5c7cc5fd'
+    private static final String DEFAULT_KEYCLOAK_URL = System.getenv('JADE_KEYCLOAK_URL') ?: 'http://localhost:8484'
+    private static final String DEFAULT_REALM = System.getenv('JADE_REALM') ?: 'jade-tipi'
+    private static final String DEFAULT_CLIENT_ID = System.getenv('JADE_CLIENT_ID') ?: 'jade-cli'
+    private static final String DEFAULT_CLIENT_SECRET = System.getenv('JADE_CLIENT_SECRET') ?: '62ba4c1e-7f7e-46c7-9793-f752c63f2e10'
 
     static void main(String[] args) {
         if (!args) {
@@ -187,20 +187,20 @@ class TipiCli {
     }
 
     private static void printUsage() {
-        println """Tipi CLI - Jade Tipi command-line client
+        println """Jade CLI - Jade Tipi command-line client
 
 Usage:
-  tipi create-transaction [options]
-  tipi help
+  jade create-transaction [options]
+  jade help
 
 Commands:
   create-transaction   Obtain a JWT for service-to-service transactions.
 
-Run 'tipi create-transaction --help' for command-specific options."""
+Run 'jade create-transaction --help' for command-specific options."""
     }
 
     private static void printCreateTransactionUsage() {
-        println """Usage: tipi create-transaction [options]
+        println """Usage: jade create-transaction [options]
 
 Options:
   --url <keycloak-url>          Keycloak base URL (default: ${DEFAULT_KEYCLOAK_URL})
@@ -209,6 +209,6 @@ Options:
   --client-secret <secret>      OAuth client secret (default: value bundled with CLI)
 
 Environment overrides:
-  TIPI_KEYCLOAK_URL, TIPI_REALM, TIPI_CLIENT_ID, TIPI_CLIENT_SECRET"""
+  JADE_KEYCLOAK_URL, JADE_REALM, JADE_CLIENT_ID, JADE_CLIENT_SECRET"""
     }
 }
