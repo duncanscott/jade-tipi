@@ -1,13 +1,5 @@
 rootProject.name = 'jade-tipi'
 
-dependencyResolutionManagement {
-    versionCatalogs {
-        libs {
-            from(files("libraries/jade-tipi-id/gradle/libs.versions.toml"))
-        }
-    }
-}
-
 include 'jade-tipi'
 include 'libraries:jade-tipi-id'
 include 'libraries:jade-tipi-dto'

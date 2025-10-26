@@ -2,15 +2,15 @@
 # https://docs.gradle.org/current/userguide/platforms.html#sub::toml-dependencies-format
 
 [versions]
-groovy = "3.0.24"
-hibernate-validator = "8.0.1.Final"
-jakarta-validation = "3.1.0"
+groovy = "4.0.29"
+hibernate-validator = "9.0.1.Final"
+jakarta-validation = "3.1.1"
 junit = "4.13.2"
-junit-jupiter = "5.11.4"
-spock-core = "2.2-groovy-3.0"
+junit-jupiter = "6.0.0"
+spock-core = "2.4-M6-groovy-4.0"
 
 [libraries]
-groovy = { module = "org.codehaus.groovy:groovy", version.ref = "groovy" }
+groovy = { module = "org.apache.groovy:groovy-all", version.ref = "groovy" }
 hibernate-validator = { module = "org.hibernate.validator:hibernate-validator", version.ref = "hibernate-validator" }
 jakarta-validation-api = { module = "jakarta.validation:jakarta.validation-api", version.ref = "jakarta-validation" }
 junit = { module = "junit:junit", version.ref = "junit" }
