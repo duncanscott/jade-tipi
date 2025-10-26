@@ -12,20 +12,6 @@ services:
     profiles:
       - mongodb
 
-  mongo-express:
-    image: mongo-express:latest
-    container_name: jade-tipi-express
-    ports:
-      - "127.0.0.1:8081:8081"
-    environment:
-      ME_CONFIG_MONGODB_URL: mongodb://mongodb:27017/
-      ME_CONFIG_BASICAUTH: false
-    depends_on:
-      - mongodb
-    restart: unless-stopped
-    profiles:
-      - mongodb
-
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     container_name: jade-tipi-keycloak
