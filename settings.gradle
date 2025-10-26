@@ -3,12 +3,12 @@ rootProject.name = 'jade-tipi'
 dependencyResolutionManagement {
     versionCatalogs {
         libs {
-            from(files("backend/libraries/jade-tipi-id/gradle/libs.versions.toml"))
+            from(files("libraries/jade-tipi-id/gradle/libs.versions.toml"))
         }
     }
 }
 
-include 'backend:jade-tipi'
-include 'backend:libraries:jade-tipi-id'
+include 'jade-tipi'
+include 'libraries:jade-tipi-id'
 include 'clients:tipi'
 include 'clients:jade'

@@ -30,12 +30,14 @@ tasks.withType(GroovyCompile) {
 
 ext {
     set('springCloudVersion', "2025.0.0")
+    spockVersion = '2.4-M6-groovy-4.0'
+    logstashLogbackEncoderVersion = '8.1'
 }
 
 dependencies {
     implementation 'org.apache.groovy:groovy'
     implementation 'com.fasterxml.jackson.core:jackson-databind'
-    implementation project(':backend:libraries:jade-tipi-id')
+    implementation project(':libraries:jade-tipi-id')
 
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
