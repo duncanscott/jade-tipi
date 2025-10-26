@@ -12,11 +12,11 @@
  */
 package org.jadetipi.jadetipi.service
 
-import groovy.transform.Immutable
+import org.jadetipi.dto.transaction.TransactionToken
 import org.jadetipi.id.IdGenerator
+import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.stereotype.Service
 import org.springframework.util.Assert
-import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import reactor.core.publisher.Mono
 
 import java.time.Instant
@@ -58,11 +58,5 @@ class TransactionService {
 
         return mongoTemplate.save(doc, COLLECTION_NAME)
                 .thenReturn(new TransactionToken(transactionId, secret))
-    }
-
-    @Immutable
-    static class TransactionToken {
-        String transactionId
-        String secret
     }
 }

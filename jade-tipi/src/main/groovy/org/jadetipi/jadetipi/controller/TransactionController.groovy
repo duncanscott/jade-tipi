@@ -12,6 +12,7 @@
  */
 package org.jadetipi.jadetipi.controller
 
+import org.jadetipi.dto.transaction.TransactionToken
 import org.jadetipi.jadetipi.service.TransactionService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -33,7 +34,7 @@ class TransactionController {
     }
 
     @PostMapping
-    Mono<ResponseEntity<TransactionService.TransactionToken>> createTransaction(
+    Mono<ResponseEntity<TransactionToken>> createTransaction(
             @RequestBody TransactionRequest request) {
 
         if (!request?.organization?.trim()) {
