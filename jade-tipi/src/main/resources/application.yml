@@ -21,7 +21,7 @@ management:
       exposure:
         include: '*'
       cors:
-        allowed-origins: "http://localhost:3000"
+        allowed-origins: "http://localhost:3000,http://192.168.1.231:3000"
         allowed-methods: "*"
         allowed-headers: "*"
   endpoint:
