@@ -10,5 +10,6 @@ dependencyResolutionManagement {
 
 include 'jade-tipi'
 include 'libraries:jade-tipi-id'
+include 'libraries:jade-tipi-dto'
 include 'clients:tipi'
 include 'clients:jade'

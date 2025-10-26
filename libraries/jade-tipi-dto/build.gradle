@@ -1,0 +1,30 @@
+plugins {
+    id 'groovy'
+    id 'java-library'
+    id 'maven-publish'
+    id 'com.jfrog.artifactory' version "latest.release"
+}
+
+apply from: "${rootProject.projectDir}/gradle/scripts/library.gradle"
+
+dependencies {
+    api libs.jakarta.validation.api
+
+    testImplementation libs.groovy
+    testImplementation libs.spock.core
+    testImplementation libs.junit
+    testImplementation libs.junit.jupiter
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testImplementation libs.hibernate.validator
+    testImplementation 'org.glassfish.expressly:expressly:5.0.0'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
