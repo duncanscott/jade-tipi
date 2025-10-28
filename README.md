@@ -1,122 +1,120 @@
 # Jade-Tipi
 
-An open scientific metadata framework for managing JSON documents with flexible database backends.
+An open scientific metadata framework and reference implementation focused on flexible, machine-actionable JSON documents.
 
-## Overview
+> Looking for the broader protocol vision and long-term roadmap? Read the living design document in [`docs/Jade-Tipi.md`](docs/Jade-Tipi.md).
 
-Jade-Tipi is a full-stack proof of concept demonstrating a reactive, cloud-native approach to scientific metadata management. Built with Spring Boot and Next.js, it provides a RESTful API and modern web interface for creating, reading, updating, and deleting JSON documents.
+## Project Status
 
-## Features
+- Early proof-of-concept: the core reactive API and web UI target basic CRUD for JSON documents stored in MongoDB.
+- MongoDB is the only persistence backend wired in today; FoundationDB profiles and integration layers are actively being explored.
+- Frontend scaffolding exists for a document manager and will evolve towards richer curation and visualization flows.
+- Expect breaking changes while the API surface, storage models, and protocol language are refined.
 
-- **Reactive API**: Non-blocking, streaming-capable REST endpoints built with Spring WebFlux
-- **Flexible Storage**: Switchable database backend (MongoDB or FoundationDB)
-- **Modern Frontend**: Next.js 15 with React 19, TypeScript, and Tailwind CSS
-- **Docker Integration**: Complete containerized development environment
-- **Production Ready**: Spring Boot Actuator monitoring, structured logging, integration tests
+## Architecture Overview
 
-## Tech Stack
+### Backend (Groovy / Spring Boot WebFlux)
 
-**Backend**
-- Spring Boot 3.5.6 with Groovy
-- Spring WebFlux (reactive)
-- MongoDB Reactive Driver / FoundationDB
-- Java 21
+- Reactive REST API serving JSON metadata on port `8765`.
+- Document lifecycle endpoints (`/api/documents`) powered by `ReactiveMongoTemplate`.
+- Transaction token generation (`/api/transactions`) to support future write coordination.
+- Gradle build with separate unit and integration test tasks; integration tests require MongoDB running.
 
-**Frontend**
-- Next.js 15 with Turbopack
-- React 19
-- TypeScript
-- Tailwind CSS v4
+### Frontend (Next.js 15 / React 19)
 
-## Quick Start
+- Lightweight admin UI for creating, viewing, editing, and deleting documents.
+- Fetches API base URL from `frontend/.env.local`, which the backend generates on boot.
+- Uses Tailwind CSS v4 (PostCSS pipeline) and client-side routing for quick iteration.
+
+### Data & Persistence
+
+- Default developer profile targets the bundled MongoDB container (`docker-compose --profile mongodb`).
+- FoundationDB support is experimental; configuration scaffolding lives under `jade-tipi/src/main/resources/application-foundationdb.yml`.
+- Future adapters (Kafka/Flink sinks, lakehouse integration) are tracked in the architecture document.
+
+## Getting Started
 
 ### Prerequisites
 
-- Java 21+
-- Node.js 20+
+- Java 21
+- Node.js 20
 - Docker & Docker Compose
 
-### Run with Docker
+### First Run
 
 ```bash
-# Start MongoDB
+# 1. Start MongoDB (foreground logs available via docker-compose)
 docker-compose --profile mongodb up -d
 
-# Run backend (port 8765)
+# 2. Launch the reactive backend (generates frontend/.env.local on first run)
 ./gradlew bootRun
 
-# Run frontend (port 3000)
-cd frontend && npm install && npm run dev
+# 3. (Optional) Start the Next.js dev server
+cd frontend
+npm install
+npm run dev
 ```
 
-Access the application at http://localhost:3000
+Visit http://localhost:3000 for the UI or http://localhost:8765/actuator/health to check the API.
 
-### Available Scripts
+Shut everything down when you are done exploring:
 
 ```bash
-# Backend
-./gradlew bootRun              # Start backend server
-./gradlew test                 # Run unit tests
-./gradlew integrationTest      # Run integration tests
-
-# Frontend
-npm run dev                    # Start development server
-npm run build                  # Build for production
-
-# Docker
-docker-compose --profile mongodb up -d      # Start MongoDB + Mongo Express
-docker-compose down                         # Stop all containers
+docker-compose down
 ```
 
-## Database Backends
-
-### MongoDB (Default)
+### Useful Gradle Tasks
 
 ```bash
-docker-compose --profile mongodb up -d
-./gradlew bootRun
+./gradlew test             # Backend unit tests
+./gradlew integrationTest  # Reactive integration tests (MongoDB must be running)
+./gradlew bootRun          # Run the WebFlux service on port 8765
 ```
 
-MongoDB admin interface available at http://localhost:8081
+## API Highlights
 
-### FoundationDB (Alternative)
+### Document Service (`/api/documents`)
 
-```bash
-docker-compose --profile foundationdb up -d
-./gradlew bootRun -Pdb=foundationdb
+- `GET /api/documents` — stream summaries (currently `_id` and `name` fields).
+- `GET /api/documents/{id}` — fetch a JSON document by identifier (hex ObjectId or custom ID).
+- `POST /api/documents/{id}` — create a new document with a caller-supplied ID.
+- `PUT /api/documents/{id}` — replace an existing document.
+- `DELETE /api/documents/{id}` — remove a document.
+- `DELETE /api/documents/cleanup/corrupted` — purge records containing legacy Jackson metadata.
+
+### Transaction Service (`/api/transactions`)
+
+- `POST /api/transactions` — issue a transaction token scoped to `organization` and `group`. Returns a public identifier plus write secret; intended for future multi-party write flows.
+
+API responses are JSON. Authentication and authorization are not yet implemented; expect secure-key and identity layers in later phases.
+
+## Repository Layout
+
+```
+├── jade-tipi/                # Spring Boot WebFlux service (Groovy)
+│   ├── src/main/groovy       # Controllers, services, and persistence adapters
+│   ├── src/test/groovy       # Unit tests (JUnit 5)
+│   └── src/integrationTest   # Reactive integration specs (Spock)
+├── frontend/                 # Next.js 15 application
+├── docs/                     # Protocol and architecture references
+├── clients/                  # Gradle CLI prototypes (jade & tipi)
+└── docker-compose.yml        # Developer profiles for MongoDB (and future backends)
 ```
 
-## API Endpoints
+## Next Steps
 
-- `GET /api/documents` - List all documents
-- `GET /api/documents/{id}` - Get document by ID
-- `POST /api/documents/{id}` - Create new document
-- `PUT /api/documents/{id}` - Update existing document
-- `DELETE /api/documents/{id}` - Delete document
-- `DELETE /api/documents/cleanup/corrupted` - Clean up corrupted documents
+- Expand API to allow creation and seatch of documents.
+- Finish FoundationDB adapter and transaction log streaming.
+- Build richer frontend workflows for curation, provenance, and collaboration.
+- Flesh out CLI clients (`clients/jade`, `clients/tipi`) for scripted interactions.
 
-## Configuration
+Track progress and contribute ideas in [`IMPROVEMENTS.md`](IMPROVEMENTS.md) and the issues board.
 
-Backend port and other settings in `gradle.properties`:
+## License & Commercial Terms
 
-```properties
-backendPort=8765
-```
+Jade-Tipi is dual-licensed:
 
-Frontend API URL auto-generated in `frontend/.env.local` during build.
+- [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE) for open-source use.
+- Commercial licenses for closed deployments — contact **licensing@jade-tipi.org** or see [`DUAL-LICENSE.txt`](DUAL-LICENSE.txt).
 
-## License
-
-Jade-Tipi is released under a **dual-license model**:
-
-- **Open Source License (default):**
-  This program is licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE).
-  You may use, modify, and redistribute Jade-Tipi under the terms of the AGPL-3.0.
-
-- **Commercial License:**
-  For organizations that wish to integrate Jade-Tipi into proprietary or closed systems
-  without the reciprocal open-source obligations of the AGPL, commercial licenses are available.
-
-  👉 Contact **licensing@jade-tipi.org** for details and pricing.
-
-Learn more at [https://jade-tipi.org/license](https://jade-tipi.org/license)
+Contributions are welcomed under the AGPL-3.0. Please include the dual-license header on new Groovy or Java sources.
