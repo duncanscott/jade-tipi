@@ -18,6 +18,7 @@ KEYCLOAK_CLIENT_ID=jade-tipi-frontend
 KEYCLOAK_CLIENT_SECRET=
 KEYCLOAK_ISSUER=http://localhost:8484/realms/jade-tipi
 AUTH_SECRET=jade-tipi-secret-change-in-production-minimum-32-characters-required
+NEXTAUTH_URL=http://localhost:3000
 """
         println "Generated frontend/.env.local with NEXT_PUBLIC_API_URL and Keycloak configuration"
     }
