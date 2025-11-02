@@ -12,8 +12,14 @@ tasks.register('generateFrontendEnv') {
         def envFile = file("${rootProject.projectDir}/frontend/.env.local")
         envFile.text = """# Auto-generated from gradle.properties - DO NOT EDIT MANUALLY
 NEXT_PUBLIC_API_URL=http://localhost:${backendPort}
+
+# Keycloak Authentication Configuration
+KEYCLOAK_CLIENT_ID=jade-tipi-frontend
+KEYCLOAK_CLIENT_SECRET=
+KEYCLOAK_ISSUER=http://localhost:8484/realms/jade-tipi
+AUTH_SECRET=jade-tipi-secret-change-in-production-minimum-32-characters-required
 """
-        println "Generated frontend/.env.local with NEXT_PUBLIC_API_URL=http://localhost:${backendPort}"
+        println "Generated frontend/.env.local with NEXT_PUBLIC_API_URL and Keycloak configuration"
     }
 }
 

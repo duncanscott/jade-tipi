@@ -118,6 +118,11 @@ pids
 coverage/
 *.lcov
 
+# Playwright
+playwright-report/
+test-results/
+.playwright/
+
 # -------------------------------------------------------------------
 # Package managers
 # -------------------------------------------------------------------
