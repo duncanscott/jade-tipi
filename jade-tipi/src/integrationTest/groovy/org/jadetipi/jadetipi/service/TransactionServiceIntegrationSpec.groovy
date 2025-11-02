@@ -12,11 +12,9 @@
  */
 package org.jadetipi.jadetipi.service
 
-import org.jadetipi.jadetipi.config.TestSecurityConfig
 import org.spockframework.spring.EnableSharedInjection
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.context.annotation.Import
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.test.context.ActiveProfiles
 import reactor.core.publisher.Mono
@@ -25,7 +23,6 @@ import spock.lang.Specification
 @SpringBootTest
 @EnableSharedInjection
 @ActiveProfiles("test")
-@Import(TestSecurityConfig)
 class TransactionServiceIntegrationSpec extends Specification {
 
     @Autowired
