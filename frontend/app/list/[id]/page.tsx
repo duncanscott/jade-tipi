@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { useTools } from '@/components/layout/ToolsContext';
 import { listDocuments, getDocument, DocumentSummary } from '@/lib/api';
+import AuthButton from '@/components/AuthButton';
 
 export default function DocumentDetailPage() {
   const params = useParams();
@@ -14,15 +16,21 @@ export default function DocumentDetailPage() {
   const [loadingList, setLoadingList] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
+  const { data: session, status: authStatus } = useSession();
+  const accessToken = session?.accessToken;
 
   const documentId = params.id as string;
 
   // Load document list on mount
   useEffect(() => {
     async function loadDocumentList() {
+      if (!accessToken) {
+        return;
+      }
+
       try {
         setLoadingList(true);
-        const docs = await listDocuments();
+        const docs = await listDocuments(accessToken);
         setDocuments(docs);
         setListError(null);
       } catch (err) {
@@ -32,16 +40,16 @@ export default function DocumentDetailPage() {
       }
     }
     loadDocumentList();
-  }, []);
+  }, [accessToken]);
 
   // Load specific document
   useEffect(() => {
-    if (!documentId) return;
+    if (!documentId || !accessToken) return;
 
     async function loadDocument() {
       try {
         setLoading(true);
-        const doc = await getDocument(documentId);
+        const doc = await getDocument(documentId, accessToken);
         setDocument(doc);
         setError(null);
       } catch (err) {
@@ -52,7 +60,7 @@ export default function DocumentDetailPage() {
     }
 
     loadDocument();
-  }, [documentId]);
+  }, [documentId, accessToken]);
 
   // Navigate to document detail page when clicked
   function handleDocumentClick(id: string) {
@@ -65,12 +73,16 @@ export default function DocumentDetailPage() {
       <h2 style={{ margin: '0 0 1rem 0', fontSize: '1.25rem', fontWeight: 600 }}>
         Documents
       </h2>
-      {loadingList && <p style={{ color: 'var(--muted)' }}>Loading...</p>}
-      {listError && <p style={{ color: '#ef4444' }}>{listError}</p>}
-      {!loadingList && documents.length === 0 && (
+      {authStatus === 'loading' && <p style={{ color: 'var(--muted)' }}>Checking session...</p>}
+      {authStatus !== 'authenticated' && authStatus !== 'loading' && (
+        <p style={{ color: 'var(--muted)' }}>Sign in to view your documents.</p>
+      )}
+      {authStatus === 'authenticated' && loadingList && <p style={{ color: 'var(--muted)' }}>Loading...</p>}
+      {authStatus === 'authenticated' && listError && <p style={{ color: '#ef4444' }}>{listError}</p>}
+      {authStatus === 'authenticated' && !loadingList && documents.length === 0 && (
         <p style={{ color: 'var(--muted)' }}>No documents found</p>
       )}
-      {!loadingList && documents.length > 0 && (
+      {authStatus === 'authenticated' && !loadingList && documents.length > 0 && (
         <ul style={{
           listStyle: 'none',
           padding: 0,
@@ -128,8 +140,30 @@ export default function DocumentDetailPage() {
         </ul>
       )}
     </div>,
-    [documents, loadingList, listError, documentId]
+    [documents, loadingList, listError, documentId, authStatus]
   );
+
+  if (authStatus === 'loading') {
+    return (
+      <div style={{ padding: '1rem' }}>
+        <p style={{ color: 'var(--muted)' }}>Checking your session...</p>
+      </div>
+    );
+  }
+
+  if (authStatus !== 'authenticated' || !accessToken) {
+    return (
+      <div style={{ padding: '1rem', textAlign: 'center' }}>
+        <h1 style={{ fontSize: '1.75rem', fontWeight: 600, marginBottom: '1rem' }}>
+          Sign in to view documents
+        </h1>
+        <p style={{ color: 'var(--muted)', marginBottom: '1.5rem' }}>
+          Authenticate with Keycloak to browse and inspect document contents.
+        </p>
+        <AuthButton />
+      </div>
+    );
+  }
 
   if (loading) {
     return (

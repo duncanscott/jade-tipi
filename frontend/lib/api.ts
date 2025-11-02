@@ -1,32 +1,21 @@
-import { auth } from '@/auth';
+'use client';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765';
 
-// Helper to get access token from session
-async function getAccessToken(): Promise<string | null> {
-  const session = await auth();
-  return session?.accessToken ?? null;
-}
-
-async function fetchWithAuth(url: string, options: RequestInit = {}) {
-  const token = await getAccessToken();
-
-  const headers: HeadersInit = {
-    ...options.headers,
-  };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+function ensureAccessToken(accessToken: string): string {
+  if (!accessToken) {
+    throw new Error('Request requires a Keycloak access token');
   }
-
-  return fetch(url, { ...options, headers });
+  return accessToken;
 }
 
-export async function createDocument(id: string, data: object) {
-  const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/${id}`, {
+export async function createDocument(id: string, data: object, accessToken: string) {
+  const token = ensureAccessToken(accessToken);
+  const response = await fetch(`${API_BASE_URL}/api/documents/${id}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(data),
   });
@@ -38,8 +27,13 @@ export async function createDocument(id: string, data: object) {
   return response.json();
 }
 
-export async function getDocument(id: string) {
-  const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/${id}`);
+export async function getDocument(id: string, accessToken: string) {
+  const token = ensureAccessToken(accessToken);
+  const response = await fetch(`${API_BASE_URL}/api/documents/${id}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
 
   if (!response.ok) {
     if (response.status === 404) {
@@ -51,11 +45,13 @@ export async function getDocument(id: string) {
   return response.json();
 }
 
-export async function updateDocument(id: string, data: object) {
-  const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/${id}`, {
+export async function updateDocument(id: string, data: object, accessToken: string) {
+  const token = ensureAccessToken(accessToken);
+  const response = await fetch(`${API_BASE_URL}/api/documents/${id}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(data),
   });
@@ -67,9 +63,13 @@ export async function updateDocument(id: string, data: object) {
   return response.json();
 }
 
-export async function deleteDocument(id: string) {
-  const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/${id}`, {
+export async function deleteDocument(id: string, accessToken: string) {
+  const token = ensureAccessToken(accessToken);
+  const response = await fetch(`${API_BASE_URL}/api/documents/${id}`, {
     method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
   });
 
   if (!response.ok) {
@@ -84,8 +84,13 @@ export interface DocumentSummary {
   name?: string;
 }
 
-export async function listDocuments(): Promise<DocumentSummary[]> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/api/documents`);
+export async function listDocuments(accessToken: string): Promise<DocumentSummary[]> {
+  const token = ensureAccessToken(accessToken);
+  const response = await fetch(`${API_BASE_URL}/api/documents`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
 
   if (!response.ok) {
     throw new Error(`Failed to list documents: ${response.statusText}`);

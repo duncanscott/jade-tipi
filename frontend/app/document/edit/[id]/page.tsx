@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { getDocument, updateDocument, deleteDocument } from '@/lib/api';
+import AuthButton from '@/components/AuthButton';
 
 export default function EditDocument() {
   const params = useParams();
@@ -14,15 +16,13 @@ export default function EditDocument() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const { data: session, status: authStatus } = useSession();
+  const accessToken = session?.accessToken;
 
-  useEffect(() => {
-    loadDocument();
-  }, [id]);
-
-  const loadDocument = async () => {
+  const loadDocument = useCallback(async (token: string) => {
     try {
       setIsLoading(true);
-      const document = await getDocument(id);
+      const document = await getDocument(id, token);
 
       if (!document) {
         setStatus({
@@ -43,7 +43,14 @@ export default function EditDocument() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    if (!id || !accessToken) {
+      return;
+    }
+    loadDocument(accessToken);
+  }, [id, accessToken, loadDocument]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,8 +61,17 @@ export default function EditDocument() {
       // Validate JSON
       const jsonData = JSON.parse(jsonInput);
 
+      if (!accessToken) {
+        setStatus({
+          type: 'error',
+          message: 'You must sign in before saving changes.'
+        });
+        setIsSaving(false);
+        return;
+      }
+
       // Update document
-      await updateDocument(id, jsonData);
+      await updateDocument(id, jsonData, accessToken);
 
       setStatus({
         type: 'success',
@@ -87,7 +103,16 @@ export default function EditDocument() {
     setStatus({ type: null, message: '' });
 
     try {
-      await deleteDocument(id);
+      if (!accessToken) {
+        setStatus({
+          type: 'error',
+          message: 'You must sign in before deleting a document.'
+        });
+        setIsDeleting(false);
+        return;
+      }
+
+      await deleteDocument(id, accessToken);
       router.push('/');
     } catch (error) {
       setStatus({
@@ -97,6 +122,36 @@ export default function EditDocument() {
       setIsDeleting(false);
     }
   };
+
+  if (authStatus === 'loading') {
+    return (
+      <div className="min-h-screen p-8 bg-gray-50 dark:bg-gray-900">
+        <main className="max-w-4xl mx-auto">
+          <div className="text-center py-12">
+            <p className="text-gray-600 dark:text-gray-400">Checking your session...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (!accessToken) {
+    return (
+      <div className="min-h-screen p-8 bg-gray-50 dark:bg-gray-900">
+        <main className="max-w-2xl mx-auto text-center space-y-6">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+            Sign in to edit documents
+          </h1>
+          <p className="text-gray-600 dark:text-gray-300">
+            Authenticate with Keycloak to view and update stored documents.
+          </p>
+          <div className="flex justify-center">
+            <AuthButton />
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

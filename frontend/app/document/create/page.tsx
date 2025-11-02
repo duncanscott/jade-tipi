@@ -2,14 +2,18 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { createDocument, getDocument } from '@/lib/api';
 import { generateUUID } from '@/lib/uuid';
+import AuthButton from '@/components/AuthButton';
 
 export default function CreateDocument() {
   const router = useRouter();
   const [jsonInput, setJsonInput] = useState('{\n  "name": "example",\n  "value": 123\n}');
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info' | null; message: string }>({ type: null, message: '' });
   const [isLoading, setIsLoading] = useState(false);
+  const { data: session, status: authStatus } = useSession();
+  const accessToken = session?.accessToken;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,11 +27,20 @@ export default function CreateDocument() {
       // Generate UUID
       const id = generateUUID();
 
+      if (!accessToken) {
+        setStatus({
+          type: 'error',
+          message: 'You must sign in before creating documents.',
+        });
+        setIsLoading(false);
+        return;
+      }
+
       // Save to MongoDB via API
-      await createDocument(id, jsonData);
+      await createDocument(id, jsonData, accessToken);
 
       // Verify document is readable (read-after-write verification)
-      const verifiedDoc = await getDocument(id);
+      const verifiedDoc = await getDocument(id, accessToken);
 
       if (!verifiedDoc) {
         setStatus({
@@ -55,6 +68,34 @@ export default function CreateDocument() {
       setIsLoading(false);
     }
   };
+
+  if (authStatus === 'loading') {
+    return (
+      <div className="min-h-screen p-8 bg-gray-50 dark:bg-gray-900">
+        <main className="max-w-4xl mx-auto">
+          <p className="text-gray-600 dark:text-gray-400">Checking your session...</p>
+        </main>
+      </div>
+    );
+  }
+
+  if (!accessToken) {
+    return (
+      <div className="min-h-screen p-8 bg-gray-50 dark:bg-gray-900">
+        <main className="max-w-2xl mx-auto text-center space-y-6">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+            Sign in to create documents
+          </h1>
+          <p className="text-gray-600 dark:text-gray-300">
+            You need to authenticate with Keycloak before you can create new documents.
+          </p>
+          <div className="flex justify-center">
+            <AuthButton />
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen p-8 bg-gray-50 dark:bg-gray-900">

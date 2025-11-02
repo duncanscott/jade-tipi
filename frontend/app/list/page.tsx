@@ -2,21 +2,29 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { useTools } from '@/components/layout/ToolsContext';
 import { listDocuments, DocumentSummary } from '@/lib/api';
+import AuthButton from '@/components/AuthButton';
 
 export default function ListPage() {
   const router = useRouter();
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { data: session, status: authStatus } = useSession();
+  const accessToken = session?.accessToken;
 
   // Load document list on mount
   useEffect(() => {
     async function loadDocuments() {
+      if (!accessToken) {
+        return;
+      }
+
       try {
         setLoading(true);
-        const docs = await listDocuments();
+        const docs = await listDocuments(accessToken);
         setDocuments(docs);
         setError(null);
       } catch (err) {
@@ -26,7 +34,7 @@ export default function ListPage() {
       }
     }
     loadDocuments();
-  }, []);
+  }, [accessToken]);
 
   // Navigate to document detail page when clicked
   function handleDocumentClick(id: string) {
@@ -39,12 +47,16 @@ export default function ListPage() {
       <h2 style={{ margin: '0 0 1rem 0', fontSize: '1.25rem', fontWeight: 600 }}>
         Documents
       </h2>
-      {loading && <p style={{ color: 'var(--muted)' }}>Loading...</p>}
-      {error && <p style={{ color: '#ef4444' }}>{error}</p>}
-      {!loading && documents.length === 0 && (
+      {authStatus === 'loading' && <p style={{ color: 'var(--muted)' }}>Checking session...</p>}
+      {authStatus !== 'authenticated' && authStatus !== 'loading' && (
+        <p style={{ color: 'var(--muted)' }}>Sign in to view your documents.</p>
+      )}
+      {authStatus === 'authenticated' && loading && <p style={{ color: 'var(--muted)' }}>Loading...</p>}
+      {authStatus === 'authenticated' && error && <p style={{ color: '#ef4444' }}>{error}</p>}
+      {authStatus === 'authenticated' && !loading && documents.length === 0 && (
         <p style={{ color: 'var(--muted)' }}>No documents found</p>
       )}
-      {!loading && documents.length > 0 && (
+      {authStatus === 'authenticated' && !loading && documents.length > 0 && (
         <ul style={{
           listStyle: 'none',
           padding: 0,
@@ -98,8 +110,30 @@ export default function ListPage() {
         </ul>
       )}
     </div>,
-    [documents, loading, error]
+    [documents, loading, error, authStatus]
   );
+
+  if (authStatus === 'loading') {
+    return (
+      <div style={{ padding: '1rem' }}>
+        <p style={{ color: 'var(--muted)' }}>Checking your session...</p>
+      </div>
+    );
+  }
+
+  if (authStatus !== 'authenticated' || !accessToken) {
+    return (
+      <div style={{ padding: '1rem', textAlign: 'center' }}>
+        <h1 style={{ fontSize: '1.75rem', fontWeight: 600, marginBottom: '1rem' }}>
+          Sign in to view documents
+        </h1>
+        <p style={{ color: 'var(--muted)', marginBottom: '1.5rem' }}>
+          Authenticate with Keycloak to list and browse stored documents.
+        </p>
+        <AuthButton />
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '1rem' }}>
