@@ -155,7 +155,20 @@
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256"
-      }
+      },
+      "protocolMappers": [
+        {
+          "name": "aud-mapper-jade-tipi-frontend",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "jade-tipi-backend",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
     }
   ],
   "users": [
