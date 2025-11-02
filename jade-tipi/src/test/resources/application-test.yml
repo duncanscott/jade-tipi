@@ -8,6 +8,12 @@ spring:
       port: 27017
       database: test_db
       write-concern: acknowledged
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Use a mock issuer for tests - the TestSecurityConfig provides a mock decoder
+          issuer-uri: http://localhost:8484/realms/jade-tipi
 
 server:
   port: 0  # Random port for tests

@@ -4,6 +4,11 @@ spring:
     version: ${version}
   profiles:
     active: mongodb
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8484/realms/jade-tipi
 
 server:
   port: ${backendPort}
