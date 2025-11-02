@@ -12,10 +12,17 @@
  */
 package org.jadetipi.jadetipi.controller
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import groovy.util.logging.Slf4j
+import org.jadetipi.dto.transaction.TransactionRequest
 import org.jadetipi.dto.transaction.TransactionToken
 import org.jadetipi.jadetipi.service.TransactionService
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -23,33 +30,43 @@ import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
 import reactor.core.publisher.Mono
 
+@Slf4j
 @RestController
 @RequestMapping("/api/transactions")
 class TransactionController {
 
     private final TransactionService transactionService
+    private final ObjectMapper objectMapper
 
-    TransactionController(TransactionService transactionService) {
+    TransactionController(TransactionService transactionService, ObjectMapper objectMapper) {
         this.transactionService = transactionService
+        this.objectMapper = objectMapper
     }
 
     @PostMapping
     Mono<ResponseEntity<TransactionToken>> createTransaction(
-            @RequestBody TransactionRequest request) {
+            @RequestBody TransactionRequest request, @AuthenticationPrincipal Jwt jwt) {
 
-        if (!request?.organization?.trim()) {
+        if (jwt) {
+            try {
+                def prettyJwt = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jwt.claims)
+                log.info 'Received JWT:\n{}', prettyJwt
+            } catch (Exception ex) {
+                log.warn 'Unable to serialize JWT for logging', ex
+            }
+        } else {
+            log.warn 'Received null JWT in createTransaction request'
+        }
+
+        if (!request?.organization()?.trim()) {
             return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "organization is required"))
         }
-        if (!request.group?.trim()) {
+        if (!request.group()?.trim()) {
             return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "group is required"))
         }
 
-        return transactionService.createTransaction(request.organization.trim(), request.group.trim())
+        return transactionService.createTransaction(request.organization().trim(), request.group().trim())
                 .map { token -> ResponseEntity.status(HttpStatus.CREATED).body(token) }
     }
 
-    static class TransactionRequest {
-        String organization
-        String group
-    }
 }
