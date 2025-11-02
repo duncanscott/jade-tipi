@@ -21,6 +21,7 @@ def integrationTestTask = tasks.register('integrationTest', Test) {
 
     // force integration tests to run
     outputs.upToDateWhen { false }
+    testLogging.showStandardStreams = true
 }
 
 tasks.named('check') {

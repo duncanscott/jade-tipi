@@ -20,6 +20,7 @@ def functionalTestTask = tasks.register('functionalTest', Test) {
 
     // force integration tests to run
     outputs.upToDateWhen { false }
+    testLogging.showStandardStreams = true
 }
 
 dependencies {

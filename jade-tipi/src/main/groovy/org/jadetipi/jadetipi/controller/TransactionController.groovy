@@ -20,6 +20,7 @@ import org.jadetipi.jadetipi.service.TransactionService
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.oauth2.jwt.Jwt
@@ -43,8 +44,8 @@ class TransactionController {
         this.objectMapper = objectMapper
     }
 
-    @PostMapping
-    Mono<ResponseEntity<TransactionToken>> createTransaction(
+    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
+    Mono<ResponseEntity<TransactionToken>> C(
             @RequestBody TransactionRequest request, @AuthenticationPrincipal Jwt jwt) {
 
         if (jwt) {
