@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import AuthButton from '@/components/AuthButton';
 
 export default function Home() {
   const [documentId, setDocumentId] = useState('');
@@ -16,9 +17,12 @@ export default function Home() {
   return (
     <div className="min-h-screen p-8 bg-gray-50 dark:bg-gray-900">
       <main className="max-w-4xl mx-auto">
-        <h1 className="text-4xl font-bold mb-8 text-gray-900 dark:text-white">
-          Jade Tipi - MongoDB Document Manager
-        </h1>
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 dark:text-white">
+            Jade Tipi - MongoDB Document Manager
+          </h1>
+          <AuthButton />
+        </div>
 
         <div className="grid gap-6 md:grid-cols-2 mb-12">
           <Link

@@ -1,7 +1,29 @@
+import { auth } from '@/auth';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765';
 
+// Helper to get access token from session
+async function getAccessToken(): Promise<string | null> {
+  const session = await auth();
+  return session?.accessToken ?? null;
+}
+
+async function fetchWithAuth(url: string, options: RequestInit = {}) {
+  const token = await getAccessToken();
+
+  const headers: HeadersInit = {
+    ...options.headers,
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  return fetch(url, { ...options, headers });
+}
+
 export async function createDocument(id: string, data: object) {
-  const response = await fetch(`${API_BASE_URL}/api/documents/${id}`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/${id}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -17,7 +39,7 @@ export async function createDocument(id: string, data: object) {
 }
 
 export async function getDocument(id: string) {
-  const response = await fetch(`${API_BASE_URL}/api/documents/${id}`);
+  const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/${id}`);
 
   if (!response.ok) {
     if (response.status === 404) {
@@ -30,7 +52,7 @@ export async function getDocument(id: string) {
 }
 
 export async function updateDocument(id: string, data: object) {
-  const response = await fetch(`${API_BASE_URL}/api/documents/${id}`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/${id}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -46,7 +68,7 @@ export async function updateDocument(id: string, data: object) {
 }
 
 export async function deleteDocument(id: string) {
-  const response = await fetch(`${API_BASE_URL}/api/documents/${id}`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/${id}`, {
     method: 'DELETE',
   });
 
@@ -63,7 +85,7 @@ export interface DocumentSummary {
 }
 
 export async function listDocuments(): Promise<DocumentSummary[]> {
-  const response = await fetch(`${API_BASE_URL}/api/documents`);
+  const response = await fetchWithAuth(`${API_BASE_URL}/api/documents`);
 
   if (!response.ok) {
     throw new Error(`Failed to list documents: ${response.statusText}`);
