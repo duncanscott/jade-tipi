@@ -13,6 +13,8 @@
 package org.jadetipi.jadetipi.document
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import org.jadetipi.jadetipi.config.KeycloakTestHelper
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient
@@ -36,6 +38,13 @@ class DocumentCreationIntegrationTest {
     @Autowired
     ObjectMapper objectMapper
 
+    private static String accessToken
+
+    @BeforeAll
+    static void setupToken() {
+        accessToken = KeycloakTestHelper.getAccessToken()
+    }
+
     @Test
     void 'should create document and make it immediately accessible'() {
         def documentId = UUID.randomUUID().toString()
@@ -44,6 +53,7 @@ class DocumentCreationIntegrationTest {
         // Step 1: Create document
         webTestClient.post()
                 .uri("/api/documents/{id}", documentId)
+                .header("Authorization", "Bearer ${accessToken}")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(documentData)
                 .exchange()
@@ -59,6 +69,7 @@ class DocumentCreationIntegrationTest {
         // Step 3: Verify document is readable (read-after-write)
         webTestClient.get()
                 .uri("/api/documents/{id}", documentId)
+                .header("Authorization", "Bearer ${accessToken}")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
@@ -74,6 +85,7 @@ class DocumentCreationIntegrationTest {
 
         webTestClient.get()
                 .uri("/api/documents/{id}", nonExistentId)
+                .header("Authorization", "Bearer ${accessToken}")
                 .exchange()
                 .expectStatus().isNotFound()
     }
@@ -87,6 +99,7 @@ class DocumentCreationIntegrationTest {
         // Create
         webTestClient.post()
                 .uri("/api/documents/{id}", documentId)
+                .header("Authorization", "Bearer ${accessToken}")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(initialData)
                 .exchange()
@@ -98,6 +111,7 @@ class DocumentCreationIntegrationTest {
         // Update
         webTestClient.put()
                 .uri("/api/documents/{id}", documentId)
+                .header("Authorization", "Bearer ${accessToken}")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(updatedData)
                 .exchange()
@@ -113,6 +127,7 @@ class DocumentCreationIntegrationTest {
         // Verify
         webTestClient.get()
                 .uri("/api/documents/{id}", documentId)
+                .header("Authorization", "Bearer ${accessToken}")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
@@ -128,6 +143,7 @@ class DocumentCreationIntegrationTest {
         // Create
         webTestClient.post()
                 .uri("/api/documents/{id}", documentId)
+                .header("Authorization", "Bearer ${accessToken}")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(documentData)
                 .exchange()
@@ -139,12 +155,14 @@ class DocumentCreationIntegrationTest {
         // Delete
         webTestClient.delete()
                 .uri("/api/documents/{id}", documentId)
+                .header("Authorization", "Bearer ${accessToken}")
                 .exchange()
                 .expectStatus().isNoContent()
 
         // Verify deletion
         webTestClient.get()
                 .uri("/api/documents/{id}", documentId)
+                .header("Authorization", "Bearer ${accessToken}")
                 .exchange()
                 .expectStatus().isNotFound()
     }

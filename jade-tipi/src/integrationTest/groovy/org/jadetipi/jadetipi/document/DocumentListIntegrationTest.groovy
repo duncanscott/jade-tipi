@@ -13,6 +13,8 @@
 package org.jadetipi.jadetipi.document
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import org.jadetipi.jadetipi.config.KeycloakTestHelper
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient
@@ -35,6 +37,13 @@ class DocumentListIntegrationTest {
     @Autowired
     ObjectMapper objectMapper
 
+    private static String accessToken
+
+    @BeforeAll
+    static void setupToken() {
+        accessToken = KeycloakTestHelper.getAccessToken()
+    }
+
     @Test
     void 'should list all documents with only id and name fields'() {
         // Create a few test documents
@@ -50,6 +59,7 @@ class DocumentListIntegrationTest {
         // Create documents
         webTestClient.post()
                 .uri("/api/documents/{id}", doc1Id)
+                .header("Authorization", "Bearer ${accessToken}")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(doc1Data)
                 .exchange()
@@ -57,6 +67,7 @@ class DocumentListIntegrationTest {
 
         webTestClient.post()
                 .uri("/api/documents/{id}", doc2Id)
+                .header("Authorization", "Bearer ${accessToken}")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(doc2Data)
                 .exchange()
@@ -64,6 +75,7 @@ class DocumentListIntegrationTest {
 
         webTestClient.post()
                 .uri("/api/documents/{id}", doc3Id)
+                .header("Authorization", "Bearer ${accessToken}")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(doc3Data)
                 .exchange()
@@ -75,6 +87,7 @@ class DocumentListIntegrationTest {
         // List all documents
         def response = webTestClient.get()
                 .uri("/api/documents")
+                .header("Authorization", "Bearer ${accessToken}")
                 .exchange()
                 .expectStatus().isOk()
                 .expectHeader().contentType(MediaType.APPLICATION_JSON)
@@ -114,6 +127,7 @@ class DocumentListIntegrationTest {
         // For now, we just verify the endpoint returns a valid JSON array
         webTestClient.get()
                 .uri("/api/documents")
+                .header("Authorization", "Bearer ${accessToken}")
                 .exchange()
                 .expectStatus().isOk()
                 .expectHeader().contentType(MediaType.APPLICATION_JSON)

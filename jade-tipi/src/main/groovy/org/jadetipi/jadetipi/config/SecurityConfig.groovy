@@ -29,7 +29,6 @@ class SecurityConfig {
                     exchanges
                             .pathMatchers(
                                     '/',
-                                    '/api/**',
                                     '/version',
                                     '/docs',
                                     '/actuator/**',
