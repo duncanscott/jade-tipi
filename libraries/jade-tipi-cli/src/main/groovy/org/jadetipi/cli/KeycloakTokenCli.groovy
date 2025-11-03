@@ -37,6 +37,7 @@ class KeycloakTokenCli {
     private final String fallbackRealm
     private final String fallbackClientId
     private final String fallbackClientSecret
+    private final String fallbackApiUrl
 
     KeycloakTokenCli(
             String programName,
@@ -44,7 +45,8 @@ class KeycloakTokenCli {
             String fallbackClientId,
             String fallbackClientSecret,
             String fallbackKeycloakUrl = 'http://localhost:8484',
-            String fallbackRealm = 'jade-tipi'
+            String fallbackRealm = 'jade-tipi',
+            String fallbackApiUrl = 'http://localhost:8765'
     ) {
         this.programName = programName
         this.envPrefix = envPrefix
@@ -52,6 +54,7 @@ class KeycloakTokenCli {
         this.fallbackClientSecret = fallbackClientSecret
         this.fallbackKeycloakUrl = fallbackKeycloakUrl
         this.fallbackRealm = fallbackRealm
+        this.fallbackApiUrl = fallbackApiUrl
     }
 
     void run(String[] args) {
@@ -105,12 +108,13 @@ class KeycloakTokenCli {
         String defaultRealmValue = resolveEnv('REALM', fallbackRealm)
         String defaultClientIdValue = resolveEnv('CLIENT_ID', fallbackClientId)
         String defaultClientSecretValue = resolveEnv('CLIENT_SECRET', fallbackClientSecret)
+        String defaultApiUrl = resolveEnv('API_URL', fallbackApiUrl)
 
         def cli = new CliBuilder(
                 name: "${programName} create-transaction",
                 usage: "${programName} create-transaction [options]",
                 header: 'Obtain a JWT for service-to-service transactions.',
-                footer: "\nEnvironment overrides: ${envPrefix}_KEYCLOAK_URL, ${envPrefix}_REALM, ${envPrefix}_CLIENT_ID, ${envPrefix}_CLIENT_SECRET"
+                footer: "\nEnvironment overrides: ${envPrefix}_KEYCLOAK_URL, ${envPrefix}_REALM, ${envPrefix}_CLIENT_ID, ${envPrefix}_CLIENT_SECRET, ${envPrefix}_API_URL"
         )
         cli.with {
             h(longOpt: 'help', 'Show this help message')
@@ -118,6 +122,9 @@ class KeycloakTokenCli {
             _(longOpt: 'realm', args: 1, argName: 'realm', 'Keycloak realm', defaultValue: defaultRealmValue)
             _(longOpt: 'client-id', args: 1, argName: 'client-id', 'OAuth client identifier', defaultValue: defaultClientIdValue)
             _(longOpt: 'client-secret', args: 1, argName: 'secret', 'OAuth client secret', defaultValue: defaultClientSecretValue)
+            _(longOpt: 'api-url', args: 1, argName: 'api-url', 'Backend API base URL', defaultValue: defaultApiUrl)
+            _(longOpt: 'organization', args: 1, argName: 'organization', 'Override organization claim sent to the API')
+            _(longOpt: 'group', args: 1, argName: 'group', 'Override group claim sent to the API')
             v(longOpt: 'verbose', 'Print the raw JWT and decoded payload')
         }
 
@@ -134,7 +141,10 @@ class KeycloakTokenCli {
                 url         : options.'url' ?: defaultUrl,
                 realm       : options.'realm' ?: defaultRealmValue,
                 clientId    : options.'client-id' ?: defaultClientIdValue,
-                clientSecret: options.'client-secret' ?: defaultClientSecretValue
+                clientSecret: options.'client-secret' ?: defaultClientSecretValue,
+                apiUrl      : options.'api-url' ?: defaultApiUrl,
+                organizationOverride: options.'organization',
+                groupOverride: options.'group'
         ]
 
         boolean verbose = options.'verbose'
@@ -167,17 +177,58 @@ class KeycloakTokenCli {
             }
 
             String token = payload.access_token as String
+            String decodedPayloadJson = decodeJwtPayload(token)
+            Map<String, Object> payloadClaims = [:]
+            if (decodedPayloadJson) {
+                payloadClaims = (Map<String, Object>) new JsonSlurper().parseText(decodedPayloadJson)
+            }
+
             if (verbose) {
                 println token
-
-                String decodedPayloadJson = decodeJwtPayload(token)
-                if (decodedPayloadJson) {
+                if (!payloadClaims.isEmpty()) {
                     println ''
-                    def payloadObj = new JsonSlurper().parseText(decodedPayloadJson)
-                    println JsonOutput.prettyPrint(JsonOutput.toJson(payloadObj))
+                    println JsonOutput.prettyPrint(JsonOutput.toJson(payloadClaims))
+                    println ''
                 }
+            }
+
+            String organization = (effective.organizationOverride ?: payloadClaims?.get('tipi_org')) as String
+            String group = (effective.groupOverride ?: payloadClaims?.get('tipi_group')) as String
+
+            if (!organization?.trim()) {
+                System.err.println("Organization could not be determined. Provide --organization or ensure the JWT contains the 'tipi_org' claim.")
+                System.exit(1)
+            }
+            if (!group?.trim()) {
+                System.err.println("Group could not be determined. Provide --group or ensure the JWT contains the 'tipi_group' claim.")
+                System.exit(1)
+            }
+
+            String apiBase = sanitizeBaseUrl(effective.apiUrl)
+            URI transactionUri = URI.create("${apiBase}/api/transactions")
+            String transactionBody = JsonOutput.toJson([
+                    organization: organization,
+                    group        : group
+            ])
+
+            HttpRequest transactionRequest = HttpRequest.newBuilder()
+                    .uri(transactionUri)
+                    .header('Content-Type', 'application/json')
+                    .header('Authorization', "Bearer ${token}")
+                    .POST(HttpRequest.BodyPublishers.ofString(transactionBody))
+                    .build()
+
+            HttpResponse<String> transactionResponse = client.send(transactionRequest, HttpResponse.BodyHandlers.ofString())
+            if (transactionResponse.statusCode() < 200 || transactionResponse.statusCode() >= 300) {
+                System.err.println("Failed to create transaction (${transactionResponse.statusCode()}): ${transactionResponse.body()}")
+                System.exit(1)
+            }
+
+            Map txnPayload = (Map) new JsonSlurper().parseText(transactionResponse.body())
+            if (verbose) {
+                println JsonOutput.prettyPrint(JsonOutput.toJson(txnPayload))
             } else {
-                println 'Token retrieved. Re-run with --verbose to display it.'
+                println "Transaction created. ID: ${txnPayload.transactionId}, secret: ${txnPayload.secret}"
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt()
@@ -228,6 +279,13 @@ class KeycloakTokenCli {
             return segment
         }
         return segment + ('=' * (4 - mod))
+    }
+
+    private static String sanitizeBaseUrl(String baseUrl) {
+        if (baseUrl == null || baseUrl.isBlank()) {
+            return ''
+        }
+        return baseUrl.endsWith('/') ? baseUrl[0..-2] : baseUrl
     }
 
     private void printGlobalUsage(CliBuilder cli) {
