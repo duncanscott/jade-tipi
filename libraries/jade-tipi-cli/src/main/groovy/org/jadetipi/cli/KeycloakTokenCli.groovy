@@ -62,24 +62,33 @@ class KeycloakTokenCli {
         )
         cli.with {
             h(longOpt: 'help', 'Show this help message')
+            v(longOpt: 'verbose', 'Print the raw JWT and decoded payload')
         }
 
-        if (!args) {
+        OptionAccessor topLevel = cli.parse(args)
+        if (!topLevel) {
+            System.exit(1)
+        }
+
+        if (topLevel.h) {
             printGlobalUsage(cli)
             return
         }
 
-        String command = args[0]
-        String[] commandArgs = args.length > 1 ? (args[1..-1] as String[]) : new String[0]
+        boolean globalVerbose = topLevel.v
+        List<String> remaining = topLevel.arguments()
 
-        if (command in ['-h', '--help']) {
+        if (!remaining) {
             printGlobalUsage(cli)
             return
         }
+
+        String command = remaining[0]
+        String[] commandArgs = remaining.size() > 1 ? (remaining[1..-1] as String[]) : new String[0]
 
         switch (command) {
             case 'create-transaction':
-                handleCreateTransaction(commandArgs)
+                handleCreateTransaction(commandArgs, globalVerbose)
                 break
             case 'help':
                 printGlobalUsage(cli)
@@ -91,7 +100,7 @@ class KeycloakTokenCli {
         }
     }
 
-    private void handleCreateTransaction(String[] args) {
+    private void handleCreateTransaction(String[] args, boolean globalVerbose) {
         String defaultUrl = resolveEnv('KEYCLOAK_URL', fallbackKeycloakUrl)
         String defaultRealmValue = resolveEnv('REALM', fallbackRealm)
         String defaultClientIdValue = resolveEnv('CLIENT_ID', fallbackClientId)
@@ -109,6 +118,7 @@ class KeycloakTokenCli {
             _(longOpt: 'realm', args: 1, argName: 'realm', 'Keycloak realm', defaultValue: defaultRealmValue)
             _(longOpt: 'client-id', args: 1, argName: 'client-id', 'OAuth client identifier', defaultValue: defaultClientIdValue)
             _(longOpt: 'client-secret', args: 1, argName: 'secret', 'OAuth client secret', defaultValue: defaultClientSecretValue)
+            v(longOpt: 'verbose', 'Print the raw JWT and decoded payload')
         }
 
         OptionAccessor options = cli.parse(args)
@@ -127,10 +137,12 @@ class KeycloakTokenCli {
                 clientSecret: options.'client-secret' ?: defaultClientSecretValue
         ]
 
-        requestTokenAndPrint(effective)
+        boolean verbose = options.'verbose'
+
+        requestTokenAndPrint(effective, globalVerbose || verbose)
     }
 
-    private void requestTokenAndPrint(Map<String, String> effective) {
+    private void requestTokenAndPrint(Map<String, String> effective, boolean verbose) {
         String tokenEndpoint = buildTokenEndpoint(effective.url, effective.realm)
         String formBody = buildClientCredentialsBody(effective.clientId, effective.clientSecret)
 
@@ -155,13 +167,17 @@ class KeycloakTokenCli {
             }
 
             String token = payload.access_token as String
-            println token
+            if (verbose) {
+                println token
 
-            String decodedPayloadJson = decodeJwtPayload(token)
-            if (decodedPayloadJson) {
-                println ''
-                def payloadObj = new JsonSlurper().parseText(decodedPayloadJson)
-                println JsonOutput.prettyPrint(JsonOutput.toJson(payloadObj))
+                String decodedPayloadJson = decodeJwtPayload(token)
+                if (decodedPayloadJson) {
+                    println ''
+                    def payloadObj = new JsonSlurper().parseText(decodedPayloadJson)
+                    println JsonOutput.prettyPrint(JsonOutput.toJson(payloadObj))
+                }
+            } else {
+                println 'Token retrieved. Re-run with --verbose to display it.'
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt()
