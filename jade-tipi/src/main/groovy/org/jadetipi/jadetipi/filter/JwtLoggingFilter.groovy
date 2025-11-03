@@ -14,7 +14,6 @@ package org.jadetipi.jadetipi.filter
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import groovy.util.logging.Slf4j
-import org.springframework.core.Ordered
 import org.springframework.core.annotation.Order
 import org.springframework.security.authentication.AbstractAuthenticationToken
 import org.springframework.security.oauth2.jwt.Jwt
@@ -29,7 +28,7 @@ import java.security.Principal
 
 @Slf4j
 @Component
-@Order(Ordered.LOWEST_PRECEDENCE - 10)
+@Order(2147483637)
 class JwtLoggingFilter implements WebFilter {
 
     private final ObjectMapper objectMapper
