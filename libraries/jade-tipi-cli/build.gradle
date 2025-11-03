@@ -1,0 +1,29 @@
+plugins {
+    id 'groovy'
+    id 'java-library'
+    id 'maven-publish'
+    id 'com.jfrog.artifactory' version "latest.release"
+}
+
+apply from: "${rootProject.projectDir}/gradle/scripts/library.gradle"
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+dependencies {
+    api 'org.apache.groovy:groovy:4.0.29'
+    implementation 'org.apache.groovy:groovy-json:4.0.29'
+    implementation 'org.apache.groovy:groovy-cli-picocli:4.0.29'
+
+    testImplementation libs.spock.core
+    testImplementation libs.junit
+    testImplementation libs.junit.jupiter
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
