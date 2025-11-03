@@ -12,13 +12,9 @@
  */
 package org.jadetipi.jadetipi.controller
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import groovy.util.logging.Slf4j
 import org.jadetipi.dto.transaction.TransactionRequest
 import org.jadetipi.dto.transaction.TransactionToken
 import org.jadetipi.jadetipi.service.TransactionService
-import org.slf4j.Logger
-import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -31,33 +27,19 @@ import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
 import reactor.core.publisher.Mono
 
-@Slf4j
 @RestController
 @RequestMapping("/api/transactions")
 class TransactionController {
 
     private final TransactionService transactionService
-    private final ObjectMapper objectMapper
 
-    TransactionController(TransactionService transactionService, ObjectMapper objectMapper) {
+    TransactionController(TransactionService transactionService) {
         this.transactionService = transactionService
-        this.objectMapper = objectMapper
     }
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
-    Mono<ResponseEntity<TransactionToken>> C(
+    Mono<ResponseEntity<TransactionToken>> createTransaction(
             @RequestBody TransactionRequest request, @AuthenticationPrincipal Jwt jwt) {
-
-        if (jwt) {
-            try {
-                def prettyJwt = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jwt.claims)
-                log.info 'Received JWT:\n{}', prettyJwt
-            } catch (Exception ex) {
-                log.warn 'Unable to serialize JWT for logging', ex
-            }
-        } else {
-            log.warn 'Received null JWT in createTransaction request'
-        }
 
         if (!request?.organization()?.trim()) {
             return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "organization is required"))
