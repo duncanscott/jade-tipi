@@ -28,7 +28,7 @@ import org.springframework.web.server.ResponseStatusException
 import reactor.core.publisher.Mono
 
 @RestController
-@RequestMapping("/api/transactions")
+@RequestMapping('/api/transactions')
 class TransactionController {
 
     private final TransactionService transactionService
@@ -42,10 +42,10 @@ class TransactionController {
             @RequestBody TransactionRequest request, @AuthenticationPrincipal Jwt jwt) {
 
         if (!request?.organization()?.trim()) {
-            return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "organization is required"))
+            return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, 'organization is required'))
         }
         if (!request.group()?.trim()) {
-            return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "group is required"))
+            return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, 'group is required'))
         }
 
         return transactionService.createTransaction(request.organization().trim(), request.group().trim())
