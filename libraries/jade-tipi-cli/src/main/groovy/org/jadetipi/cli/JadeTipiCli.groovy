@@ -17,19 +17,15 @@ import groovy.cli.picocli.OptionAccessor
 import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 
-import java.io.IOException
-import java.net.URI
-import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
-import java.util.Base64
 
 /**
  * Shared implementation for the Jade/Tipi Keycloak token CLIs.
  */
-class KeycloakTokenCli {
+class JadeTipiCli {
 
     private final String programName
     private final String envPrefix
@@ -39,7 +35,7 @@ class KeycloakTokenCli {
     private final String fallbackClientSecret
     private final String fallbackApiUrl
 
-    KeycloakTokenCli(
+    JadeTipiCli(
             String programName,
             String envPrefix,
             String fallbackClientId,

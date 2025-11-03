@@ -12,7 +12,7 @@
  */
 package org.jadetipi.jade.cli
 
-import org.jadetipi.cli.KeycloakTokenCli
+import org.jadetipi.cli.JadeTipiCli
 
 class JadeCli {
 
@@ -20,7 +20,7 @@ class JadeCli {
     private static final String DEFAULT_CLIENT_SECRET = '62ba4c1e-7f7e-46c7-9793-f752c63f2e10'
 
     static void main(String[] args) {
-        new KeycloakTokenCli(
+        new JadeTipiCli(
                 'jade',
                 'JADE',
                 DEFAULT_CLIENT_ID,
