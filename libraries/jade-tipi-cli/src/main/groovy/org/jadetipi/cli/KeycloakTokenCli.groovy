@@ -200,21 +200,28 @@ class KeycloakTokenCli {
                 System.exit(1)
             }
             if (!group?.trim()) {
-                System.err.println("Group could not be determined. Provide --group or ensure the JWT contains the 'tipi_group' claim.")
-                System.exit(1)
-            }
+            System.err.println("Group could not be determined. Provide --group or ensure the JWT contains the 'tipi_group' claim.")
+            System.exit(1)
+        }
 
-            String apiBase = sanitizeBaseUrl(effective.apiUrl)
-            URI transactionUri = URI.create("${apiBase}/api/transactions")
-            String transactionBody = JsonOutput.toJson([
-                    organization: organization,
-                    group        : group
-            ])
+        String apiBase = sanitizeBaseUrl(effective.apiUrl)
+        URI transactionUri = URI.create("${apiBase}/api/transactions")
+        Map<String, String> transactionPayload = [
+                organization: organization,
+                group        : group
+        ]
+        String transactionBody = JsonOutput.toJson(transactionPayload)
 
-            HttpRequest transactionRequest = HttpRequest.newBuilder()
-                    .uri(transactionUri)
-                    .header('Content-Type', 'application/json')
-                    .header('Authorization', "Bearer ${token}")
+        if (verbose) {
+            println "POST ${transactionUri}"
+            println JsonOutput.prettyPrint(JsonOutput.toJson(transactionPayload))
+            println ''
+        }
+
+        HttpRequest transactionRequest = HttpRequest.newBuilder()
+                .uri(transactionUri)
+                .header('Content-Type', 'application/json')
+                .header('Authorization', "Bearer ${token}")
                     .POST(HttpRequest.BodyPublishers.ofString(transactionBody))
                     .build()
 
