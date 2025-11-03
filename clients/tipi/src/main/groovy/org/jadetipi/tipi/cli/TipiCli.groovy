@@ -12,6 +12,8 @@
  */
 package org.jadetipi.tipi.cli
 
+import groovy.cli.picocli.CliBuilder
+import groovy.cli.picocli.OptionAccessor
 import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 
@@ -22,7 +24,6 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
-import java.util.Arrays
 import java.util.Base64
 
 class TipiCli {
@@ -33,35 +34,77 @@ class TipiCli {
     private static final String DEFAULT_CLIENT_SECRET = System.getenv('TIPI_CLIENT_SECRET') ?: '7e8d5df5-5afb-4cc0-8d56-9f3f5c7cc5fd'
 
     static void main(String[] args) {
+        def cli = new CliBuilder(
+                name: 'tipi',
+                usage: 'tipi <command> [options]',
+                footer: '\nEnvironment overrides: TIPI_KEYCLOAK_URL, TIPI_REALM, TIPI_CLIENT_ID, TIPI_CLIENT_SECRET'
+        )
+        cli.with {
+            h(longOpt: 'help', 'Show this help message')
+        }
+
         if (!args) {
-            printUsage()
+            printGlobalUsage(cli)
             return
         }
 
-        String command = args[0]
-        String[] commandArgs = args.length > 1 ? Arrays.copyOfRange(args, 1, args.length) : new String[0]
+        def command = args[0]
+        String[] commandArgs = args.length > 1 ? (args[1..-1] as String[]) : new String[0]
+
+        if (command in ['-h', '--help']) {
+            printGlobalUsage(cli)
+            return
+        }
 
         switch (command) {
             case 'create-transaction':
                 handleCreateTransaction(commandArgs)
                 break
             case 'help':
-            case '-h':
-            case '--help':
-                printUsage()
+                printGlobalUsage(cli)
                 break
             default:
                 System.err.println("Unknown command: ${command}\n")
-                printUsage()
+                printGlobalUsage(cli)
                 System.exit(1)
         }
     }
 
     private static void handleCreateTransaction(String[] args) {
-        Map<String, String> options = parseOptions(args)
+        def cli = new CliBuilder(
+                name: 'tipi create-transaction',
+                usage: 'tipi create-transaction [options]',
+                header: 'Obtain a JWT for service-to-service transactions.',
+                footer: '\nEnvironment overrides: TIPI_KEYCLOAK_URL, TIPI_REALM, TIPI_CLIENT_ID, TIPI_CLIENT_SECRET'
+        )
+        cli.with {
+            h(longOpt: 'help', 'Show this help message')
+            _(longOpt: 'url', args: 1, argName: 'keycloak-url', 'Keycloak base URL', defaultValue: DEFAULT_KEYCLOAK_URL)
+            _(longOpt: 'realm', args: 1, argName: 'realm', 'Keycloak realm', defaultValue: DEFAULT_REALM)
+            _(longOpt: 'client-id', args: 1, argName: 'client-id', 'OAuth client identifier', defaultValue: DEFAULT_CLIENT_ID)
+            _(longOpt: 'client-secret', args: 1, argName: 'secret', 'OAuth client secret', defaultValue: DEFAULT_CLIENT_SECRET)
+        }
 
-        String tokenEndpoint = buildTokenEndpoint(options.url, options.realm)
-        String formBody = buildClientCredentialsBody(options.clientId, options.clientSecret)
+        OptionAccessor options = cli.parse(args)
+        if (!options) {
+            // CLI prints errors itself
+            System.exit(1)
+        }
+
+        if (options.h) {
+            cli.usage()
+            return
+        }
+
+        Map<String, String> effective = [
+                url         : options.'url' ?: DEFAULT_KEYCLOAK_URL,
+                realm       : options.'realm' ?: DEFAULT_REALM,
+                clientId    : options.'client-id' ?: DEFAULT_CLIENT_ID,
+                clientSecret: options.'client-secret' ?: DEFAULT_CLIENT_SECRET
+        ]
+
+        String tokenEndpoint = buildTokenEndpoint(effective.url, effective.realm)
+        String formBody = buildClientCredentialsBody(effective.clientId, effective.clientSecret)
 
         HttpClient client = HttpClient.newHttpClient()
         HttpRequest request = HttpRequest.newBuilder()
@@ -102,53 +145,6 @@ class TipiCli {
         }
     }
 
-    private static Map<String, String> parseOptions(String[] args) {
-        Map<String, String> opts = [
-                url         : DEFAULT_KEYCLOAK_URL,
-                realm       : DEFAULT_REALM,
-                clientId    : DEFAULT_CLIENT_ID,
-                clientSecret: DEFAULT_CLIENT_SECRET
-        ]
-
-        Iterator<String> iter = Arrays.asList(args).iterator()
-        while (iter.hasNext()) {
-            String flag = iter.next()
-            if (!flag.startsWith('--')) {
-                System.err.println("Unexpected argument '${flag}'.")
-                printCreateTransactionUsage()
-                System.exit(1)
-            }
-
-            String key = flag.substring(2)
-            if (!iter.hasNext()) {
-                System.err.println("Missing value for option '${flag}'.")
-                printCreateTransactionUsage()
-                System.exit(1)
-            }
-            String value = iter.next()
-
-            switch (key) {
-                case 'url':
-                    opts.url = value
-                    break
-                case 'realm':
-                    opts.realm = value
-                    break
-                case 'client-id':
-                    opts.clientId = value
-                    break
-                case 'client-secret':
-                    opts.clientSecret = value
-                    break
-                default:
-                    System.err.println("Unknown option '--${key}'.")
-                    printCreateTransactionUsage()
-                    System.exit(1)
-            }
-        }
-        return opts
-    }
-
     private static String buildTokenEndpoint(String baseUrl, String realm) {
         String sanitizedBase = baseUrl.endsWith('/') ? baseUrl[0..-2] : baseUrl
         return "${sanitizedBase}/realms/${realm}/protocol/openid-connect/token"
@@ -186,7 +182,7 @@ class TipiCli {
         return segment + ('=' * (4 - mod))
     }
 
-    private static void printUsage() {
+    private static void printGlobalUsage(CliBuilder cli) {
         println """Tipi CLI - Jade Tipi command-line client
 
 Usage:
@@ -195,20 +191,7 @@ Usage:
 
 Commands:
   create-transaction   Obtain a JWT for service-to-service transactions.
-
-Run 'tipi create-transaction --help' for command-specific options."""
-    }
-
-    private static void printCreateTransactionUsage() {
-        println """Usage: tipi create-transaction [options]
-
-Options:
-  --url <keycloak-url>          Keycloak base URL (default: ${DEFAULT_KEYCLOAK_URL})
-  --realm <realm>               Keycloak realm (default: ${DEFAULT_REALM})
-  --client-id <client-id>       OAuth client identifier (default: ${DEFAULT_CLIENT_ID})
-  --client-secret <secret>      OAuth client secret (default: value bundled with CLI)
-
-Environment overrides:
-  TIPI_KEYCLOAK_URL, TIPI_REALM, TIPI_CLIENT_ID, TIPI_CLIENT_SECRET"""
+"""
+        cli.usage()
     }
 }
