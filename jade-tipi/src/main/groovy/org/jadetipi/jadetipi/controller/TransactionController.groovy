@@ -12,7 +12,7 @@
  */
 package org.jadetipi.jadetipi.controller
 
-import org.jadetipi.dto.transaction.TransactionRequest
+import org.jadetipi.dto.transaction.TransactionCreate
 import org.jadetipi.dto.transaction.TransactionToken
 import org.jadetipi.jadetipi.service.TransactionService
 import org.springframework.http.HttpStatus
@@ -39,7 +39,7 @@ class TransactionController {
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     Mono<ResponseEntity<TransactionToken>> createTransaction(
-            @RequestBody TransactionRequest request, @AuthenticationPrincipal Jwt jwt) {
+            @RequestBody TransactionCreate request, @AuthenticationPrincipal Jwt jwt) {
 
         if (!request?.organization()?.trim()) {
             return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, 'organization is required'))

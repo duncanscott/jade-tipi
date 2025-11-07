@@ -12,6 +12,7 @@
  */
 package org.jadetipi.jadetipi.service
 
+import org.jadetipi.dto.transaction.CommitToken
 import org.jadetipi.dto.transaction.TransactionToken
 import org.jadetipi.id.IdGenerator
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
@@ -58,5 +59,31 @@ class TransactionService {
 
         return mongoTemplate.save(doc, COLLECTION_NAME)
                 .thenReturn(new TransactionToken(transactionId, secret))
+    }
+
+    /**
+     * Commits a transaction and returns a commit token.
+     */
+    Mono<CommitToken> commitTransaction(TransactionToken transactionToken) {
+        Assert.notNull(transactionToken, "transactionToken must not be null")
+        Assert.hasText(transactionToken.transactionId(), "transactionId must not be blank")
+        Assert.hasText(transactionToken.secret(), "secret must not be blank")
+
+        String commitId = idGenerator.nextId()
+
+        return mongoTemplate.findById(transactionToken.transactionId(), Map.class, COLLECTION_NAME)
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("Transaction not found")))
+                .flatMap { Map doc ->
+                    String storedSecret = doc.get("secret") as String
+                    if (storedSecret != transactionToken.secret()) {
+                        return Mono.error(new IllegalArgumentException("Invalid transaction secret"))
+                    }
+
+                    doc.put("commitId", commitId)
+                    doc.put("committedAt", Instant.now())
+
+                    return mongoTemplate.save(doc, COLLECTION_NAME)
+                            .thenReturn(new CommitToken(transactionToken.transactionId(), commitId))
+                }
     }
 }

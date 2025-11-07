@@ -12,7 +12,7 @@
  */
 package org.jadetipi.dto.transaction;
 
-public record TransactionRequest (
+public record TransactionCreate(
     String organization,
     String group) {
 }

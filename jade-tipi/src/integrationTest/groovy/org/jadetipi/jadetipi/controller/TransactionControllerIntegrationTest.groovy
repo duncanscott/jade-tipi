@@ -13,7 +13,7 @@
 package org.jadetipi.jadetipi.controller
 
 import org.bson.Document
-import org.jadetipi.dto.transaction.TransactionRequest
+import org.jadetipi.dto.transaction.TransactionCreate
 import org.jadetipi.jadetipi.config.KeycloakTestHelper
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
@@ -54,7 +54,7 @@ class TransactionControllerIntegrationTest {
                 .uri("/api/transactions")
                 .header("Authorization", "Bearer ${accessToken}")
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(new TransactionRequest(organization, group))
+                .bodyValue(new TransactionCreate(organization, group))
                 .exchange()
                 .expectStatus().isCreated()
                 .expectBody(Map)
