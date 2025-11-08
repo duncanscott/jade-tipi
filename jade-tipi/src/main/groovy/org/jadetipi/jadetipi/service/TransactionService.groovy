@@ -54,7 +54,7 @@ class TransactionService {
                 organization : group.organization(),
                 group        : group.group(),
                 secret       : secret,
-                createdAt    : Instant.now()
+                created    : Instant.now()
         ] as Map<String,Object>
 
         return mongoTemplate.save(doc, COLLECTION_NAME)
@@ -80,8 +80,8 @@ class TransactionService {
                         return Mono.error(new IllegalArgumentException('Invalid transaction secret'))
                     }
 
-                    doc.put('commitId', commitId)
-                    doc.put('committedAt', Instant.now())
+                    doc.put('commit', commitId)
+                    doc.put('committed', Instant.now())
 
                     return mongoTemplate.save(doc, COLLECTION_NAME)
                             .thenReturn(new CommitToken(transactionToken.transactionId(), commitId))
