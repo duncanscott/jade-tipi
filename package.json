@@ -10,6 +10,11 @@
     "build:backend": "./gradlew build",
     "build:frontend": "cd frontend && npm run build",
     "build": "npm run build:frontend",
+    "test:backend": "./gradlew :jade-tipi:integrationTest",
+    "test:frontend": "cd frontend && npm test",
+    "test:ui": "cd frontend && npm run test:ui",
+    "test:headed": "cd frontend && npm run test:headed",
+    "test": "cd frontend && npm test",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
     "docker:logs": "docker-compose logs -f"
