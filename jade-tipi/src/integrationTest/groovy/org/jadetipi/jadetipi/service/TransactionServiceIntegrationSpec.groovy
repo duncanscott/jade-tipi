@@ -12,6 +12,7 @@
  */
 package org.jadetipi.jadetipi.service
 
+import org.jadetipi.dto.permission.Group
 import org.spockframework.spring.EnableSharedInjection
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -41,23 +42,22 @@ class TransactionServiceIntegrationSpec extends Specification {
 
     def "createTransaction stores secret and returns composed transaction id"() {
         given:
-        String organization = "acme"
-        String group = "research"
+        Group group = new Group('jade-tipi_org','some-group')
 
         when:
-        def token = transactionService.createTransaction(organization, group).block()
+        def token = transactionService.createTransaction(group).block()
 
         then:
         token != null
-        token.transactionId.endsWith("~${organization}~${group}")
-        token.secret != null
-        token.secret.length() == 43
+        token.transactionId().endsWith("~${group.organization()}~${group.group()}")
+        token.secret() != null
+        token.secret().length() == 43
 
         and: "document is persisted with the secret"
-        def stored = mongoTemplate.findById(token.transactionId, Map, COLLECTION_NAME).block()
+        def stored = mongoTemplate.findById(token.transactionId(), Map, COLLECTION_NAME).block()
         stored != null
-        stored.secret == token.secret
-        stored.organization == organization
-        stored.group == group
+        stored.secret == token.secret()
+        stored.organization == group.organization()
+        stored.group == group.group()
     }
 }

@@ -10,9 +10,9 @@
  *
  * https://jade-tipi.org/license
  */
-package org.jadetipi.dto.transaction;
+package org.jadetipi.dto.permission;
 
-public record TransactionCreate(
+public record Group(
     String organization,
     String group) {
 }
