@@ -21,6 +21,13 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
+import java.nio.file.FileSystems
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
+import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.PosixFilePermission
+import java.nio.file.attribute.PosixFilePermissions
 
 /**
  * Shared implementation for the Jade/Tipi Keycloak token CLIs.
@@ -86,8 +93,8 @@ class JadeTipiCli {
         String[] commandArgs = remaining.size() > 1 ? (remaining[1..-1] as String[]) : new String[0]
 
         switch (command) {
-            case 'create-transaction':
-                handleCreateTransaction(commandArgs, globalVerbose)
+            case 'open-transaction':
+                handleOpenTransaction(commandArgs, globalVerbose)
                 break
             case 'help':
                 printGlobalUsage(cli)
@@ -99,7 +106,7 @@ class JadeTipiCli {
         }
     }
 
-    private void handleCreateTransaction(String[] args, boolean globalVerbose) {
+    private void handleOpenTransaction(String[] args, boolean globalVerbose) {
         String defaultUrl = resolveEnv('KEYCLOAK_URL', fallbackKeycloakUrl)
         String defaultRealmValue = resolveEnv('REALM', fallbackRealm)
         String defaultClientIdValue = resolveEnv('CLIENT_ID', fallbackClientId)
@@ -107,8 +114,8 @@ class JadeTipiCli {
         String defaultApiUrl = resolveEnv('API_URL', fallbackApiUrl)
 
         def cli = new CliBuilder(
-                name: "${programName} create-transaction",
-                usage: "${programName} create-transaction [options]",
+                name: "${programName} open-transaction",
+                usage: "${programName} open-transaction [options]",
                 header: 'Obtain a JWT for service-to-service transactions.',
                 footer: "\nEnvironment overrides: ${envPrefix}_KEYCLOAK_URL, ${envPrefix}_REALM, ${envPrefix}_CLIENT_ID, ${envPrefix}_CLIENT_SECRET, ${envPrefix}_API_URL"
         )
@@ -218,21 +225,21 @@ class JadeTipiCli {
                 .uri(transactionUri)
                 .header('Content-Type', 'application/json')
                 .header('Authorization', "Bearer ${token}")
-                    .POST(HttpRequest.BodyPublishers.ofString(transactionBody))
-                    .build()
+                .POST(HttpRequest.BodyPublishers.ofString(transactionBody))
+                .build()
 
-            HttpResponse<String> transactionResponse = client.send(transactionRequest, HttpResponse.BodyHandlers.ofString())
-            if (transactionResponse.statusCode() < 200 || transactionResponse.statusCode() >= 300) {
-                System.err.println("Failed to open transaction (${transactionResponse.statusCode()}): ${transactionResponse.body()}")
-                System.exit(1)
-            }
+        HttpResponse<String> transactionResponse = client.send(transactionRequest, HttpResponse.BodyHandlers.ofString())
+        if (transactionResponse.statusCode() < 200 || transactionResponse.statusCode() >= 300) {
+            System.err.println("Failed to open transaction (${transactionResponse.statusCode()}): ${transactionResponse.body()}")
+            System.exit(1)
+        }
 
-            Map txnPayload = (Map) new JsonSlurper().parseText(transactionResponse.body())
-            if (verbose) {
-                println JsonOutput.prettyPrint(JsonOutput.toJson(txnPayload))
-            } else {
-                println "Transaction opened. ID: ${txnPayload.transactionId}, secret: ${txnPayload.secret}"
-            }
+        String transactionResponseBody = transactionResponse.body()
+        Map txnPayload = (Map) new JsonSlurper().parseText(transactionResponseBody)
+        String transactionId = txnPayload.transactionId as String
+        persistTransactionToken(effective.clientId as String, transactionId, transactionResponseBody)
+
+        println transactionId
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt()
             System.err.println("Token request interrupted: ${e.message}")
@@ -291,15 +298,78 @@ class JadeTipiCli {
         return baseUrl.endsWith('/') ? baseUrl[0..-2] : baseUrl
     }
 
+    private void persistTransactionToken(String clientId, String transactionId, String jsonBody) {
+        if (!clientId?.trim()) {
+            System.err.println('Client identifier is required to store the transaction token.')
+            System.exit(1)
+        }
+        if (!transactionId?.trim()) {
+            System.err.println('Transaction response did not include a transactionId; cannot persist token.')
+            System.exit(1)
+        }
+
+        Path directory = ensureTransactionsDirectory(clientId)
+        Path destination = directory.resolve("${transactionId}.json")
+        try {
+            Files.writeString(destination, jsonBody, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+            applyOwnerOnlyPermissions(destination, "rw-------")
+        } catch (IOException e) {
+            System.err.println("Failed to store transaction token at ${destination}: ${e.message}")
+            System.exit(1)
+        }
+    }
+
+    private Path ensureTransactionsDirectory(String clientId) {
+        String home = System.getProperty('user.home')
+        if (!home?.trim()) {
+            System.err.println("Cannot determine user home directory to store transaction tokens.")
+            System.exit(1)
+        }
+
+        Path directory = Paths.get(home, '.jade-tipi', 'clients', clientId, 'transactions')
+        try {
+            Files.createDirectories(directory)
+            applyOwnerOnlyPermissions(directory, "rwx------")
+        } catch (IOException e) {
+            System.err.println("Unable to create transactions directory ${directory}: ${e.message}")
+            System.exit(1)
+        }
+
+        if (!Files.isDirectory(directory) || !Files.isReadable(directory) || !Files.isWritable(directory)) {
+            System.err.println("Transactions directory ${directory} must exist and be both readable and writable.")
+            System.exit(1)
+        }
+
+        return directory
+    }
+
+    private void applyOwnerOnlyPermissions(Path path, String permissions) {
+        if (path == null) {
+            return
+        }
+        if (!FileSystems.default.supportedFileAttributeViews().contains("posix")) {
+            return
+        }
+        try {
+            Set<PosixFilePermission> perms = PosixFilePermissions.fromString(permissions)
+            Files.setPosixFilePermissions(path, perms)
+        } catch (UnsupportedOperationException ignored) {
+            // Non-POSIX FS for this path; nothing to do.
+        } catch (IOException e) {
+            System.err.println("Unable to set permissions on ${path}: ${e.message}")
+            System.exit(1)
+        }
+    }
+
     private void printGlobalUsage(CliBuilder cli) {
         println """${programName.capitalize()} CLI - Jade Tipi command-line client
 
 Usage:
-  ${programName} create-transaction [options]
+  ${programName} open-transaction [options]
   ${programName} help
 
 Commands:
-  create-transaction   Obtain a JWT for service-to-service transactions.
+  open-transaction   Obtain a JWT for service-to-service transactions.
 """
         cli.usage()
     }
