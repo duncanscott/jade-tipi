@@ -201,7 +201,7 @@ class JadeTipiCli {
         }
 
         String apiBase = sanitizeBaseUrl(effective.apiUrl)
-        URI transactionUri = URI.create("${apiBase}/api/transactions")
+        URI transactionUri = URI.create("${apiBase}/api/transactions/open")
         Map<String, String> transactionPayload = [
                 organization: organization,
                 group        : group
@@ -223,7 +223,7 @@ class JadeTipiCli {
 
             HttpResponse<String> transactionResponse = client.send(transactionRequest, HttpResponse.BodyHandlers.ofString())
             if (transactionResponse.statusCode() < 200 || transactionResponse.statusCode() >= 300) {
-                System.err.println("Failed to create transaction (${transactionResponse.statusCode()}): ${transactionResponse.body()}")
+                System.err.println("Failed to open transaction (${transactionResponse.statusCode()}): ${transactionResponse.body()}")
                 System.exit(1)
             }
 
@@ -231,7 +231,7 @@ class JadeTipiCli {
             if (verbose) {
                 println JsonOutput.prettyPrint(JsonOutput.toJson(txnPayload))
             } else {
-                println "Transaction created. ID: ${txnPayload.transactionId}, secret: ${txnPayload.secret}"
+                println "Transaction opened. ID: ${txnPayload.transactionId}, secret: ${txnPayload.secret}"
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt()

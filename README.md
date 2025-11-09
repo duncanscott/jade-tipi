@@ -17,7 +17,7 @@ An open scientific metadata framework and reference implementation focused on fl
 
 - Reactive REST API serving JSON metadata on port `8765`.
 - Document lifecycle endpoints (`/api/documents`) powered by `ReactiveMongoTemplate`.
-- Transaction token generation (`/api/transactions`) to support future write coordination.
+- Transaction token generation (`/api/transactions/open`) to support future write coordination.
 - JWT-based authentication via Keycloak OAuth2/OIDC integration.
 - Gradle build with separate unit and integration test tasks; integration tests require MongoDB and Keycloak running.
 
@@ -132,7 +132,7 @@ AUTH_SECRET=jade-tipi-secret-change-in-production-minimum-32-characters-required
 
 ### Transaction Service (`/api/transactions`)
 
-- `POST /api/transactions` — issue a transaction token scoped to `organization` and `group`. Returns a public identifier plus write secret; intended for future multi-party write flows.
+- `POST /api/transactions/open` — issue a transaction token scoped to `organization` and `group`. Returns a public identifier plus write secret; intended for future multi-party write flows.
 
 ### Authentication
 

@@ -13,6 +13,7 @@
 package org.jadetipi.jadetipi.controller
 
 import org.jadetipi.dto.permission.Group
+import org.jadetipi.dto.transaction.CommitToken
 import org.jadetipi.dto.transaction.TransactionToken
 import org.jadetipi.jadetipi.service.TransactionService
 import org.springframework.http.HttpStatus
@@ -37,8 +38,8 @@ class TransactionController {
         this.transactionService = transactionService
     }
 
-    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
-    Mono<ResponseEntity<TransactionToken>> createTransaction(
+    @PostMapping(path = '/open', consumes = MediaType.APPLICATION_JSON_VALUE)
+    Mono<ResponseEntity<TransactionToken>> openTransaction(
             @RequestBody Group group, @AuthenticationPrincipal Jwt jwt) {
 
         if (!group?.organization()?.trim()) {
@@ -48,8 +49,30 @@ class TransactionController {
             return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, 'group is required'))
         }
 
-        return transactionService.createTransaction(group)
+        return transactionService.openTransaction(group)
                 .map { token -> ResponseEntity.status(HttpStatus.CREATED).body(token) }
+    }
+
+    @PostMapping(path = '/commit', consumes = MediaType.APPLICATION_JSON_VALUE)
+    Mono<ResponseEntity<CommitToken>> commitTransaction(
+            @RequestBody TransactionToken transactionToken, @AuthenticationPrincipal Jwt jwt) {
+
+        if (!transactionToken?.transactionId()?.trim()) {
+            return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, 'transactionId is required'))
+        }
+        if (!transactionToken.secret()?.trim()) {
+            return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, 'secret is required'))
+        }
+        def group = transactionToken.group()
+        if (!group?.organization()?.trim()) {
+            return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, 'organization is required'))
+        }
+        if (!group.group()?.trim()) {
+            return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, 'group is required'))
+        }
+
+        return transactionService.commitTransaction(transactionToken)
+                .map { commit -> ResponseEntity.ok(commit) }
     }
 
 }

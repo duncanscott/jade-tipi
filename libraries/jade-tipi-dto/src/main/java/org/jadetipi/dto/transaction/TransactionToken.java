@@ -12,7 +12,10 @@
  */
 package org.jadetipi.dto.transaction;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import org.jadetipi.dto.permission.Group;
 
 /**
  * Public token returned when a transaction is created.
@@ -22,6 +25,10 @@ public record TransactionToken(
         String transactionId,
 
         @NotBlank(message = "secret is required")
-        String secret
+        String secret,
+
+        @Valid
+        @NotNull(message = "group is required")
+        Group group
 ) {
 }

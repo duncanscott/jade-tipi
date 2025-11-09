@@ -14,6 +14,7 @@ package org.jadetipi.jadetipi.controller
 
 import org.bson.Document
 import org.jadetipi.dto.permission.Group
+import org.jadetipi.dto.transaction.TransactionToken
 import org.jadetipi.jadetipi.config.KeycloakTestHelper
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
@@ -51,7 +52,7 @@ class TransactionControllerIntegrationTest {
         def group = "group-${UUID.randomUUID()}"
 
         def response = webTestClient.post()
-                .uri("/api/transactions")
+                .uri("/api/transactions/open")
                 .header("Authorization", "Bearer ${accessToken}")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(new Group(organization, group))
@@ -66,6 +67,9 @@ class TransactionControllerIntegrationTest {
         assert response.secret
         assert (response.transactionId as String).contains(organization)
         assert (response.transactionId as String).contains(group)
+        assert response.group
+        assert response.group.organization == organization
+        assert response.group.group == group
 
         def transactionQuery = Query.query(Criteria.where("_id").is(response.transactionId))
         def createdDocument = reactiveMongoTemplate.findOne(transactionQuery, Document, "transaction").block()
@@ -74,6 +78,55 @@ class TransactionControllerIntegrationTest {
             assert createdDocument.getString("secret") == response.secret
             assert createdDocument.getString("organization") == organization
             assert createdDocument.getString("group") == group
+        } finally {
+            reactiveMongoTemplate.remove(transactionQuery, "transaction").block()
+        }
+    }
+
+    @Test
+    void 'should commit transaction and write commit metadata when authenticated'() {
+        def organization = "org-${UUID.randomUUID()}"
+        def group = "group-${UUID.randomUUID()}"
+
+        def createResponse = webTestClient.post()
+                .uri("/api/transactions/open")
+                .header("Authorization", "Bearer ${accessToken}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(new Group(organization, group))
+                .exchange()
+                .expectStatus().isCreated()
+                .expectBody(Map)
+                .returnResult()
+                .responseBody
+
+        def commitRequest = new TransactionToken(
+                createResponse.transactionId as String,
+                createResponse.secret as String,
+                new Group(organization, group)
+        )
+
+        def commitResponse = webTestClient.post()
+                .uri("/api/transactions/commit")
+                .header("Authorization", "Bearer ${accessToken}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(commitRequest)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(Map)
+                .returnResult()
+                .responseBody
+
+        assert commitResponse != null
+        assert commitResponse.transactionId == createResponse.transactionId
+        assert commitResponse.commitId
+
+        def transactionQuery = Query.query(Criteria.where("_id").is(createResponse.transactionId))
+        def committedDocument = reactiveMongoTemplate.findOne(transactionQuery, Document, "transaction").block()
+        try {
+            assert committedDocument != null
+            assert committedDocument.getString("secret") == createResponse.secret
+            assert committedDocument.getString("commit") == commitResponse.commitId
+            assert committedDocument.get("committed") != null
         } finally {
             reactiveMongoTemplate.remove(transactionQuery, "transaction").block()
         }

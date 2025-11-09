@@ -40,9 +40,9 @@ class TransactionService {
     }
 
     /**
-     * Creates a new transaction record and returns its public/secret components.
+     * Opens a new transaction record and returns its public/secret components.
      */
-    Mono<TransactionToken> createTransaction(Group group) {
+    Mono<TransactionToken> openTransaction(Group group) {
         Assert.hasText(group.organization(), 'organization must not be blank')
         Assert.hasText(group.group(), 'group must not be blank')
 
@@ -58,20 +58,20 @@ class TransactionService {
         ] as Map<String,Object>
 
         return mongoTemplate.save(doc, COLLECTION_NAME)
-                .thenReturn(new TransactionToken(transactionId, secret))
+                .thenReturn(new TransactionToken(transactionId, secret, group))
     }
 
     /**
      * Commits a transaction and returns a commit token.
      */
-    Mono<CommitToken> commitTransaction(TransactionToken transactionToken, Group group) {
+    Mono<CommitToken> commitTransaction(TransactionToken transactionToken) {
         Assert.notNull(transactionToken, 'transactionToken must not be null')
         Assert.hasText(transactionToken.transactionId(), 'transactionId must not be blank')
         Assert.hasText(transactionToken.secret(), 'secret must not be blank')
-        Assert.hasText(group.organization(), 'organization must not be blank')
-        Assert.hasText(group.group(), 'group must not be blank')
+        Assert.hasText(transactionToken.group().organization(), 'organization must not be blank')
+        Assert.hasText(transactionToken.group().group(), 'group must not be blank')
 
-        String commitId = nextId(group)
+        String commitId = nextId(transactionToken.group())
         return mongoTemplate.findById(transactionToken.transactionId(), Map.class, COLLECTION_NAME)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException('Transaction not found')))
                 .flatMap { Map doc ->

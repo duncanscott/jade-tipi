@@ -13,6 +13,7 @@
 package org.jadetipi.jadetipi.service
 
 import org.jadetipi.dto.permission.Group
+import org.jadetipi.dto.transaction.TransactionToken
 import org.spockframework.spring.EnableSharedInjection
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -40,18 +41,19 @@ class TransactionServiceIntegrationSpec extends Specification {
                 .block()
     }
 
-    def "createTransaction stores secret and returns composed transaction id"() {
+    def "openTransaction stores secret and returns composed transaction id"() {
         given:
         Group group = new Group('jade-tipi_org','some-group')
 
         when:
-        def token = transactionService.createTransaction(group).block()
+        def token = transactionService.openTransaction(group).block()
 
         then:
         token != null
         token.transactionId().endsWith("~${group.organization()}~${group.group()}")
         token.secret() != null
         token.secret().length() == 43
+        token.group() == group
 
         and: "document is persisted with the secret"
         def stored = mongoTemplate.findById(token.transactionId(), Map, COLLECTION_NAME).block()
@@ -59,5 +61,24 @@ class TransactionServiceIntegrationSpec extends Specification {
         stored.secret == token.secret()
         stored.organization == group.organization()
         stored.group == group.group()
+    }
+
+    def "commitTransaction validates secret and stores commit metadata"() {
+        given:
+        Group group = new Group('jade-tipi_org','some-group')
+        TransactionToken token = transactionService.openTransaction(group).block()
+
+        when:
+        def commit = transactionService.commitTransaction(token).block()
+
+        then:
+        commit != null
+        commit.transactionId() == token.transactionId()
+        commit.commitId().endsWith("~${group.organization()}~${group.group()}")
+
+        and:
+        def stored = mongoTemplate.findById(token.transactionId(), Map, COLLECTION_NAME).block()
+        stored.commit == commit.commitId()
+        stored.committed != null
     }
 }

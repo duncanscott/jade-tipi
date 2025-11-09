@@ -12,7 +12,12 @@
  */
 package org.jadetipi.dto.permission;
 
+import jakarta.validation.constraints.NotBlank;
+
 public record Group(
-    String organization,
-    String group) {
+        @NotBlank(message = "organization is required")
+        String organization,
+
+        @NotBlank(message = "group is required")
+        String group) {
 }
