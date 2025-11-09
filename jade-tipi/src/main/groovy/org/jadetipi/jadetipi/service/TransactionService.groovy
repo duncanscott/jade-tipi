@@ -110,6 +110,26 @@ class TransactionService {
                 } as Mono<CommitToken>
     }
 
+    /**
+     * Generates a transaction identifier with format: {tipiId}~{organization}~{group}
+     *
+     * Example: "abc123xyz~jade-tipi_org~some-group"
+     *
+     * The transaction ID is globally unique and contains:
+     * - tipiId: Random identifier from IdGenerator (20 chars, base62)
+     * - organization: Organization identifier
+     * - group: Group identifier within organization
+     * - separator: '~' character (TRANSACTION_ID_SEPARATOR)
+     *
+     * This format allows:
+     * - Easy extraction of organization/group from transaction ID
+     * - Natural shard key for distributed deployments
+     * - Human-readable transaction identification
+     * - Hierarchical organization of transactions
+     *
+     * @param group The group containing organization and group identifiers
+     * @return A globally unique transaction ID in the format tipiId~organization~group
+     */
     private String nextId(Group group) {
         StringBuilder sb = new StringBuilder(idGenerator.nextId())
         sb.append(TRANSACTION_ID_SEPARATOR)

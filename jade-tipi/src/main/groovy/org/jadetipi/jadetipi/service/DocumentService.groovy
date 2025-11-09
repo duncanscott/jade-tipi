@@ -19,7 +19,7 @@ import reactor.core.publisher.Mono
 interface DocumentService {
 
     /**
-     * Creates a new document in MongoDB
+     * Creates a new document in the database
      * @param id The unique identifier for the document
      * @param objectNode The Jackson ObjectNode to create
      * @return Mono of the created ObjectNode
@@ -27,14 +27,14 @@ interface DocumentService {
     Mono<ObjectNode> create(String id, ObjectNode objectNode)
 
     /**
-     * Retrieves a Jackson ObjectNode from MongoDB for the given String ID
+     * Retrieves a document by its unique identifier
      * @param id The unique identifier for the document
      * @return Mono of the ObjectNode, or empty if not found
      */
     Mono<ObjectNode> findById(String id)
 
     /**
-     * Updates an existing document in MongoDB
+     * Updates an existing document in the database
      * @param id The unique identifier for the document
      * @param objectNode The Jackson ObjectNode with updated data
      * @return Mono of the updated ObjectNode
@@ -42,7 +42,7 @@ interface DocumentService {
     Mono<ObjectNode> update(String id, ObjectNode objectNode)
 
     /**
-     * Deletes a document from MongoDB
+     * Deletes a document from the database
      * @param id The unique identifier for the document to delete
      * @return Mono<Boolean> true if deleted, false if not found
      */

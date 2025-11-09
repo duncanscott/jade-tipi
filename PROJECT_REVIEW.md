@@ -164,13 +164,26 @@ Flux<ObjectNode> listDocuments(
 
 ### 1.5 MongoDB-Specific References in Generic Interface (MAINTAINABILITY)
 
-**Location:** `backend/jadetipi/src/main/groovy/org/jadetipi/jadetipi/service/DocumentService.groovy`
+**Status:** ✅ **RESOLVED**
 
-**Issue:** JavaDoc comments reference "MongoDB" specifically (lines 22, 30, 37, 45) despite interface supporting multiple backends
+**Location:** `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/DocumentService.groovy`
 
-**Impact:** Documentation misleads developers when using non-MongoDB implementations (e.g., FoundationDB)
+**Previous Issue:** JavaDoc comments referenced "MongoDB" specifically (lines 22, 30, 37, 45) despite interface supporting multiple backends
 
-**Recommendation:** Update documentation to be database-agnostic:
+**Resolution:**
+Updated all JavaDoc comments to be database-agnostic:
+
+- Line 22: ✅ Changed "Creates a new document in MongoDB" → "Creates a new document in the database"
+- Line 30: ✅ Changed "Retrieves a Jackson ObjectNode from MongoDB for the given String ID" → "Retrieves a document by its unique identifier"
+- Line 37: ✅ Changed "Updates an existing document in MongoDB" → "Updates an existing document in the database"
+- Line 45: ✅ Changed "Deletes a document from MongoDB" → "Deletes a document from the database"
+
+**Verification:**
+- ✅ Code compiles successfully
+- ✅ All unit tests passing
+- ✅ Interface now properly abstracted for multiple backend implementations
+
+**Current Documentation:**
 ```groovy
 /**
  * Creates a new document in the database
@@ -178,6 +191,7 @@ Flux<ObjectNode> listDocuments(
  * @param objectNode The Jackson ObjectNode to create
  * @return Mono of the created ObjectNode
  */
+Mono<ObjectNode> create(String id, ObjectNode objectNode)
 ```
 
 ---
@@ -278,42 +292,69 @@ void createIndexes() {
 
 ### 2.4 Fix Test JWT Validation
 
-**Location:** `TestSecurityConfig.groovy:23-30`
+**Status:** ✅ **RESOLVED**
 
-**Issue:**
+**Location:** `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/config/TestSecurityConfig.groovy`
+
+**Previous Issue:**
+The test JWT decoder always threw an error, making unit testing of authenticated endpoints difficult:
 ```groovy
 @Bean
-ReactiveJwtDecoder jwtDecoder() {
-    return token -> Mono.error(new IllegalStateException("Should not be called in tests"))
+ReactiveJwtDecoder reactiveJwtDecoder() {
+    return { token ->
+        Mono.error(new IllegalArgumentException("JWT validation not configured for tests"))
+    } as ReactiveJwtDecoder
 }
 ```
 
-Makes unit testing of authenticated endpoints difficult.
-
-**Recommendation:**
+**Resolution:**
+Updated to return a valid test JWT with proper claims:
 ```groovy
 @Bean
-ReactiveJwtDecoder jwtDecoder() {
-    return token -> {
+@Primary
+ReactiveJwtDecoder reactiveJwtDecoder() {
+    // Mock JWT decoder for tests that returns a valid test JWT
+    return { token ->
+        Map<String, Object> headers = [
+            alg: "none"
+        ]
         Map<String, Object> claims = [
             sub: "test-user",
             tipi_org: "test-org",
-            tipi_group: "test-group"
+            tipi_group: "test-group",
+            iat: Instant.now().epochSecond,
+            exp: Instant.now().plusSeconds(3600).epochSecond
         ]
-        return Mono.just(new Jwt(token, null, null,
-            Map.of("alg", "none"), claims))
-    }
+        Jwt jwt = new Jwt(token, Instant.now(), Instant.now().plusSeconds(3600), headers, claims)
+        return Mono.just(jwt)
+    } as ReactiveJwtDecoder
 }
 ```
+
+**Benefits:**
+- ✅ Unit tests can now properly test authenticated endpoints
+- ✅ Test JWT includes realistic claims (sub, tipi_org, tipi_group)
+- ✅ Proper JWT structure with headers, claims, and expiration
+- ✅ Makes testing security-related code much easier
+
+**Verification:**
+- ✅ Code compiles successfully
+- ✅ All unit tests passing
+- ✅ Test JWT decoder properly mocked for unit test environment
 
 ---
 
 ### 2.5 Document Transaction ID Format
 
-**Current State:** Transaction ID format (`tipiId~organization~group`) is not documented.
+**Status:** ✅ **RESOLVED**
 
-**Recommendation:**
-Add JavaDoc to `TransactionService.groovy`:
+**Location:** `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/TransactionService.groovy:113-132`
+
+**Previous State:** Transaction ID format (`tipiId~organization~group`) was not documented.
+
+**Resolution:**
+Added comprehensive JavaDoc documentation to the `nextId` method:
+
 ```groovy
 /**
  * Generates a transaction identifier with format: {tipiId}~{organization}~{group}
@@ -321,15 +362,34 @@ Add JavaDoc to `TransactionService.groovy`:
  * Example: "abc123xyz~jade-tipi_org~some-group"
  *
  * The transaction ID is globally unique and contains:
- * - tipiId: Random identifier from IdGenerator (20 chars)
+ * - tipiId: Random identifier from IdGenerator (20 chars, base62)
  * - organization: Organization identifier
  * - group: Group identifier within organization
+ * - separator: '~' character (TRANSACTION_ID_SEPARATOR)
  *
- * This format allows easy extraction of organization/group from transaction ID
- * and provides a natural shard key for distributed deployments.
+ * This format allows:
+ * - Easy extraction of organization/group from transaction ID
+ * - Natural shard key for distributed deployments
+ * - Human-readable transaction identification
+ * - Hierarchical organization of transactions
+ *
+ * @param group The group containing organization and group identifiers
+ * @return A globally unique transaction ID in the format tipiId~organization~group
  */
 private String nextId(Group group) { /* ... */ }
 ```
+
+**Documentation Benefits:**
+- ✅ Clear format specification with example
+- ✅ Explains all components of the transaction ID
+- ✅ Documents the separator character and its constant
+- ✅ Describes benefits of this format (sharding, readability, hierarchy)
+- ✅ Provides proper JavaDoc with @param and @return tags
+
+**Verification:**
+- ✅ Code compiles successfully
+- ✅ All unit tests passing
+- ✅ Documentation accessible via IDE and generated docs
 
 ---
 
@@ -1476,11 +1536,11 @@ export function Navigation() {
 
 ### 10.2 Medium Priority
 
-6. **Fix test JWT validation** (TestSecurityConfig)
-7. **Add MongoDB indexes** (organization, group, name fields)
-8. **Complete or remove FoundationDB** implementation
-9. **Add audit trail fields** (_createdBy, _modifiedBy, _createdAt, _modifiedAt)
-10. **Document transaction ID format** and semantics
+6. ✅ ~~**Fix test JWT validation**~~ (COMPLETED)
+7. ✅ ~~**Document transaction ID format**~~ (COMPLETED)
+8. **Add MongoDB indexes** (organization, group, name fields)
+9. **Complete or remove FoundationDB** implementation
+10. **Add audit trail fields** (_createdBy, _modifiedBy, _createdAt, _modifiedAt)
 
 ### 10.3 Low Priority
 
@@ -1581,11 +1641,9 @@ Flux<ObjectNode> findAllSummary(int page, int size) {
 
 ### HIGH (Sprint Priority)
 
-11. 🟡 Fix test JWT validation to work properly
-12. 🟡 Add MongoDB indexes for organization/group queries
-13. 🟡 Document transaction ID format and semantics
-14. 🟡 Create Dockerfile for backend service
-15. 🟡 Restrict actuator endpoints (not all exposed)
+11. 🟡 Add MongoDB indexes for organization/group queries
+12. 🟡 Create Dockerfile for backend service
+13. 🟡 Restrict actuator endpoints (not all exposed)
 
 ### MEDIUM (Next Quarter)
 
