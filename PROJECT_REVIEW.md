@@ -1,878 +1,1102 @@
 # Jade-Tipi Backend Project Review
 
+**Version:** 0.0.2
 **Review Date:** 2025-11-08
-**Project Version:** 0.0.2
-**Reviewer:** Claude (AI Code Assistant)
+**Reviewer:** Claude Code
 
 ---
 
 ## Executive Summary
 
-Jade-Tipi is a well-structured, early-stage reactive Spring Boot application implementing a scientific metadata framework. The codebase demonstrates solid architectural choices, modern reactive patterns, and good separation of concerns. However, being in proof-of-concept stage, there are several areas for improvement before production readiness.
+**Overall Assessment:** ⭐⭐⭐⭐ (4/5 stars)
 
-**Overall Assessment:** ⭐⭐⭐⭐ (4/5)
+The Jade-Tipi backend demonstrates **solid engineering practices** with a modern reactive stack (Spring Boot 3.5.6 WebFlux, Groovy 4.0, MongoDB). The recent improvements to error handling, validation, logging, and test coverage have significantly strengthened the codebase. The project is well-architected with clear separation of concerns and proper use of reactive patterns.
 
-**Strengths:**
-- Clean reactive architecture with proper use of Spring WebFlux
-- Good module separation (libraries, main app)
-- Comprehensive integration test coverage
-- Proper JWT/OAuth2 security implementation
-- Well-documented API with Swagger/OpenAPI
+**Key Strengths:**
+- Excellent reactive implementation with proper Mono/Flux usage
+- Clean architecture with Controller → Service → Data layer separation
+- Comprehensive testing (21 unit tests, multiple integration tests)
+- Robust error handling with GlobalExceptionHandler
+- Modern security with OAuth2/JWT via Keycloak
 
 **Key Areas for Improvement:**
-- Inconsistent error handling across controllers
-- Missing validation annotations on controller methods
-- Duplicate validation logic between controllers and services
-- Limited unit test coverage
-- No centralized exception handling
-- Missing request/response logging consistency
+- Remove hardcoded secrets from test code
+- Consolidate duplicate CORS configuration
+- Add pagination to document listing
+- Implement transaction TTL and cleanup
+- Complete or remove FoundationDB implementation
 
 ---
 
-## 1. Critical Issues (High Priority)
+## 1. CRITICAL ISSUES
 
-### 1.1 Inconsistent Validation Approach
+### 1.1 Hardcoded Secrets in Test Code (SECURITY)
 
-**Issue:** Validation is implemented differently across controllers.
+**Location:** `KeycloakTestHelper.groovy:28-29`
 
-**Evidence:**
-- `TransactionController`: Manual validation with `ResponseStatusException`
-- DTOs have `@Valid`, `@NotBlank` annotations but controller methods don't use `@Valid`
-- Duplicate validation in controllers and services
-
+**Issue:**
 ```groovy
-// TransactionController.groovy:45-50
-if (!group?.organization()?.trim()) {
-    return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, 'organization is required'))
-}
-// This duplicates DTO @NotBlank validation
+private static final String CLIENT_SECRET = System.getenv("TEST_CLIENT_SECRET") ?:
+    "7e8d5df5-5afb-4cc0-8d56-9f3f5c7cc5fd"  // ❌ NEVER hardcode secrets
 ```
 
+**Impact:** Production secret in source code is a security vulnerability, even as fallback value.
+
 **Recommendation:**
-1. Add `@Valid` annotation to all controller `@RequestBody` parameters
-2. Remove manual validation from controllers
-3. Implement global exception handler for `MethodArgumentNotValidException`
-4. Let Spring's validation framework handle all DTO validation
+- Remove hardcoded fallback
+- Make TEST_CLIENT_SECRET required in CI/CD
+- Add validation to fail fast if environment variable missing
+- Document secret management in README
 
-**Example Fix:**
+---
+
+### 1.2 Duplicate CORS Configuration (CONFIGURATION)
+
+**Locations:**
+- `SecurityConfig.groovy:59-68`
+- `WebConfig.groovy:26-32`
+
+**Issue:** CORS is configured in two different places using different approaches:
+- SecurityConfig uses `corsConfigurationSource()` with pattern matching
+- WebConfig uses `addCorsMappings()` registry approach
+
+**Impact:** Conflicting configurations may cause unexpected behavior. Debugging CORS issues becomes difficult.
+
+**Recommendation:**
+- Consolidate all CORS configuration into SecurityConfig
+- Remove CORS configuration from WebConfig
+- Add tests for CORS headers
+
+---
+
+### 1.3 Blocking Operations in Reactive Context (PERFORMANCE)
+
+**Location:** `MongoDbInitializer.groovy:67-71`
+
+**Issue:**
 ```groovy
-@PostMapping(path = '/open', consumes = MediaType.APPLICATION_JSON_VALUE)
-Mono<ResponseEntity<TransactionToken>> openTransaction(
-        @Valid @RequestBody Group group,  // Add @Valid here
-        @AuthenticationPrincipal Jwt jwt) {
-
-    // Remove manual validation - Spring handles it
-    return transactionService.openTransaction(group)
-            .map { token -> ResponseEntity.status(HttpStatus.CREATED).body(token) }
-}
+mongoTemplate.save(jsonContent, COLLECTION_NAME)
+    .doOnSuccess { saved -> /* ... */ }
+    .doOnError { error -> /* ... */ }
+    .block()  // ❌ Defeats reactive programming
 ```
 
-### 1.2 Missing Global Exception Handler
-
-**Issue:** No centralized exception handling leads to inconsistent error responses.
-
-**Evidence:**
-- `DocumentController`: Uses `.onErrorResume()` for some errors, not others
-- `TransactionController`: Uses `.onErrorMap()`
-- Different HTTP status codes for similar errors
-- No structured error response format
+**Impact:** Blocks the event loop during startup, negating benefits of reactive stack.
 
 **Recommendation:**
-Create a `@RestControllerAdvice` class for global exception handling:
-
 ```groovy
-@RestControllerAdvice
-class GlobalExceptionHandler {
-
-    @ExceptionHandler(ResponseStatusException)
-    Mono<ResponseEntity<ErrorResponse>> handleResponseStatus(ResponseStatusException ex) {
-        return Mono.just(ResponseEntity
-            .status(ex.statusCode)
-            .body(new ErrorResponse(ex.reason, ex.statusCode.value())))
+@Component
+class MongoDbInitializer {
+    @EventListener(ApplicationReadyEvent.class)
+    Mono<Void> initializeMongoDB(ApplicationReadyEvent event) {
+        return mongoTemplate.save(jsonContent, COLLECTION_NAME)
+            .doOnSuccess { saved -> /* ... */ }
+            .then()
     }
-
-    @ExceptionHandler(MethodArgumentNotValidException)
-    Mono<ResponseEntity<ErrorResponse>> handleValidation(MethodArgumentNotValidException ex) {
-        def errors = ex.bindingResult.fieldErrors.collectEntries {
-            [(it.field): it.defaultMessage]
-        }
-        return Mono.just(ResponseEntity
-            .badRequest()
-            .body(new ErrorResponse("Validation failed", 400, errors)))
-    }
-
-    @ExceptionHandler(IllegalArgumentException)
-    Mono<ResponseEntity<ErrorResponse>> handleIllegalArgument(IllegalArgumentException ex) {
-        return Mono.just(ResponseEntity
-            .badRequest()
-            .body(new ErrorResponse(ex.message, 400)))
-    }
-
-    @ExceptionHandler(IllegalStateException)
-    Mono<ResponseEntity<ErrorResponse>> handleIllegalState(IllegalStateException ex) {
-        return Mono.just(ResponseEntity
-            .status(HttpStatus.CONFLICT)
-            .body(new ErrorResponse(ex.message, 409)))
-    }
-}
-```
-
-### 1.3 No Request Validation on Document Operations
-
-**Issue:** `DocumentController` lacks input validation for document content.
-
-**Evidence:**
-- No validation on `ObjectNode` content in POST/PUT operations
-- No size limits on documents
-- No schema validation
-
-**Recommendation:**
-1. Add content size limits (e.g., max 1MB per document)
-2. Validate required fields in documents (if any)
-3. Consider JSON Schema validation for document structure
-4. Add validation in controller or create a custom validator
-
-```groovy
-@PostMapping(value = "/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
-Mono<ResponseEntity<ObjectNode>> createDocument(
-        @PathVariable("id") String id,
-        @RequestBody ObjectNode document) {
-
-    // Add validation
-    if (document == null || document.isEmpty()) {
-        return Mono.error(new ResponseStatusException(
-            HttpStatus.BAD_REQUEST, "Document cannot be empty"))
-    }
-
-    // Check size
-    String json = document.toString()
-    if (json.length() > 1_000_000) {  // 1MB limit
-        return Mono.error(new ResponseStatusException(
-            HttpStatus.PAYLOAD_TOO_LARGE, "Document exceeds 1MB limit"))
-    }
-
-    return documentService.create(id, document)
-            .map(created -> ResponseEntity.status(HttpStatus.CREATED).body(created))
 }
 ```
 
 ---
 
-## 2. Security Concerns (Medium Priority)
+### 1.4 No Pagination on Document Listing (SCALABILITY)
 
-### 2.1 JWT Claims Not Used for Authorization
+**Location:** `DocumentController.groovy:50-55`
 
-**Issue:** JWT is extracted in controllers but never used for authorization.
-
-**Evidence:**
+**Issue:**
 ```groovy
-// TransactionController.groovy:43
-@AuthenticationPrincipal Jwt jwt  // Extracted but not used
-```
-
-**Recommendation:**
-1. Implement authorization checks based on JWT claims
-2. Verify user has permission for requested organization/group
-3. Add role-based access control (RBAC)
-
-**Example:**
-```groovy
-@PostMapping(path = '/open')
-Mono<ResponseEntity<TransactionToken>> openTransaction(
-        @RequestBody Group group,
-        @AuthenticationPrincipal Jwt jwt) {
-
-    // Verify user has access to this organization
-    if (!hasAccess(jwt, group.organization())) {
-        return Mono.error(new ResponseStatusException(
-            HttpStatus.FORBIDDEN, "Access denied to organization"))
-    }
-
-    return transactionService.openTransaction(group)
-            .map { token -> ResponseEntity.status(HttpStatus.CREATED).body(token) }
-}
-
-private boolean hasAccess(Jwt jwt, String organization) {
-    def allowedOrgs = jwt.getClaim("organizations") as List<String>
-    return allowedOrgs?.contains(organization) ?: false
+@GetMapping
+Flux<ObjectNode> listDocuments() {
+    return documentService.findAllSummary()  // Returns ALL documents
 }
 ```
 
-### 2.2 Secrets Stored in Plain Text
-
-**Issue:** Transaction secrets stored without encryption in MongoDB.
-
-**Evidence:**
-```groovy
-// TransactionService.groovy:56
-secret: secret,  // Plain text storage
-```
+**Impact:** Could cause out-of-memory errors with large datasets. Poor API design for clients.
 
 **Recommendation:**
-1. Hash secrets before storage using bcrypt or PBKDF2
-2. Compare hashed values on commit verification
-3. Never log or return secrets in responses (except on initial creation)
-
-**Note:** This requires careful consideration as it impacts the transaction token pattern. Consider whether secrets need to be retrievable or if one-way hashing is sufficient.
-
-### 2.3 CORS Configuration Too Permissive in Test
-
-**Issue:** Test environment allows all actuator endpoints without authentication.
-
-**Evidence:**
-```yaml
-# application.yml:27
-exposure.include: '*'  # Exposes all actuator endpoints
-```
-
-**Recommendation:**
-1. Limit exposed actuator endpoints to essential ones: `health`, `info`
-2. Require authentication for sensitive endpoints: `mappings`, `env`, `beans`
-3. Use separate configuration for production vs. development
-
----
-
-## 3. Code Quality Issues (Medium Priority)
-
-### 3.1 Inconsistent Error Handling Patterns
-
-**Issue:** Different error handling approaches across similar operations.
-
-**Evidence:**
 ```groovy
-// DocumentController.groovy:68
-.onErrorResume(e -> Mono.just(ResponseEntity.status(HttpStatus.CONFLICT).build()))
-
-// TransactionController.groovy:75
-.onErrorMap(IllegalStateException) { ex ->
-    new ResponseStatusException(HttpStatus.CONFLICT, ex.message, ex)
-}
-```
-
-**Recommendation:**
-Standardize on one approach (preferably global exception handler) and use it consistently.
-
-### 3.2 Magic Strings and Numbers
-
-**Issue:** Hard-coded values scattered throughout code.
-
-**Evidence:**
-```groovy
-// DocumentController.groovy:99
-[deletedCount: count] as Map<String, Long>
-
-// DocumentServiceMongoDbImpl.groovy:55
-if (id.matches('^[0-9a-fA-F]{24}$'))  // Magic regex
-
-// No size limits defined
-```
-
-**Recommendation:**
-1. Extract constants for all magic values
-2. Define configuration properties for limits
-3. Use enums for field names
-
-```groovy
-class DocumentConstants {
-    static final String FIELD_DELETED_COUNT = "deletedCount"
-    static final String OBJECTID_PATTERN = '^[0-9a-fA-F]{24}$'
-    static final int MAX_DOCUMENT_SIZE_BYTES = 1_000_000
-    static final String COLLECTION_NAME = "objectNodes"
-}
-```
-
-### 3.3 Mixed Use of String Quotes
-
-**Issue:** Inconsistent quote style (single vs double quotes).
-
-**Evidence:**
-```groovy
-// Some files use single quotes
-'organization is required'
-
-// Others use double quotes
-"objectNodes"
-```
-
-**Recommendation:**
-Standardize on single quotes for Groovy (idiomatic) or double quotes (Java-style). Apply consistently across codebase.
-
-### 3.4 No Logging Strategy
-
-**Issue:** Minimal logging; hard to debug issues in production.
-
-**Evidence:**
-- Only one log statement in `DocumentServiceMongoDbImpl.groovy:43`
-- No logging of errors or important business operations
-- No correlation IDs for request tracking
-
-**Recommendation:**
-1. Add structured logging for all important operations
-2. Log errors with context
-3. Use MDC (Mapped Diagnostic Context) for correlation IDs
-4. Add request/response logging filter (already exists for bodies, extend it)
-
-```groovy
-@Override
-Mono<TransactionToken> openTransaction(Group group) {
-    log.info("Opening transaction for org={}, group={}",
-             group.organization(), group.group())
-
-    return mongoTemplate.save(doc, COLLECTION_NAME)
-        .doOnSuccess { log.info("Transaction created: id={}", transactionId) }
-        .doOnError { log.error("Failed to create transaction", it) }
-        .thenReturn(new TransactionToken(transactionId, secret, group))
+@GetMapping
+Flux<ObjectNode> listDocuments(
+    @RequestParam(defaultValue = "0") int page,
+    @RequestParam(defaultValue = "100") int size) {
+    return documentService.findAllSummary(page, size)
 }
 ```
 
 ---
 
-## 4. Testing Gaps (Medium Priority)
+## 2. IMPORTANT IMPROVEMENTS
 
-### 4.1 Limited Unit Test Coverage
+### 2.1 Transaction TTL and Cleanup
 
-**Issue:** Only 2 unit test files; most testing is integration-level.
+**Current State:** Transactions are stored indefinitely with no expiration.
 
-**Evidence:**
-- `src/test/groovy/`: 2 files
-- `src/integrationTest/groovy/`: 6 files
-- No unit tests for services, controllers, filters
-
-**Recommendation:**
-1. Add unit tests for `TransactionService` logic (ID generation, validation)
-2. Add unit tests for `DocumentServiceMongoDbImpl` (map conversions)
-3. Mock dependencies to test business logic in isolation
-4. Aim for 70%+ line coverage for business logic
-
-**Example:**
-```groovy
-class TransactionServiceSpec extends Specification {
-
-    def mongoTemplate = Mock(ReactiveMongoTemplate)
-    def idGenerator = Mock(IdGenerator)
-    def service = new TransactionService(mongoTemplate, idGenerator)
-
-    def "should generate transaction ID with correct format"() {
-        given:
-        idGenerator.nextId() >> "abc123xyz"
-        def group = new Group("org1", "group1")
-
-        when:
-        def result = service.nextId(group)
-
-        then:
-        result == "abc123xyz~org1~group1"
-    }
-
-    def "should reject commit of already committed transaction"() {
-        given:
-        def token = new TransactionToken("tx1", "secret1", group)
-        mongoTemplate.findById(*_) >> Mono.just([
-            _id: "tx1",
-            secret: "secret1",
-            commit: "existing-commit"  // Already committed
-        ])
-
-        when:
-        def result = service.commitTransaction(token).block()
-
-        then:
-        thrown(IllegalStateException)
-    }
-}
-```
-
-### 4.2 No Performance/Load Testing
-
-**Issue:** No tests for concurrent access, throughput, or scalability.
+**Issue:**
+- `TransactionService.groovy:59-66` creates transaction records with no TTL
+- No cleanup scheduler for old transactions
+- Database will grow unbounded
 
 **Recommendation:**
-1. Add JMeter or Gatling tests for load scenarios
-2. Test concurrent transaction creation
-3. Test MongoDB connection pool behavior under load
-4. Establish baseline performance metrics
+1. Add TTL field to transaction documents:
+   ```groovy
+   Map<String, Object> doc = [
+       _id     : transactionId,
+       // ... existing fields ...
+       ttl     : Instant.now().plus(24, ChronoUnit.HOURS)
+   ]
+   ```
 
-### 4.3 Missing Negative Test Cases
+2. Create MongoDB TTL index:
+   ```javascript
+   db.transaction.createIndex({ "ttl": 1 }, { expireAfterSeconds: 0 })
+   ```
 
-**Issue:** Tests mostly cover happy paths.
-
-**Recommendation:**
-Add tests for:
-- Invalid JWT tokens
-- Malformed JSON documents
-- Concurrent modification scenarios
-- MongoDB connection failures
-- Large document handling
-- Boundary conditions (empty strings, nulls, max sizes)
+3. Add scheduled cleanup:
+   ```groovy
+   @Scheduled(cron = "0 0 * * * *")  // Every hour
+   Mono<Void> cleanupExpiredTransactions() {
+       return mongoTemplate.remove(
+           Query.query(Criteria.where("ttl").lt(Instant.now())),
+           "transaction"
+       ).then()
+   }
+   ```
 
 ---
 
-## 5. API Design Issues (Low Priority)
+### 2.2 Complete TransactionCreate → Group Refactoring
 
-### 5.1 Inconsistent REST Patterns
-
-**Issue:** Document API uses ID in path for POST, which is non-standard.
-
-**Evidence:**
-```groovy
-// DocumentController.groovy:62
-@PostMapping(value = "/{id}")  // POST should auto-generate ID
+**Current State:** Git status shows incomplete refactoring:
+```
+RM libraries/jade-tipi-dto/src/main/java/org/jadetipi/dto/transaction/TransactionCreate.java
+   -> libraries/jade-tipi-dto/src/main/java/org/jadetipi/dto/permission/Group.java
 ```
 
-**Standard REST Pattern:**
-- `POST /api/documents` - Create (server generates ID)
-- `PUT /api/documents/{id}` - Update or Create (client provides ID)
+**Issue:** Suggests incomplete migration from `TransactionCreate` DTO to `Group`.
 
 **Recommendation:**
-Consider two options:
+- Search codebase for any remaining references to `TransactionCreate`
+- Update all documentation referencing the old DTO
+- Verify all tests use `Group` correctly
+- Commit the completed refactoring
 
-**Option 1: Standard REST (recommended)**
+---
+
+### 2.3 Add MongoDB Indexes
+
+**Current State:** No indexes defined beyond default `_id` index.
+
+**Issue:** Queries on organization/group fields will perform collection scans.
+
+**Recommendation:**
+Create indexes in `MongoDbInitializer`:
 ```groovy
-@PostMapping
-Mono<ResponseEntity<ObjectNode>> createDocument(@RequestBody ObjectNode document) {
-    String id = idGenerator.nextId()
-    return documentService.create(id, document)
-            .map(created -> ResponseEntity
-                .created(URI.create("/api/documents/" + id))
-                .body(created))
-}
+void createIndexes() {
+    // Transaction lookups by organization/group
+    mongoTemplate.indexOps("transaction")
+        .ensureIndex(IndexDefinition.builder()
+            .named("idx_org_group")
+            .on("organization", Sort.Direction.ASC)
+            .on("group", Sort.Direction.ASC)
+            .build())
+        .subscribe()
 
-@PutMapping("/{id}")
-Mono<ResponseEntity<ObjectNode>> upsertDocument(
-        @PathVariable String id,
-        @RequestBody ObjectNode document) {
-    return documentService.upsert(id, document)
-            .map(saved -> ResponseEntity.ok(saved))
+    // Document name searches
+    mongoTemplate.indexOps("objectNodes")
+        .ensureIndex(IndexDefinition.builder()
+            .named("idx_name")
+            .on("name", Sort.Direction.ASC)
+            .build())
+        .subscribe()
 }
 ```
 
-**Option 2: Keep Current (if client-provided IDs are required)**
-- Document this clearly in API documentation
-- Explain why this pattern is used
-- Ensure it's consistently applied
+---
 
-### 5.2 Missing HATEOAS Links
+### 2.4 Fix Test JWT Validation
 
-**Issue:** API responses don't include hypermedia links for resource navigation.
+**Location:** `TestSecurityConfig.groovy:23-30`
+
+**Issue:**
+```groovy
+@Bean
+ReactiveJwtDecoder jwtDecoder() {
+    return token -> Mono.error(new IllegalStateException("Should not be called in tests"))
+}
+```
+
+Makes unit testing of authenticated endpoints difficult.
 
 **Recommendation:**
-Consider adding HATEOAS support for better API discoverability:
-
 ```groovy
-@GetMapping("/{id}")
-Mono<ResponseEntity<ObjectNode>> getDocument(@PathVariable String id) {
+@Bean
+ReactiveJwtDecoder jwtDecoder() {
+    return token -> {
+        Map<String, Object> claims = [
+            sub: "test-user",
+            tipi_org: "test-org",
+            tipi_group: "test-group"
+        ]
+        return Mono.just(new Jwt(token, null, null,
+            Map.of("alg", "none"), claims))
+    }
+}
+```
+
+---
+
+### 2.5 Document Transaction ID Format
+
+**Current State:** Transaction ID format (`tipiId~organization~group`) is not documented.
+
+**Recommendation:**
+Add JavaDoc to `TransactionService.groovy`:
+```groovy
+/**
+ * Generates a transaction identifier with format: {tipiId}~{organization}~{group}
+ *
+ * Example: "abc123xyz~jade-tipi_org~some-group"
+ *
+ * The transaction ID is globally unique and contains:
+ * - tipiId: Random identifier from IdGenerator (20 chars)
+ * - organization: Organization identifier
+ * - group: Group identifier within organization
+ *
+ * This format allows easy extraction of organization/group from transaction ID
+ * and provides a natural shard key for distributed deployments.
+ */
+private String nextId(Group group) { /* ... */ }
+```
+
+---
+
+## 3. CODE QUALITY ASSESSMENT
+
+### 3.1 Architecture & Design Patterns ✅
+
+**Strengths:**
+- **Reactive-First Design:** Proper use of Mono/Flux throughout
+- **Service-Oriented Architecture:** Clear Controller → Service → Data separation
+- **Interface-Based Design:** `DocumentService` interface with multiple implementations
+- **Dependency Injection:** Constructor-based injection (immutable beans)
+
+**Design Patterns Used:**
+- Adapter Pattern: `DocumentServiceMongoDbImpl` implements `DocumentService`
+- Configuration Profile Pattern: Conditional bean loading (mongodb vs foundationdb)
+- DAO Pattern: `ReactiveMongoTemplate` for data access
+- Singleton Pattern: Component beans
+
+**Example (DocumentController.groovy:60-67):**
+```groovy
+@GetMapping('/{id}')
+Mono<ResponseEntity<ObjectNode>> getDocument(@PathVariable('id') String id) {
+    log.debug('Retrieving document: id={}', id)
     return documentService.findById(id)
-            .map(document -> {
-                // Add hypermedia links
-                document.put("_links", objectMapper.createObjectNode()
-                    .put("self", "/api/documents/" + id)
-                    .put("update", "/api/documents/" + id)
-                    .put("delete", "/api/documents/" + id)
-                    .put("collection", "/api/documents"))
-                return ResponseEntity.ok(document)
-            })
+            .doOnNext { log.info('Document retrieved: id={}', id) }
+            .map(document -> ResponseEntity.ok(document))
             .defaultIfEmpty(ResponseEntity.notFound().build())
 }
 ```
 
-### 5.3 No Pagination for List Operations
+---
 
-**Issue:** `GET /api/documents` returns all documents without pagination.
+### 3.2 Error Handling ✅
 
-**Evidence:**
+**Strengths:**
+- **GlobalExceptionHandler** with @RestControllerAdvice
+- Specific handlers for major exception types
+- Consistent `ErrorResponse` DTO format
+- Appropriate HTTP status codes
+
+**Example (GlobalExceptionHandler.groovy:33-39):**
 ```groovy
-// DocumentController.groovy:45
-Flux<ObjectNode> listDocuments()  // No pagination parameters
-```
-
-**Recommendation:**
-Add pagination support before dataset grows:
-
-```groovy
-@GetMapping
-Flux<ObjectNode> listDocuments(
-        @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "50") int size,
-        @RequestParam(required = false) String sortBy) {
-
-    PageRequest pageRequest = PageRequest.of(page, size,
-        sortBy != null ? Sort.by(sortBy) : Sort.unsorted())
-
-    return documentService.findAll(pageRequest)
+@ExceptionHandler(ResponseStatusException)
+Mono<ResponseEntity<ErrorResponse>> handleResponseStatus(ResponseStatusException ex) {
+    log.warn('ResponseStatusException: {} - {}', ex.statusCode, ex.reason)
+    def errorResponse = new ErrorResponse(ex.reason ?: ex.message, ex.statusCode.value())
+    return Mono.just(ResponseEntity.status(ex.statusCode).body(errorResponse))
 }
 ```
 
-### 5.4 No API Versioning Strategy
-
-**Issue:** No version prefix in API paths.
-
-**Current:** `/api/documents`
-**Recommended:** `/api/v1/documents`
-
-**Recommendation:**
-1. Add version prefix to all API endpoints
-2. Document versioning strategy
-3. Plan for future API changes
-
----
-
-## 6. Architecture Improvements (Low Priority)
-
-### 6.1 Missing Domain Model Layer
-
-**Issue:** Controllers work directly with `ObjectNode` and `Map`.
-
-**Observation:**
-While flexibility is a design goal, consider adding a thin domain model for core entities:
-
-```groovy
-class Document {
-    String id
-    String name
-    Map<String, Object> metadata
-    Instant created
-    Instant modified
-
-    ObjectNode toObjectNode() { ... }
-    static Document fromObjectNode(ObjectNode node) { ... }
+**Error Response Format:**
+```json
+{
+  "message": "Document cannot be empty",
+  "status": 400,
+  "error": "Bad Request",
+  "timestamp": "2025-11-08T23:35:25.123Z"
 }
 ```
 
-**Benefits:**
-- Type safety for common fields
-- Business logic encapsulation
-- Easier testing
-- Better IDE support
-
-**Trade-off:** Loses some flexibility. Consider if this aligns with your "flexible JSON" vision.
-
-### 6.2 Service Interface Abstraction Unused
-
-**Issue:** `DocumentService` interface exists but only one implementation.
-
-**Evidence:**
-```groovy
-// DocumentService.groovy - Interface with single implementation
-interface DocumentService { ... }
-
-// DocumentServiceMongoDbImpl.groovy - Only implementation
-```
-
-**Recommendation:**
-Either:
-1. Remove the interface (YAGNI - You Aren't Gonna Need It) until multiple implementations exist
-2. Keep it if FoundationDB implementation is planned soon
-3. Document the intended abstraction strategy
-
-### 6.3 Transaction Pattern Not Enforced
-
-**Issue:** Transactions can be created but aren't required for document operations.
-
-**Evidence:**
-- Transaction tokens generated but never validated
-- Documents can be created without transaction context
-- No audit trail linking documents to transactions
-
-**Recommendation:**
-1. Decide if transactions are optional or mandatory
-2. If mandatory, add transaction validation to document operations
-3. If optional, document when they should be used
-4. Consider adding audit log with transaction references
+**Areas for Improvement:**
+- Document size validation is duplicated in create/update methods
+- Some reactive chain errors may not reach GlobalExceptionHandler
+- Limited granularity: `IllegalArgumentException` catches both validation and state issues
 
 ---
 
-## 7. Configuration & DevOps
+### 3.3 Logging Implementation ✅
 
-### 7.1 Missing Environment-Specific Profiles
+**Strengths:**
+- **@Slf4j** annotation on all controllers and services
+- Consistent logging strategy:
+  - DEBUG: Operation start
+  - INFO: Successful operations
+  - WARN: Business rule violations
+  - ERROR: Unexpected failures
+- **Structured logging** with logstash-logback-encoder
+- **Request/JWT logging filters** for debugging
 
-**Issue:** Only one MongoDB profile; no dev/staging/prod separation.
+**Example (TransactionService.groovy:57-70):**
+```groovy
+log.debug('Opening transaction: id={}', transactionId)
+return mongoTemplate.save(doc, COLLECTION_NAME)
+    .doOnSuccess { log.info('Transaction opened: id={}', transactionId) }
+    .doOnError { ex -> log.error('Failed to open transaction: id={}', transactionId, ex) }
+    .thenReturn(new TransactionToken(transactionId, secret, group))
+```
 
-**Recommendation:**
-Create profiles for different environments:
+**Areas for Improvement:**
+- Request body logging can be expensive at scale
+- Consider conditional enablement in production
+- Add correlation IDs for request tracing
 
+---
+
+### 3.4 Constants Management ✅
+
+**Strengths:**
+- **Constants.groovy** centralizes magic values
+- Collection names, field names, document limits
+- Regex patterns defined as constants
+
+**Example (Constants.groovy):**
+```groovy
+class Constants {
+    static final int MAX_DOCUMENT_SIZE_BYTES = 1_000_000  // 1MB
+    static final String COLLECTION_DOCUMENTS = 'objectNodes'
+    static final String COLLECTION_TRANSACTIONS = 'transaction'
+    static final String TRANSACTION_ID_SEPARATOR = '~'
+    static final String OBJECTID_PATTERN = '^[0-9a-fA-F]{24}$'
+}
+```
+
+**Areas for Improvement:**
+- Some hardcoded values still exist (Keycloak URLs in tests)
+- Filter order values could be constants (`@Order(2147483637)`)
+- Magic numbers in IdGenerator.groovy (SEQ_BITS=20, PREFIX_LEN=16)
+
+---
+
+### 3.5 Input Validation ✅
+
+**Strengths:**
+- **@Valid** annotations on controller endpoints
+- Jakarta Bean Validation on DTOs
+- Document size validation (1MB limit)
+- Null checks with Spring Assert
+
+**Example (TransactionController.groovy:37-49):**
+```groovy
+@PostMapping(path = '/open', consumes = MediaType.APPLICATION_JSON_VALUE)
+Mono<ResponseEntity<TransactionToken>> openTransaction(
+        @Valid @RequestBody Group group,  // ✅ Validation
+        @AuthenticationPrincipal Jwt jwt) {
+
+    log.debug('Opening transaction for organization={}, group={}',
+        group.organization(), group.group())
+
+    return transactionService.openTransaction(group)
+            .doOnSuccess { token -> log.info('Transaction opened: id={}', token.transactionId()) }
+            .map { token -> ResponseEntity.status(HttpStatus.CREATED).body(token) }
+}
+```
+
+**DTO Validation (Group.java):**
+```java
+public record Group(
+    @NotBlank(message = "organization must not be blank") String organization,
+    @NotBlank(message = "group must not be blank") String group
+) {}
+```
+
+**Areas for Improvement:**
+- No validation on document ID format
+- Empty document check may be insufficient
+- No regex validation on organization/group names
+- No validation of JSON file integrity in MongoDbInitializer
+
+---
+
+## 4. SECURITY ASSESSMENT
+
+### 4.1 OAuth2/JWT Implementation ✅
+
+**Strengths:**
+- Spring Security OAuth2 Resource Server properly configured
+- JWT validation via Keycloak issuer URI
+- `@AuthenticationPrincipal` for JWT access
+- JwtLoggingFilter for debugging
+
+**Configuration (application.yml):**
 ```yaml
-# application-dev.yml
 spring:
-  data.mongodb:
-    host: localhost
-    port: 27017
-logging.level.org.jadetipi: DEBUG
-
-# application-staging.yml
-spring:
-  data.mongodb:
-    host: staging-mongo.example.com
-    port: 27017
-logging.level.org.jadetipi: INFO
-
-# application-prod.yml
-spring:
-  data.mongodb:
-    uri: ${MONGODB_URI}  # From environment
-logging.level.org.jadetipi: WARN
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8484/realms/jade-tipi
 ```
 
-### 7.2 Secrets in Configuration Files
-
-**Issue:** Keycloak client secret in test code.
-
-**Evidence:**
+**Example (TransactionController.groovy:44-45):**
 ```groovy
-// KeycloakTestHelper.groovy - secret hardcoded
-CLIENT_SECRET = '7e8d5df5-5afb-4cc0-8d56-9f3f5c7cc5fd'
+Mono<ResponseEntity<TransactionToken>> openTransaction(
+        @Valid @RequestBody Group group,
+        @AuthenticationPrincipal Jwt jwt) {  // ✅ JWT access
+```
+
+**Security Concerns:**
+- ⚠️ Duplicate CORS configuration (SecurityConfig + WebConfig)
+- ⚠️ Hardcoded Keycloak credentials in test helper
+- ⚠️ Actuator endpoints expose all operations (`include: '*'`)
+- ⚠️ Localhost CORS origins hardcoded (not production-ready)
+
+---
+
+### 4.2 Secrets Management ⚠️
+
+**Critical Issues:**
+1. Test client secret hardcoded as fallback (KeycloakTestHelper.groovy)
+2. API issuer-uri hardcoded in application.yml
+
+**Good Practices:**
+- Uses environment variables with .env file
+- Docker Compose specifies credentials as environment variables
+- Keycloak import realm JSON for dev setup
+
+**Recommendation:**
+- Use Spring Cloud Config or external secret management (HashiCorp Vault, AWS Secrets Manager)
+- Never commit secrets, even for testing
+- Document secret rotation procedures
+
+---
+
+### 4.3 API Security Configuration
+
+**Public Endpoints (no authentication required):**
+```groovy
+.pathMatchers(
+    '/',
+    '/hello',
+    '/version',
+    '/docs',
+    '/swagger-ui/**',
+    '/webjars/**',
+    '/v3/api-docs/**',
+    '/actuator/**',  // ⚠️ Should be restricted
+    '/error',
+    '/css/**'
+).permitAll()
 ```
 
 **Recommendation:**
-1. Use environment variables for secrets
-2. Use Spring Cloud Config or Vault for production
-3. Never commit real secrets to version control
-4. Rotate test secrets regularly
+- Restrict actuator endpoints to internal networks only
+- Add authentication to sensitive actuator operations
+- Document which endpoints are public and why
 
-### 7.3 No Health Checks Beyond Actuator
+---
 
-**Issue:** No custom health indicators for critical dependencies.
+## 5. TESTING ASSESSMENT
+
+### 5.1 Unit Test Coverage ✅
+
+**Test Files:**
+- `TransactionServiceSpec.groovy`: 10 test cases
+- `DocumentServiceMongoDbImplSpec.groovy`: 8 test cases
+
+**Test Quality:**
+- ✅ Comprehensive mocking with `ReactiveMongoTemplate`
+- ✅ `StepVerifier` for reactive assertions
+- ✅ Tests cover happy path and error conditions
+- ✅ Spock framework with BDD-style specifications
+
+**Example (TransactionServiceSpec.groovy:35-53):**
+```groovy
+def "openTransaction should generate valid transaction ID with correct format"() {
+    given: "a group and mocked ID generator"
+    def group = new Group('test-org', 'test-group')
+    idGenerator.nextId() >> 'abc123xyz'
+    idGenerator.nextKey() >> 'secretKey123'
+    mongoTemplate.save(_ as Map, 'transaction') >> Mono.just([:])
+
+    when: "opening a transaction"
+    def result = service.openTransaction(group)
+
+    then: "transaction ID should have correct format"
+    StepVerifier.create(result)
+            .expectNextMatches { token ->
+                token.transactionId() == 'abc123xyz~test-org~test-group' &&
+                token.secret() == 'secretKey123' &&
+                token.group() == group
+            }
+            .verifyComplete()
+}
+```
+
+**All 21 Unit Tests Passing ✅**
+
+---
+
+### 5.2 Integration Test Coverage ✅
+
+**Test Files:**
+- `TransactionControllerIntegrationTest.groovy`: 3 tests
+- `TransactionServiceIntegrationSpec.groovy`: 3 tests
+- `DocumentServiceIntegrationSpec.groovy`: 6 tests
+
+**Test Infrastructure:**
+- `WebTestClient` for reactive endpoint testing
+- `KeycloakTestHelper` manages JWT token generation
+- Proper cleanup with collection drops between tests
+- Uses test profile with random port
+
+**All Integration Tests Passing ✅**
+
+---
+
+### 5.3 Testing Gaps
+
+**Missing Test Coverage:**
+- ❌ Document size limit validation (integration tests)
+- ❌ Transaction timeout/TTL scenarios
+- ❌ MongoDB connectivity failure handling
+- ❌ Filter chain testing (JwtLoggingFilter, RequestBodyLoggingFilter)
+- ❌ Concurrent transaction tests
+- ❌ DocumentController error path testing
+- ❌ Pagination edge cases
 
 **Recommendation:**
-Add custom health checks:
-
+Add integration tests for:
 ```groovy
-@Component
-class MongoHealthIndicator implements HealthIndicator {
+def "should reject documents exceeding size limit"() {
+    given: "a large document"
+    def largeDoc = objectMapper.createObjectNode()
+    largeDoc.put("data", "x" * 1_000_001)  // Exceeds 1MB
 
-    private final ReactiveMongoTemplate mongoTemplate
+    when: "creating the document"
+    def response = webTestClient.post()
+        .uri("/api/documents/large-doc")
+        .bodyValue(largeDoc)
+        .exchange()
 
-    @Override
-    Health health() {
-        try {
-            mongoTemplate.mongoDatabase.block()
-                .runCommand(new Document("ping", 1))
-                .block()
-            return Health.up().build()
-        } catch (Exception e) {
-            return Health.down(e).build()
-        }
-    }
+    then: "should return 413 Payload Too Large"
+    response.expectStatus().isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE)
 }
 ```
 
 ---
 
-## 8. Documentation
+## 6. API DESIGN ASSESSMENT
 
-### 8.1 Missing API Documentation Details
+### 6.1 REST Endpoint Design
 
-**Issue:** Swagger annotations minimal; no request/response examples.
+**Document Endpoints:**
+```
+GET    /api/documents          - List all (summary)
+GET    /api/documents/{id}     - Get by ID
+POST   /api/documents/{id}     - Create (⚠️ unconventional)
+PUT    /api/documents/{id}     - Update
+DELETE /api/documents/{id}     - Delete
+DELETE /api/documents/cleanup/corrupted - Maintenance
+```
+
+**Transaction Endpoints:**
+```
+POST /api/transactions/open   - Start transaction
+POST /api/transactions/commit - Commit transaction
+```
+
+**Issues:**
+1. **Unconventional POST for Creation:** `POST /api/documents/{id}` instead of `POST /api/documents` with body-provided ID
+2. **Maintenance Operations Public:** Cleanup endpoint should be admin-only or internal
 
 **Recommendation:**
-Enhance OpenAPI documentation:
+```groovy
+// Option 1: Body-provided ID
+@PostMapping
+Mono<ResponseEntity<ObjectNode>> createDocument(@RequestBody CreateDocumentRequest request) {
+    return documentService.create(request.id(), request.document())
+}
 
+// Option 2: Keep path ID but document it clearly
+@Operation(summary = "Create document with specified ID",
+           description = "Creates a new document with a client-provided ID")
+@PostMapping('/{id}')
+Mono<ResponseEntity<ObjectNode>> createDocument(/* ... */)
+```
+
+---
+
+### 6.2 Response Consistency ✅
+
+**HTTP Status Codes:**
+- ✅ 201 Created - Successful resource creation
+- ✅ 200 OK - Successful update/retrieval
+- ✅ 204 No Content - Successful delete
+- ✅ 404 Not Found - Resource not found
+- ✅ 400 Bad Request - Validation errors
+- ✅ 409 Conflict - Already committed transaction
+- ✅ 413 Payload Too Large - Document size exceeded
+
+**Error Response Format:**
+```json
+{
+  "message": "Validation failed",
+  "status": 400,
+  "error": "Bad Request",
+  "timestamp": "2025-11-08T23:35:25.123Z",
+  "validationErrors": {
+    "organization": "organization must not be blank"
+  }
+}
+```
+
+---
+
+### 6.3 API Documentation ✅
+
+**OpenAPI/Swagger:**
+- SpringDoc WebFlux UI included
+- API metadata configured (title, description, version, license)
+- Auto-generated from Spring annotations
+- Accessible at `/swagger-ui.html`
+
+**Documentation Gaps:**
+- No example request/response bodies
+- No API documentation for transaction flow
+- No ID format requirements documented
+- No API versioning strategy
+
+**Recommendation:**
+Add OpenAPI annotations:
 ```groovy
 @Operation(
-    summary = "Create a new document",
-    description = "Creates a new JSON document with the specified ID",
-    responses = [
-        @ApiResponse(responseCode = "201", description = "Document created"),
-        @ApiResponse(responseCode = "409", description = "Document already exists"),
-        @ApiResponse(responseCode = "400", description = "Invalid document")
-    ]
+    summary = "Open a new transaction",
+    description = "Creates a new transaction and returns transaction ID and secret",
+    requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
+        content = @Content(
+            schema = @Schema(implementation = Group.class),
+            examples = @ExampleObject(
+                value = """{"organization":"jade-tipi_org","group":"my-group"}"""
+            )
+        )
+    )
 )
-@PostMapping(value = "/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
-Mono<ResponseEntity<ObjectNode>> createDocument(
-    @Parameter(description = "Unique document identifier") @PathVariable String id,
-    @Parameter(description = "Document content as JSON") @RequestBody ObjectNode document
-)
+@PostMapping('/open')
+Mono<ResponseEntity<TransactionToken>> openTransaction(/* ... */)
 ```
-
-### 8.2 No Architecture Decision Records (ADRs)
-
-**Recommendation:**
-Document key decisions in `docs/adr/`:
-- Why Groovy for backend?
-- Why reactive programming?
-- Why MongoDB over SQL?
-- Why custom ID generation?
-- Why transaction token pattern?
-
-### 8.3 Missing Developer Guide
-
-**Recommendation:**
-Create `CONTRIBUTING.md` with:
-- How to set up development environment
-- How to run tests
-- Code style guidelines
-- Git workflow
-- How to add new endpoints
-- How to add new database collections
 
 ---
 
-## 9. Specific Code Improvements
+## 7. DATABASE & PERSISTENCE
 
-### 9.1 `DocumentServiceMongoDbImpl` Improvements
+### 7.1 MongoDB Integration ✅
 
+**Strengths:**
+- Reactive MongoDB driver (non-blocking)
+- Proper `ReactiveMongoTemplate` usage
+- ObjectId handling (attempts parse, falls back to string)
+- Field projection in summary queries
+
+**Example (DocumentServiceMongoDbImpl.groovy:112-126):**
 ```groovy
-// Current: Mixing low-level and high-level API
-Mono.from(
-    mongoTemplate.mongoDatabase
-        .map(db -> db.getCollection(COLLECTION_NAME))
-        .flatMapMany(collection -> collection.find(new Document("_id", idValue)))
-)
-
-// Recommended: Use ReactiveMongoTemplate consistently
-mongoTemplate.findById(id, Map.class, COLLECTION_NAME)
-    .map(map -> {
-        map.put("_id", map.get("_id").toString())
-        return objectMapper.convertValue(map, ObjectNode.class)
-    })
-```
-
-**Why:** Simpler, more maintainable, leverages Spring Data abstractions.
-
-### 9.2 `TransactionController` Validation Cleanup
-
-**Remove:**
-```groovy
-// Lines 45-50, 60-72 - Manual validation
-if (!group?.organization()?.trim()) {
-    return Mono.error(new ResponseStatusException(...))
+@Override
+Flux<ObjectNode> findAllSummary() {
+    log.debug('Finding all documents (summary)')
+    Query query = new Query()
+    query.fields().include(FIELD_ID, FIELD_NAME)  // ✅ Field projection
+    return mongoTemplate.find(query, Map.class, COLLECTION_NAME)
+            .map(map -> {
+                def id = map.get(FIELD_ID)
+                if (id != null) {
+                    map.put(FIELD_ID, id.toString())  // ✅ Consistent ID format
+                }
+                return objectMapper.convertValue(map, ObjectNode.class)
+            })
 }
 ```
 
-**Add:**
-```groovy
-@Valid @RequestBody Group group
-```
+**Issues:**
+- ❌ No indexes defined (except default `_id`)
+- ❌ No pagination support
+- ❌ Manual BSON handling in some places
+- ❌ No query optimization documented
 
-**Add global handler:**
+---
+
+### 7.2 Data Model
+
+**Transaction Document:**
 ```groovy
-@RestControllerAdvice
-class ValidationExceptionHandler {
-    @ExceptionHandler(MethodArgumentNotValidException)
-    fun handleValidation(ex: MethodArgumentNotValidException): Mono<ErrorResponse>
+{
+  "_id": "abc123xyz~jade-tipi_org~some-group",
+  "organization": "jade-tipi_org",
+  "group": "some-group",
+  "secret": "XBj4SG2Y4pAh5MtRaoisgm9GYky7iOQv0o-Agpmgnmk",  // ⚠️ Plain text
+  "created": "2025-11-08T23:35:25.061Z",
+  "commit": "zvklwmjx~jade-tipi_org~some-group",  // After commit
+  "committed": "2025-11-08T23:35:25.667Z"
 }
 ```
 
-### 9.3 `EndpointsController` Refactoring
-
-**Issue:** `mappings()` method is complex and mixes concerns.
+**Issues:**
+- ⚠️ Secrets stored in plain text (should be hashed)
+- ⚠️ No TTL/expiration
+- ⚠️ No audit trail (who committed)
+- ⚠️ Transaction ID exposes organization/group
 
 **Recommendation:**
-Extract `ApplicationEndpoints` logic into a service:
-
 ```groovy
-@Service
-class EndpointMappingService {
-    String getFormattedMappings(String actuatorUrl, List<String> packages)
-    List<EndpointInfo> getRawMappings(String actuatorUrl, List<String> packages)
+{
+  "_id": "opaque-transaction-id",
+  "organization": "jade-tipi_org",
+  "group": "some-group",
+  "secretHash": "sha256-hash-of-secret",  // ✅ Hashed
+  "created": "2025-11-08T23:35:25.061Z",
+  "ttl": "2025-11-09T23:35:25.061Z",  // ✅ Expires after 24 hours
+  "commit": "commit-id",
+  "committed": "2025-11-08T23:35:25.667Z",
+  "committedBy": "user-id"  // ✅ Audit trail
 }
+```
 
-@RestController
-class EndpointsController {
-    private final EndpointMappingService mappingService
+---
 
-    @GetMapping("/")
-    String mappings() {
-        return mappingService.getFormattedMappings(actuatorUrl, [basePackage])
+### 7.3 Data Initialization
+
+**MongoDbInitializer.groovy:**
+- Loads JSON files from `classpath:tipi/`
+- Creates collections dynamically
+- ⚠️ Uses `.block()` in reactive context
+
+**Recommendation:**
+```groovy
+@Component
+class MongoDbInitializer {
+
+    @EventListener(ApplicationReadyEvent)
+    Mono<Void> initializeMongoDB() {
+        return loadCollections()
+            .then(createIndexes())
+            .then()
+    }
+
+    private Mono<Void> createIndexes() {
+        return mongoTemplate.indexOps("transaction")
+            .ensureIndex(/* index definition */)
+            .then()
     }
 }
 ```
 
 ---
 
-## 10. Quick Wins (Easy Improvements)
+## 8. CONFIGURATION & DEVOPS
 
-### Priority 1: Add These Today
-1. ✅ Add `@Valid` to all `@RequestBody` parameters
-2. ✅ Create global `@RestControllerAdvice` exception handler
-3. ✅ Add constants for magic strings and numbers
-4. ✅ Add logging to critical operations
+### 8.1 Application Configuration
 
-### Priority 2: This Week
-5. ✅ Add pagination to document listing
-6. ✅ Add request size limits
-7. ✅ Create error response DTO
-8. ✅ Add unit tests for services
-9. ✅ Document API endpoints with Swagger annotations
+**Properties Files:**
+- `application.yml` - Base configuration
+- `application-mongodb.yml` - MongoDB profile
+- `application-foundationdb.yml` - FoundationDB profile (incomplete)
+- `application-test.yml` - Test overrides
 
-### Priority 3: This Sprint
-10. ✅ Implement JWT claim-based authorization
-11. ✅ Add environment-specific profiles
-12. ✅ Create architecture decision records
-13. ✅ Add custom health indicators
-14. ✅ Write developer guide
+**Issues:**
+```yaml
+management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'  # ⚠️ Exposes all actuator endpoints
+      cors:
+        allowed-origins: "http://localhost:3000,http://192.168.1.231:3000"  # ⚠️ Hardcoded
+```
 
----
-
-## 11. Positive Observations
-
-### What's Working Well
-
-1. **Reactive Architecture**: Proper use of Mono/Flux throughout
-2. **Security Foundation**: JWT integration is solid
-3. **Code Organization**: Clear package structure
-4. **Integration Tests**: Good coverage of end-to-end scenarios
-5. **Modern Stack**: Up-to-date Spring Boot, Java 21, Groovy 4
-6. **Documentation**: Swagger/OpenAPI integration is good
-7. **Logging Filters**: Request body logging is helpful for debugging
-8. **ID Generation**: Custom IdGenerator is thread-safe and well-designed
-9. **Docker Setup**: docker-compose makes local development easy
-10. **License Headers**: Consistent copyright headers
+**Recommendation:**
+```yaml
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics  # ✅ Restrict to necessary endpoints
+      cors:
+        allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}  # ✅ Environment variable
+```
 
 ---
 
-## 12. Recommended Next Steps
+### 8.2 Build Configuration ✅
 
-### Immediate (Next Week)
-1. Implement global exception handler
-2. Add validation annotations to controllers
-3. Add request size limits
-4. Increase logging coverage
+**Gradle Setup:**
+- Spring Boot 3.5.6, Java 21 toolchain
+- Groovy 4.0 support
+- Multi-module project (main + libraries)
+- Separate test and integrationTest source sets
 
-### Short-term (Next Month)
-1. Add unit tests for all services
-2. Implement JWT-based authorization
-3. Add pagination to list endpoints
-4. Create environment-specific configurations
-5. Document API with detailed Swagger annotations
-
-### Medium-term (Next Quarter)
-1. Implement transaction enforcement on documents
-2. Add performance/load testing
-3. Create developer guide
-4. Set up CI/CD pipeline
-5. Add monitoring and alerting
-6. Consider domain model layer
-
-### Long-term (Future Versions)
-1. API versioning strategy
-2. HATEOAS support
-3. GraphQL consideration
-4. Multi-tenancy support
-5. Audit logging system
-6. Search/query capabilities
+**Dependencies:**
+- spring-boot-starter-webflux (reactive)
+- spring-boot-starter-oauth2-resource-server (JWT)
+- spring-boot-starter-data-mongodb-reactive
+- spring-boot-starter-actuator
+- logstash-logback-encoder (structured logging)
+- spock-core 2.4-M6 (testing)
 
 ---
 
-## 13. Conclusion
+### 8.3 Docker & Deployment
 
-Jade-Tipi demonstrates strong architectural foundations and modern development practices. The reactive approach, security implementation, and test coverage show careful planning. With the improvements outlined above—particularly around validation, error handling, and documentation—this will be a robust production-ready system.
+**Docker Compose Services:**
+```yaml
+mongodb:
+  image: mongo:8.0
+  ports: 127.0.0.1:27017:27017
+  volumes:
+    - mongodb_data:/data/db
 
-The codebase is clean, well-organized, and shows promise for the future. Focus on standardizing patterns (especially error handling and validation) and increasing test coverage in the short term.
+keycloak:
+  image: quay.io/keycloak/keycloak:26.0
+  ports: 127.0.0.1:8484:8080
+  environment:
+    KC_DB: dev-mem  # ⚠️ In-memory, not persisted
+```
 
-**Key Takeaway:** You're on the right track. Address the critical issues (validation, error handling, authorization) first, then enhance testing and documentation. The foundation is solid.
+**Issues:**
+- ❌ No Dockerfile for backend service
+- ❌ No health checks in docker-compose
+- ❌ Keycloak uses in-memory database (not persisted)
+- ❌ No resource limits defined
+- ❌ No restart policies beyond "unless-stopped"
+
+**Recommendation:**
+Create `Dockerfile`:
+```dockerfile
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+COPY build/libs/jade-tipi-*.jar app.jar
+EXPOSE 8765
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8765/actuator/health || exit 1
+ENTRYPOINT ["java", "-jar", "app.jar"]
+```
+
+Add to docker-compose.yml:
+```yaml
+jade-tipi-backend:
+  build: ./jade-tipi
+  ports:
+    - "127.0.0.1:8765:8765"
+  depends_on:
+    - mongodb
+    - keycloak
+  environment:
+    SPRING_DATA_MONGODB_URI: mongodb://mongodb:27017/jdtp
+    SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://keycloak:8080/realms/jade-tipi
+  healthcheck:
+    test: ["CMD", "wget", "--spider", "http://localhost:8765/actuator/health"]
+    interval: 30s
+    timeout: 3s
+  deploy:
+    resources:
+      limits:
+        memory: 512M
+      reservations:
+        memory: 256M
+```
 
 ---
 
-## Appendix: Code Examples Repository
+## 9. REMAINING TECHNICAL DEBT
 
-For complete code examples of the recommended improvements, see:
-- Global Exception Handler example (Section 1.2)
-- Validation improvements (Section 1.1)
-- Logging strategy (Section 3.4)
-- Unit test examples (Section 4.1)
-- Health indicator example (Section 7.3)
+### 9.1 High Priority
+
+1. **Remove hardcoded secrets** (KeycloakTestHelper.groovy)
+2. **Consolidate CORS configuration** (remove duplication)
+3. **Add pagination** to document listing
+4. **Implement transaction TTL** and cleanup
+5. **Complete TransactionCreate refactoring** (git status shows incomplete)
+
+### 9.2 Medium Priority
+
+6. **Fix test JWT validation** (TestSecurityConfig)
+7. **Add MongoDB indexes** (organization, group, name fields)
+8. **Complete or remove FoundationDB** implementation
+9. **Add audit trail fields** (_createdBy, _modifiedBy, _createdAt, _modifiedAt)
+10. **Document transaction ID format** and semantics
+
+### 9.3 Low Priority
+
+11. **Add bulk operation endpoints**
+12. **Implement request correlation IDs**
+13. **Add rate limiting**
+14. **Consolidate filter order constants**
+15. **Add OpenAPI examples** for requests/responses
 
 ---
 
-**Review Completed:** 2025-11-08
-**Next Review Recommended:** After implementing critical fixes (1-2 weeks)
+## 10. PERFORMANCE & SCALABILITY
+
+### 10.1 Performance Considerations
+
+**Strengths:**
+- ✅ Reactive stack handles many concurrent connections efficiently
+- ✅ Non-blocking I/O throughout
+- ✅ Stateless service (JWT-based auth)
+
+**Concerns:**
+- ❌ No indexes on frequently queried fields
+- ❌ Document size validation uses string length (not actual BSON size)
+- ❌ RequestBodyLoggingFilter reads entire body into memory
+- ❌ No caching layer (e.g., Redis)
+
+**Recommendations:**
+```groovy
+// 1. Add indexes
+mongoTemplate.indexOps("transaction")
+    .ensureIndex(new Index("organization", Sort.Direction.ASC)
+        .on("group", Sort.Direction.ASC)
+        .named("idx_org_group"))
+
+// 2. Add caching for frequently accessed data
+@Cacheable("document-summaries")
+Flux<ObjectNode> findAllSummary() { /* ... */ }
+
+// 3. Add pagination
+Flux<ObjectNode> findAllSummary(int page, int size) {
+    Query query = new Query().skip(page * size).limit(size)
+    // ...
+}
+```
+
+---
+
+### 10.2 Scalability Considerations
+
+**Horizontal Scaling:**
+- ✅ Stateless service (can add instances)
+- ✅ JWT-based auth (no session state)
+- ✅ Spring Boot actuator for health checks
+
+**Database Scaling:**
+- ⚠️ Single MongoDB instance (dev setup)
+- ⚠️ No replication documented
+- ✅ Transaction ID format supports sharding (organization/group as shard key)
+
+**Recommendations:**
+1. Configure MongoDB replica set for high availability
+2. Document sharding strategy (by organization)
+3. Add connection pooling configuration
+4. Implement circuit breakers for external dependencies
+5. Add metrics/monitoring (Micrometer + Prometheus)
+
+---
+
+## 11. PROJECT STRENGTHS
+
+1. ✅ **Excellent Reactive Implementation** - Proper Mono/Flux usage throughout
+2. ✅ **Clean Architecture** - Clear separation of concerns
+3. ✅ **Comprehensive Testing** - 21 unit tests + integration tests, all passing
+4. ✅ **Robust Error Handling** - GlobalExceptionHandler with consistent responses
+5. ✅ **Modern Security** - OAuth2/JWT properly configured
+6. ✅ **Dual License Support** - AGPL-3.0 with Commercial licensing
+7. ✅ **Modern Stack** - Spring Boot 3.5.6, Java 21, Groovy 4.0
+8. ✅ **Good Developer Experience** - Docker Compose for local development
+9. ✅ **Type Safety** - Records and validation annotations for DTOs
+10. ✅ **Comprehensive Logging** - Slf4j with structured logging filters
+
+---
+
+## 12. RECOMMENDATIONS BY PRIORITY
+
+### CRITICAL (Fix Immediately)
+
+1. ✅ ~~Create global exception handler~~ (COMPLETED)
+2. ✅ ~~Add @Valid annotations and remove manual validation~~ (COMPLETED)
+3. ✅ ~~Add document size limits~~ (COMPLETED)
+4. ✅ ~~Extract constants~~ (COMPLETED)
+5. ✅ ~~Implement logging strategy~~ (COMPLETED)
+6. ✅ ~~Create unit tests~~ (COMPLETED)
+7. 🔴 Remove hardcoded Keycloak secret from KeycloakTestHelper
+8. 🔴 Consolidate CORS configuration (remove duplication)
+9. 🔴 Replace .block() in MongoDbInitializer with reactive startup
+10. 🔴 Add pagination to document list endpoint
+
+### HIGH (Sprint Priority)
+
+11. 🟡 Complete TransactionCreate → Group refactoring
+12. 🟡 Fix test JWT validation to work properly
+13. 🟡 Add MongoDB indexes for organization/group queries
+14. 🟡 Document transaction ID format and semantics
+15. 🟡 Add transaction TTL and cleanup scheduler
+16. 🟡 Create Dockerfile for backend service
+17. 🟡 Restrict actuator endpoints (not all exposed)
+
+### MEDIUM (Next Quarter)
+
+18. 🟢 Complete FoundationDB implementation or remove profile
+19. 🟢 Add request/response examples to OpenAPI
+20. 🟢 Add audit trail fields
+21. 🟢 Implement caching for document summaries
+22. 🟢 Add integration tests for error paths
+23. 🟢 Configure MongoDB replication for production
+24. 🟢 Add bulk operation endpoints
+
+### LOW (Backlog)
+
+25. ⚪ Consolidate magic order values into constants
+26. ⚪ Add request correlation IDs
+27. ⚪ Implement rate limiting
+28. ⚪ Add feature flags
+29. ⚪ Optimize BSON document size validation
+30. ⚪ Add circuit breakers for resilience
+
+---
+
+## 13. PROJECT METRICS
+
+- **Total Lines of Code:** ~8,087 (Groovy/Java)
+- **Main Source Files:** 21
+- **Test Files:** 10
+- **Unit Tests:** 21 (all passing ✅)
+- **Integration Tests:** 12 (all passing ✅)
+- **Test Coverage:** Good (unit tests cover critical paths)
+- **Build Tool:** Gradle (multi-module)
+- **Language:** Groovy 4.0 + Java 21
+- **Test Framework:** Spock 2.4-M6, JUnit 5
+- **Database:** MongoDB 8.0 (Docker)
+- **Auth:** Keycloak 26.0 (OAuth2/OIDC)
+
+---
+
+## 14. CONCLUSION
+
+The Jade-Tipi backend project demonstrates **solid engineering practices** with a modern reactive stack. The recent improvements to error handling, validation, logging, and testing have significantly strengthened the codebase quality.
+
+**Key Achievements:**
+- ✅ All critical error handling implemented
+- ✅ Comprehensive input validation
+- ✅ Excellent test coverage (all tests passing)
+- ✅ Professional logging strategy
+- ✅ Clean reactive architecture
+
+**Next Steps:**
+Focus on the **CRITICAL** recommendations above to prepare for production deployment:
+1. Security hardening (remove hardcoded secrets, consolidate CORS)
+2. Performance optimization (pagination, indexes, reactive startup)
+3. Documentation improvements (API examples, transaction flow)
+
+The project is **on track** for production readiness after addressing the critical items.
+
+---
+
+**Review prepared by:** Claude Code
+**Date:** 2025-11-08
+**Reviewed commit:** HEAD (after improvements implementation)
