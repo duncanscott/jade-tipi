@@ -27,10 +27,10 @@ class SwaggerRedirectConfig {
     RouterFunction<ServerResponse> swaggerUiRedirect() {
         RouterFunctions
                 .route(GET('/swagger-ui.html')) {
-                    ServerResponse.permanentRedirect(URI.create('/swagger-ui/index.html')).build()
+                    ServerResponse.permanentRedirect(URI.create('/webjars/swagger-ui/index.html')).build()
                 }
                 .andRoute(GET('/swagger-ui')) {
-                    ServerResponse.permanentRedirect(URI.create('/swagger-ui/index.html')).build()
+                    ServerResponse.permanentRedirect(URI.create('/webjars/swagger-ui/index.html')).build()
                 }
     }
 }

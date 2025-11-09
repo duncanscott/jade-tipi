@@ -51,6 +51,7 @@ class SecurityConfig {
                                     '/docs',
                                     '/swagger-ui/**',
                                     '/swagger-ui.html',
+                                    '/webjars/**',
                                     '/v3/api-docs/**',
                                     '/actuator/**',
                                     '/error',

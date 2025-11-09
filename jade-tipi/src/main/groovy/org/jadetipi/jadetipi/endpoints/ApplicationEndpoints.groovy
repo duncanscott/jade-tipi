@@ -26,6 +26,8 @@ class ApplicationEndpoints {
             JsonNode requestMappingConditions = handler.path('details').path('requestMappingConditions')
             JsonNode endpointMethods = requestMappingConditions.path('methods')
             JsonNode endpointPatterns = requestMappingConditions.path('patterns')
+
+            // Handle standard controller-based handlers
             if (endpointMethods.isArray() && endpointPatterns.isArray()) {
                 endpointPatterns.forEach { patternNode ->
                     String pattern = patternNode.asText()
@@ -34,9 +36,18 @@ class ApplicationEndpoints {
                     }
                 }
             }
+            // Handle RouterFunction-based handlers (e.g., SwaggerRedirectConfig)
+            else if (handler.has('predicate')) {
+                String predicate = handler.path('predicate').asText()
+                // Parse predicates like "(GET && /swagger-ui.html)" or "(GET && /swagger-ui)"
+                def matcher = predicate =~ /\((\w+)\s+&&\s+(\/[^\)]+)\)/
+                if (matcher.find()) {
+                    String method = matcher.group(1)
+                    String pattern = matcher.group(2)
+                    patterns[pattern].add(method)
+                }
+            }
         }
-
-        patterns.remove('/swagger-ui.html')
 
         int maxPatternLength = patterns.keySet()*.length().max()
         int bufferSize = 2 + maxPatternLength
@@ -65,8 +76,19 @@ class ApplicationEndpoints {
         }
 
         handlers.findAll { JsonNode handler ->
+            // Check controller-based handlers
             String className = handler.path('details').path('handlerMethod').path('className').asText()
-            prefixes.any { prefix -> className.startsWith(prefix) }
+            if (className && prefixes.any { prefix -> className.startsWith(prefix) }) {
+                return true
+            }
+
+            // Check RouterFunction-based handlers (handler field contains class info)
+            String handlerStr = handler.path('handler').asText()
+            if (handlerStr && prefixes.any { prefix -> handlerStr.startsWith(prefix) }) {
+                return true
+            }
+
+            return false
         }
     }
 
