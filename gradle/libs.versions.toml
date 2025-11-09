@@ -12,6 +12,7 @@ slf4j = "2.0.13"
 logback = "1.5.6"
 junit-platform = "1.11.0"
 expressly = "5.0.0"
+springdoc = "2.6.0"
 
 [libraries]
 groovy = { module = "org.apache.groovy:groovy-all", version.ref = "groovy" }
@@ -27,3 +28,4 @@ slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit-platform" }
 expressly = { module = "org.glassfish.expressly:expressly", version.ref = "expressly" }
+springdoc-webflux-ui = { module = "org.springdoc:springdoc-openapi-starter-webflux-ui", version.ref = "springdoc" }

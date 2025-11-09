@@ -134,6 +134,11 @@ AUTH_SECRET=jade-tipi-secret-change-in-production-minimum-32-characters-required
 
 - `POST /api/transactions/open` — issue a transaction token scoped to `organization` and `group`. Returns a public identifier plus write secret; intended for future multi-party write flows.
 
+### API Documentation
+
+- Swagger UI: `http://localhost:8765/swagger-ui/index.html`
+- Raw OpenAPI JSON: `http://localhost:8765/v3/api-docs`
+
 ### Authentication
 
 **Obtaining a JWT Token:**

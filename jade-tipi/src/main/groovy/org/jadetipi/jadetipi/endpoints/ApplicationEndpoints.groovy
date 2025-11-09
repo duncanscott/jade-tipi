@@ -18,11 +18,11 @@ import org.springframework.web.client.RestTemplate
 
 class ApplicationEndpoints {
 
-    static String mappings(String actuatorMappingsUrl, String basePackage) {
+    static String mappings(String actuatorMappingsUrl, Collection<String> basePackages) {
         StringBuilder sb = new StringBuilder()
         Map<String, Set<String>> patterns = [:].withDefault { new HashSet<String>() }
         patterns['/actuator'].add('GET')
-        endpointHandlersFromActuator(actuatorMappingsUrl, basePackage).each { JsonNode handler ->
+        endpointHandlersFromActuator(actuatorMappingsUrl, basePackages).each { JsonNode handler ->
             JsonNode requestMappingConditions = handler.path('details').path('requestMappingConditions')
             JsonNode endpointMethods = requestMappingConditions.path('methods')
             JsonNode endpointPatterns = requestMappingConditions.path('patterns')
@@ -36,6 +36,8 @@ class ApplicationEndpoints {
             }
         }
 
+        patterns.remove('/swagger-ui.html')
+
         int maxPatternLength = patterns.keySet()*.length().max()
         int bufferSize = 2 + maxPatternLength
         patterns.sort { it.key }.each { String pattern, Set<String> methods ->
@@ -48,7 +50,8 @@ class ApplicationEndpoints {
         sb.toString()
     }
 
-    private static List<JsonNode> endpointHandlersFromActuator(String actuatorMappingsUrl, String basePackage) {
+    private static List<JsonNode> endpointHandlersFromActuator(String actuatorMappingsUrl, Collection<String> basePackages) {
+        Collection<String> prefixes = (basePackages ?: []).collect { it?.trim() }.findAll { it }
         RestTemplate restTemplate = new RestTemplate()
         ObjectMapper objectMapper = new ObjectMapper()
         String jsonString = restTemplate.getForObject(actuatorMappingsUrl, String)
@@ -57,8 +60,13 @@ class ApplicationEndpoints {
         List<JsonNode> handlers = []
         extractHandlers(rootNode, handlers)
 
+        if (prefixes.isEmpty()) {
+            return handlers
+        }
+
         handlers.findAll { JsonNode handler ->
-            handler.path('details').path('handlerMethod').path('className').asText().startsWith(basePackage)
+            String className = handler.path('details').path('handlerMethod').path('className').asText()
+            prefixes.any { prefix -> className.startsWith(prefix) }
         }
     }
 

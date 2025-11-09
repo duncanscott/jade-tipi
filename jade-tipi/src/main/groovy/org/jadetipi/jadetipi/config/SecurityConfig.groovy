@@ -46,8 +46,12 @@ class SecurityConfig {
                     exchanges
                             .pathMatchers(
                                     '/',
+                                    '/hello',
                                     '/version',
                                     '/docs',
+                                    '/swagger-ui/**',
+                                    '/swagger-ui.html',
+                                    '/v3/api-docs/**',
                                     '/actuator/**',
                                     '/error',
                                     '/css/**'

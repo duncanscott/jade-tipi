@@ -41,7 +41,7 @@ class EndpointsController {
     @RequestMapping(value = '/', method = RequestMethod.GET, produces = MediaType.TEXT_PLAIN_VALUE)
     def mappings() {
         String actuatorMappingsUrl = "http://localhost:${serverPort.port}/actuator/mappings"
-        ApplicationEndpoints.mappings(actuatorMappingsUrl, basePackage)
+        ApplicationEndpoints.mappings(actuatorMappingsUrl, [basePackage, 'org.springdoc'])
     }
 
     @GetMapping('/hello')

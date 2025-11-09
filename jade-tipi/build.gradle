@@ -45,6 +45,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
 
     implementation 'com.fasterxml.jackson.core:jackson-databind'
+    implementation libs.springdoc.webflux.ui
 
     if (project.hasProperty('db') && project.property('db') == 'foundationdb') {
         implementation 'org.foundationdb:fdb-java:7.1.59'
