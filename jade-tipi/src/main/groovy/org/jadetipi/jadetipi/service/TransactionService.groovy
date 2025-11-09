@@ -57,12 +57,23 @@ class TransactionService {
 
         log.debug('Opening transaction: id={}', transactionId)
 
-        Map<String, Object> doc = [
-                _id          : transactionId,
+        Map<String, Object> txn = [
+                id        : transactionId,
+                secret    : secret,
+                commit    : null,
+                opened    : Instant.now(),
+                committed : null
+        ] as Map<String,Object>
+
+        Map<String, Object> grp = [
                 organization : group.organization(),
-                group        : group.group(),
-                secret       : secret,
-                created    : Instant.now()
+                group        : group.group()
+        ] as Map<String,Object>
+
+        Map<String, Object> doc = [
+                _id : transactionId,
+                grp : grp,
+                txn : txn
         ] as Map<String,Object>
 
         return mongoTemplate.save(doc, COLLECTION_NAME)
@@ -88,18 +99,24 @@ class TransactionService {
         return mongoTemplate.findById(transactionToken.transactionId(), Map.class, COLLECTION_NAME)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException('Transaction not found')))
                 .flatMap { Map doc ->
-                    String storedSecret = doc.get('secret') as String
+                    Map<String, Object> txn = doc.get('txn') as Map<String, Object>
+                    if (txn == null) {
+                        log.error('Transaction document missing txn field: id={}', transactionToken.transactionId())
+                        return Mono.error(new IllegalStateException('Invalid transaction document structure'))
+                    }
+
+                    String storedSecret = txn.get('secret') as String
                     if (storedSecret != transactionToken.secret()) {
                         log.warn('Invalid secret for transaction: id={}', transactionToken.transactionId())
                         return Mono.error(new IllegalArgumentException('Invalid transaction secret'))
                     }
-                    if (doc.get('commit') != null) {
+                    if (txn.get('commit') != null) {
                         log.warn('Transaction already committed: id={}', transactionToken.transactionId())
                         return Mono.error(new IllegalStateException('Transaction already committed'))
                     }
 
-                    doc.put('commit', commitId)
-                    doc.put('committed', Instant.now())
+                    txn.put('commit', commitId)
+                    txn.put('committed', Instant.now())
 
                     return mongoTemplate.save(doc, COLLECTION_NAME)
                             .doOnSuccess { log.info('Transaction committed: id={}, commit={}',

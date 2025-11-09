@@ -71,10 +71,15 @@ class TransactionServiceSpec extends Specification {
         then: "document should be saved with correct fields"
         savedDoc != null
         savedDoc._id == 'id123~org1~group1'
-        savedDoc.organization == 'org1'
-        savedDoc.group == 'group1'
-        savedDoc.secret == 'secret456'
-        savedDoc.created != null
+        savedDoc.grp != null
+        savedDoc.grp.organization == 'org1'
+        savedDoc.grp.group == 'group1'
+        savedDoc.txn != null
+        savedDoc.txn.id == 'id123~org1~group1'
+        savedDoc.txn.secret == 'secret456'
+        savedDoc.txn.commit == null
+        savedDoc.txn.opened != null
+        savedDoc.txn.committed == null
     }
 
     def "openTransaction should reject null group"() {
@@ -113,10 +118,17 @@ class TransactionServiceSpec extends Specification {
         def token = new TransactionToken('tx-123', 'secret123', group)
         def existingDoc = [
             _id: 'tx-123',
-            organization: 'org1',
-            group: 'group1',
-            secret: 'secret123',
-            created: new Date()
+            grp: [
+                organization: 'org1',
+                group: 'group1'
+            ],
+            txn: [
+                id: 'tx-123',
+                secret: 'secret123',
+                commit: null,
+                opened: new Date(),
+                committed: null
+            ]
         ]
 
         and: "mocked dependencies"
@@ -141,8 +153,8 @@ class TransactionServiceSpec extends Specification {
                 .verifyComplete()
 
         and: "document should be updated with commit info"
-        savedDoc.commit == 'commit-456~org1~group1'
-        savedDoc.committed != null
+        savedDoc.txn.commit == 'commit-456~org1~group1'
+        savedDoc.txn.committed != null
     }
 
     def "commitTransaction should reject transaction not found"() {
@@ -170,8 +182,17 @@ class TransactionServiceSpec extends Specification {
         def token = new TransactionToken('tx-123', 'wrong-secret', group)
         def existingDoc = [
             _id: 'tx-123',
-            secret: 'correct-secret',
-            created: new Date()
+            grp: [
+                organization: 'org1',
+                group: 'group1'
+            ],
+            txn: [
+                id: 'tx-123',
+                secret: 'correct-secret',
+                commit: null,
+                opened: new Date(),
+                committed: null
+            ]
         ]
         idGenerator.nextId() >> 'commit-id'
         mongoTemplate.findById('tx-123', Map.class, 'transaction') >> Mono.just(existingDoc)
@@ -194,9 +215,17 @@ class TransactionServiceSpec extends Specification {
         def token = new TransactionToken('tx-123', 'secret123', group)
         def existingDoc = [
             _id: 'tx-123',
-            secret: 'secret123',
-            commit: 'existing-commit',  // Already committed
-            created: new Date()
+            grp: [
+                organization: 'org1',
+                group: 'group1'
+            ],
+            txn: [
+                id: 'tx-123',
+                secret: 'secret123',
+                commit: 'existing-commit',  // Already committed
+                opened: new Date(),
+                committed: new Date()
+            ]
         ]
         idGenerator.nextId() >> 'commit-id'
         mongoTemplate.findById('tx-123', Map.class, 'transaction') >> Mono.just(existingDoc)
