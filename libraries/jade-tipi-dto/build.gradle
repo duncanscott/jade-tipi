@@ -20,9 +20,9 @@ dependencies {
     testImplementation libs.spock.core
     testImplementation libs.junit
     testImplementation libs.junit.jupiter
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testRuntimeOnly libs.junit.platform.launcher
     testImplementation libs.hibernate.validator
-    testImplementation 'org.glassfish.expressly:expressly:5.0.0'
+    testImplementation libs.expressly
 }
 
 tasks.named('test') {

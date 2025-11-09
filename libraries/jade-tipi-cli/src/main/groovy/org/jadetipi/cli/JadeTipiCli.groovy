@@ -16,7 +16,9 @@ import groovy.cli.picocli.CliBuilder
 import groovy.cli.picocli.OptionAccessor
 import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
+import groovy.util.logging.Slf4j
 
+import java.io.IOException
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -25,16 +27,14 @@ import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
-import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.attribute.PosixFilePermissions
-import java.time.Instant
-import java.util.concurrent.locks.ReentrantLock
 
 /**
  * Shared implementation for the Jade/Tipi Keycloak token CLIs.
  */
+@Slf4j
 class JadeTipiCli {
 
     private final String programName
@@ -44,8 +44,6 @@ class JadeTipiCli {
     private final String fallbackClientId
     private final String fallbackClientSecret
     private final String fallbackApiUrl
-    private ClientLogger logger
-
     JadeTipiCli(
             String programName,
             String envPrefix,
@@ -62,7 +60,7 @@ class JadeTipiCli {
         this.fallbackKeycloakUrl = fallbackKeycloakUrl
         this.fallbackRealm = fallbackRealm
         this.fallbackApiUrl = fallbackApiUrl
-        this.logger = new ClientLogger(fallbackClientId)
+        ensureLogDirectoryExists()
     }
 
     void run(String[] args) {
@@ -160,7 +158,6 @@ class JadeTipiCli {
 
         boolean verbose = options.'verbose'
 
-        updateLogger(effective.clientId)
         Map tokenResult = fetchAccessToken(effective, globalVerbose || verbose)
         executeOpenTransaction(effective, tokenResult, globalVerbose || verbose)
     }
@@ -180,7 +177,7 @@ class JadeTipiCli {
             printError("Group could not be determined. Provide --group or ensure the JWT contains the 'tipi_group' claim.")
             System.exit(1)
         }
-        logger?.info("Opening transaction for organization=${organization}, group=${group}")
+        log.info("Opening transaction for organization={}, group={}", organization, group)
 
         String apiBase = sanitizeBaseUrl(effective.apiUrl)
         URI transactionUri = URI.create("${apiBase}/api/transactions/open")
@@ -211,7 +208,7 @@ class JadeTipiCli {
             persistTransactionToken(effective.clientId as String, transactionId, transactionResponseBody)
 
             println transactionId
-            logger?.info("Opened transaction ${transactionId} for organization=${organization}, group=${group}")
+            log.info("Opened transaction {} for organization={}, group={}", transactionId, organization, group)
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt()
             printError("Transaction request interrupted: ${e.message}")
@@ -271,7 +268,6 @@ class JadeTipiCli {
 
         boolean verbose = options.'verbose'
 
-        updateLogger(effective.clientId)
         Map tokenResult = fetchAccessToken(effective, globalVerbose || verbose)
         executeCommit(effective, tokenResult, transactionIds)
     }
@@ -303,7 +299,7 @@ class JadeTipiCli {
                     .build()
 
             try {
-                logger?.info("Committing transaction ${transactionId}")
+                log.info("Committing transaction {}", transactionId)
                 HttpResponse<String> commitResponse = client.send(commitRequest, HttpResponse.BodyHandlers.ofString())
                 int status = commitResponse.statusCode()
                 String commitResponseBody = commitResponse.body()
@@ -319,7 +315,7 @@ class JadeTipiCli {
                 String commitId = responsePayload.commitId as String
                 persistCommitRecord(effective.clientId as String, transactionId, commitResponseBody)
                 println commitId ?: transactionId
-                logger?.info("Committed transaction ${transactionId} with commitId=${commitId}")
+                log.info("Committed transaction {} with commitId={}", transactionId, commitId)
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt()
                 printError("Commit request interrupted for ${transactionId}: ${e.message}")
@@ -335,10 +331,10 @@ class JadeTipiCli {
         String message = extractErrorMessage(responseBody)
         String base = "Transaction ${transactionId} has already been committed."
         if (message && !message.equalsIgnoreCase('Transaction already committed')) {
-            logger?.warn("${base} Details: ${message}")
+            log.warn("{} Details: {}", base, message)
             printError("${base} Details: ${message}")
         } else {
-            logger?.warn(base)
+            log.warn(base)
             printError(base)
         }
         System.exit(1)
@@ -346,10 +342,6 @@ class JadeTipiCli {
 
     private String resolveEnv(String suffix, String fallback) {
         return System.getenv("${envPrefix}_${suffix}") ?: fallback
-    }
-
-    private void updateLogger(String clientId) {
-        this.logger = new ClientLogger(clientId ?: fallbackClientId)
     }
 
     private static String buildTokenEndpoint(String baseUrl, String realm) {
@@ -411,7 +403,7 @@ class JadeTipiCli {
         try {
             Files.writeString(destination, jsonBody, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
             applyOwnerOnlyPermissions(destination, "rw-------")
-            logger?.info("Stored transaction token for ${transactionId} at ${destination}")
+            log.info("Stored transaction token for {} at {}", transactionId, destination)
         } catch (IOException e) {
             printError("Failed to store transaction token at ${destination}: ${e.message}")
             System.exit(1)
@@ -433,7 +425,7 @@ class JadeTipiCli {
         try {
             Files.writeString(destination, jsonBody, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
             applyOwnerOnlyPermissions(destination, "rw-------")
-            logger?.info("Stored commit record for ${transactionId} at ${destination}")
+            log.info("Stored commit record for {} at {}", transactionId, destination)
         } catch (IOException e) {
             printError("Failed to store commit data at ${destination}: ${e.message}")
             System.exit(1)
@@ -623,7 +615,7 @@ Commands:
     private void printError(Object message) {
         String text = message?.toString() ?: ''
         String plain = text.startsWith('ERROR ') ? text.substring('ERROR '.length()) : text
-        logger?.error(plain)
+        log.error(plain)
         if (text.startsWith('ERROR ')) {
             System.err.println(text)
         } else {
@@ -631,55 +623,13 @@ Commands:
         }
     }
 
-    private static class ClientLogger {
-        private static final long MAX_BYTES = 1_048_576L
-        private final Path logDir
-        private final Path logFile
-        private final ReentrantLock lock = new ReentrantLock()
-
-        ClientLogger(String clientId) {
-            String resolvedId = clientId?.trim() ? clientId.trim() : 'unknown-client'
-            String home = System.getProperty('user.home') ?: '.'
-            logDir = Paths.get(home, 'logs')
-            try {
-                Files.createDirectories(logDir)
-            } catch (IOException e) {
-                System.err.println("ERROR Unable to create log directory ${logDir}: ${e.message}")
-            }
-            logFile = logDir.resolve("${resolvedId}.log")
-        }
-
-        void info(String message) {
-            write('INFO', message)
-        }
-
-        void warn(String message) {
-            write('WARN', message)
-        }
-
-        void error(String message) {
-            write('ERROR', message)
-        }
-
-        private void write(String level, String message) {
-            lock.lock()
-            try {
-                rotateIfNeeded()
-                String entry = "${Instant.now()} [${level}] ${message}${System.lineSeparator()}"
-                Files.writeString(logFile, entry, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
-            } catch (IOException e) {
-                System.err.println("ERROR Unable to write log entry: ${e.message}")
-            } finally {
-                lock.unlock()
-            }
-        }
-
-        private void rotateIfNeeded() throws IOException {
-            if (Files.exists(logFile) && Files.size(logFile) >= MAX_BYTES) {
-                Path backup = logFile.resolveSibling("${logFile.fileName}.1")
-                Files.deleteIfExists(backup)
-                Files.move(logFile, backup, StandardCopyOption.REPLACE_EXISTING)
-            }
+    private void ensureLogDirectoryExists() {
+        String home = System.getProperty('user.home') ?: '.'
+        Path dir = Paths.get(home, 'logs')
+        try {
+            Files.createDirectories(dir)
+        } catch (IOException e) {
+            System.err.println("ERROR Unable to create log directory ${dir}: ${e.message}")
         }
     }
 }

@@ -19,11 +19,11 @@ dependencies {
 
     // JUnit Jupiter for Java-based tests
     testImplementation libs.junit.jupiter
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testRuntimeOnly libs.junit.platform.launcher
 
     // Hibernate Validator for validation implementation in tests
     testImplementation libs.hibernate.validator
-    testImplementation 'org.glassfish.expressly:expressly:5.0.0' // EL implementation required by Hibernate Validator
+    testImplementation libs.expressly // EL implementation required by Hibernate Validator
 }
 
 java {

@@ -9,6 +9,7 @@ repositories {
 
 dependencies {
     implementation project(':libraries:jade-tipi-cli')
+    implementation libs.logback.classic
 }
 
 application {

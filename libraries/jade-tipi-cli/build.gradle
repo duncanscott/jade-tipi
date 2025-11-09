@@ -14,14 +14,15 @@ java {
 }
 
 dependencies {
-    api 'org.apache.groovy:groovy:4.0.29'
-    implementation 'org.apache.groovy:groovy-json:4.0.29'
-    implementation 'org.apache.groovy:groovy-cli-picocli:4.0.29'
+    api libs.groovy.core
+    implementation libs.groovy.json
+    implementation libs.groovy.cli.picocli
+    api libs.slf4j.api
 
     testImplementation libs.spock.core
     testImplementation libs.junit
     testImplementation libs.junit.jupiter
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testRuntimeOnly libs.junit.platform.launcher
 }
 
 tasks.named('test') {

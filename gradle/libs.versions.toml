@@ -8,11 +8,22 @@ jakarta-validation = "3.1.1"
 junit = "4.13.2"
 junit-jupiter = "6.0.0"
 spock-core = "2.4-M6-groovy-4.0"
+slf4j = "2.0.13"
+logback = "1.5.6"
+junit-platform = "1.11.0"
+expressly = "5.0.0"
 
 [libraries]
 groovy = { module = "org.apache.groovy:groovy-all", version.ref = "groovy" }
+groovy-core = { module = "org.apache.groovy:groovy", version.ref = "groovy" }
+groovy-json = { module = "org.apache.groovy:groovy-json", version.ref = "groovy" }
+groovy-cli-picocli = { module = "org.apache.groovy:groovy-cli-picocli", version.ref = "groovy" }
 hibernate-validator = { module = "org.hibernate.validator:hibernate-validator", version.ref = "hibernate-validator" }
 jakarta-validation-api = { module = "jakarta.validation:jakarta.validation-api", version.ref = "jakarta-validation" }
 junit = { module = "junit:junit", version.ref = "junit" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
 spock-core = { module = "org.spockframework:spock-core", version.ref = "spock-core" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit-platform" }
+expressly = { module = "org.glassfish.expressly:expressly", version.ref = "expressly" }
