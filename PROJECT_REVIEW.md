@@ -22,8 +22,6 @@ The Jade-Tipi project demonstrates **solid engineering practices** with a modern
 
 **Key Areas for Improvement (Backend):**
 - Add pagination to document listing
-- Implement transaction TTL and cleanup
-- Fix test file naming typo
 - Add database health checks
 
 **Key Areas for Improvement (Frontend):**
@@ -164,19 +162,7 @@ Flux<ObjectNode> listDocuments(
 
 ---
 
-### 1.5 Test File Naming Typo (CODE QUALITY)
-
-**Location:** `backend/jadetipi/src/integrationTest/groovy/org/jadetipi/jadetipi/service/DocuementServiceIntegrationSpec.groovy:30`
-
-**Issue:** Filename contains typo "Docuement" instead of "Document"
-
-**Impact:** Unprofessional naming, reduces code searchability, may cause confusion for new developers.
-
-**Recommendation:** Rename file to `DocumentServiceIntegrationSpec.groovy`
-
----
-
-### 1.6 MongoDB-Specific References in Generic Interface (MAINTAINABILITY)
+### 1.5 MongoDB-Specific References in Generic Interface (MAINTAINABILITY)
 
 **Location:** `backend/jadetipi/src/main/groovy/org/jadetipi/jadetipi/service/DocumentService.groovy`
 
@@ -200,56 +186,62 @@ Flux<ObjectNode> listDocuments(
 
 ### 2.1 Transaction TTL and Cleanup
 
-**Current State:** Transactions are stored indefinitely with no expiration.
+**Status:** ✅ **INTENTIONAL DESIGN - NO ACTION NEEDED**
 
-**Issue:**
-- `TransactionService.groovy:59-66` creates transaction records with no TTL
-- No cleanup scheduler for old transactions
-- Database will grow unbounded
+**Current Implementation:** Transactions are stored indefinitely with no expiration.
 
-**Recommendation:**
-1. Add TTL field to transaction documents:
-   ```groovy
-   Map<String, Object> doc = [
-       _id     : transactionId,
-       // ... existing fields ...
-       ttl     : Instant.now().plus(24, ChronoUnit.HOURS)
-   ]
-   ```
+**Design Decision:**
+- `TransactionService.groovy:59-66` creates transaction records without TTL
+- No automatic cleanup scheduler implemented
+- All transactions retained permanently in the database
 
-2. Create MongoDB TTL index:
-   ```javascript
-   db.transaction.createIndex({ "ttl": 1 }, { expireAfterSeconds: 0 })
-   ```
+**Rationale:**
+- Transactions represent important historical records that must be preserved
+- Long-lived transactions are a valid and expected use case
+- Audit trail and compliance requirements may mandate indefinite retention
+- Manual cleanup processes can be implemented administratively if needed in the future
 
-3. Add scheduled cleanup:
-   ```groovy
-   @Scheduled(cron = "0 0 * * * *")  // Every hour
-   Mono<Void> cleanupExpiredTransactions() {
-       return mongoTemplate.remove(
-           Query.query(Criteria.where("ttl").lt(Instant.now())),
-           "transaction"
-       ).then()
-   }
-   ```
+**Policy:** This is an intentional design decision, not a missing feature. See `.claude/coding-guidelines.md` for the complete transaction retention policy.
+
+**Future Considerations:**
+- If cleanup becomes necessary, implement manual administrative endpoints
+- Consider archival strategies for old transactions rather than deletion
+- Document any retention policies in operational procedures
 
 ---
 
 ### 2.2 Complete TransactionCreate → Group Refactoring
 
-**Current State:** Git status shows incomplete refactoring:
+**Status:** ✅ **COMPLETED**
+
+**Previous State:** Git status showed file move:
 ```
 RM libraries/jade-tipi-dto/src/main/java/org/jadetipi/dto/transaction/TransactionCreate.java
    -> libraries/jade-tipi-dto/src/main/java/org/jadetipi/dto/permission/Group.java
 ```
 
-**Issue:** Suggests incomplete migration from `TransactionCreate` DTO to `Group`.
+**Refactoring Complete:**
+- `TransactionCreate` DTO successfully migrated to `Group`
+- All code references updated to use `Group`
 
-**Recommendation:**
-- Search codebase for any remaining references to `TransactionCreate`
-- Update all documentation referencing the old DTO
-- Verify all tests use `Group` correctly
-- Commit the completed refactoring
+**Verification:**
+- ✅ No remaining references to `TransactionCreate` in codebase
+- ✅ `Group` class properly defined at `libraries/jade-tipi-dto/src/main/java/org/jadetipi/dto/permission/Group.java`
+- ✅ All controllers, services, and tests using `Group`:
+  - `TransactionController.groovy:17`
+  - `TransactionService.groovy:16`
+  - `TransactionServiceSpec.groovy:15`
+  - `TransactionServiceIntegrationSpec.groovy:15`
+  - `TransactionControllerIntegrationTest.groovy:16`
+- ✅ All unit tests passing
+
+**Group DTO Implementation:**
+```java
+public record Group(
+    @NotBlank(message = "organization is required") String organization,
+    @NotBlank(message = "group is required") String group
+) {}
+```
 
 ---
 
@@ -1478,9 +1470,9 @@ export function Navigation() {
 1. ✅ ~~**Hardcoded test secrets**~~ (ACCEPTABLE FOR DEMO - see `.claude/coding-guidelines.md`)
 2. ✅ ~~**Consolidate CORS configuration**~~ (COMPLETED)
 3. ✅ ~~**Blocking operations in reactive context**~~ (ACCEPTABLE FOR STARTUP - see `.claude/coding-guidelines.md`)
-4. **Add pagination** to document listing
-5. **Implement transaction TTL** and cleanup
-6. **Complete TransactionCreate refactoring** (git status shows incomplete)
+4. ✅ ~~**Transaction TTL and cleanup**~~ (INTENTIONAL DESIGN - indefinite retention, see `.claude/coding-guidelines.md`)
+5. ✅ ~~**Complete TransactionCreate → Group refactoring**~~ (COMPLETED)
+6. **Add pagination** to document listing
 
 ### 10.2 Medium Priority
 
@@ -1589,13 +1581,11 @@ Flux<ObjectNode> findAllSummary(int page, int size) {
 
 ### HIGH (Sprint Priority)
 
-11. 🟡 Complete TransactionCreate → Group refactoring
-12. 🟡 Fix test JWT validation to work properly
-13. 🟡 Add MongoDB indexes for organization/group queries
-14. 🟡 Document transaction ID format and semantics
-15. 🟡 Add transaction TTL and cleanup scheduler
-16. 🟡 Create Dockerfile for backend service
-17. 🟡 Restrict actuator endpoints (not all exposed)
+11. 🟡 Fix test JWT validation to work properly
+12. 🟡 Add MongoDB indexes for organization/group queries
+13. 🟡 Document transaction ID format and semantics
+14. 🟡 Create Dockerfile for backend service
+15. 🟡 Restrict actuator endpoints (not all exposed)
 
 ### MEDIUM (Next Quarter)
 
@@ -1651,20 +1641,18 @@ The Jade-Tipi full-stack project demonstrates **solid engineering practices** wi
 **Immediate (Critical):**
 1. Security hardening (restrict actuator endpoints)
 2. Performance optimization (pagination, indexes)
-3. Fix test file naming typo
 
 **Short-term (High Priority):**
-4. Frontend testing infrastructure
-5. Fix client-side navigation issues
-6. Add error boundaries and loading states
-7. Database health checks
-8. CI/CD pipeline
+1. Frontend testing infrastructure
+2. Fix client-side navigation issues
+3. Add error boundaries and loading states
+4. Database health checks
+5. CI/CD pipeline
 
 **Medium-term:**
-9. Monitoring and observability
-10. Complete or remove FoundationDB implementation
-11. Add transaction TTL and cleanup
-12. Environment configuration documentation
+1. Monitoring and observability
+2. Complete or remove FoundationDB implementation
+3. Environment configuration documentation
 
 **Assessment:**
 The backend is **well-architected and nearly production-ready** after addressing the critical security and performance items. The frontend requires additional work on error handling, testing, and UX improvements. Infrastructure improvements (CI/CD, monitoring) should be prioritized for production deployments.

@@ -185,6 +185,27 @@ Mono<ResponseEntity<Document>> createDocument(@RequestBody Document doc) {
 - Define field names as constants
 - Use constants for regex patterns and limits
 
+### Transaction Retention Policy
+
+**IMPORTANT:** Transactions are retained indefinitely by design.
+
+**Policy:**
+- All transactions are saved permanently in the database
+- No TTL (Time-To-Live) or automatic cleanup is implemented
+- Transactions may be long-lived and must remain accessible
+- This is an intentional design decision, not a missing feature
+
+**Rationale:**
+- Transactions represent important historical records
+- Long-lived transactions are a valid use case
+- Audit trail and compliance requirements may require indefinite retention
+- Manual cleanup processes can be implemented if needed in the future
+
+**Future Considerations:**
+- If cleanup becomes necessary, implement manual administrative endpoints
+- Consider archival strategies for old transactions rather than deletion
+- Document any retention policies in operational procedures
+
 ---
 
 ## API Design
