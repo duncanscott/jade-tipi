@@ -25,8 +25,8 @@ class KeycloakTestHelper {
 
     private static final String KEYCLOAK_URL = "http://localhost:8484"
     private static final String REALM = "jade-tipi"
-    private static final String CLIENT_ID = "jade-tipi-backend"
-    private static final String CLIENT_SECRET = "d84c91af-7f37-4b8d-9157-0f6c6a91fb45"
+    private static final String CLIENT_ID = System.getenv("TEST_CLIENT_ID") ?: "tipi-cli"
+    private static final String CLIENT_SECRET = System.getenv("TEST_CLIENT_SECRET") ?: "7e8d5df5-5afb-4cc0-8d56-9f3f5c7cc5fd"
 
     private static String cachedToken = null
 

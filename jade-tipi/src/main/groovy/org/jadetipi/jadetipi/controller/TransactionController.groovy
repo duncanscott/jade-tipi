@@ -72,6 +72,9 @@ class TransactionController {
         }
 
         return transactionService.commitTransaction(transactionToken)
+                .onErrorMap(IllegalStateException) { ex ->
+                    new ResponseStatusException(HttpStatus.CONFLICT, ex.message, ex)
+                }
                 .map { commit -> ResponseEntity.ok(commit) }
     }
 

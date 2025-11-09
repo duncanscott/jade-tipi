@@ -24,6 +24,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.reactive.server.WebTestClient
@@ -130,5 +131,44 @@ class TransactionControllerIntegrationTest {
         } finally {
             reactiveMongoTemplate.remove(transactionQuery, "transaction").block()
         }
+    }
+
+    @Test
+    void 'should return conflict when committing an already committed transaction'() {
+        def organization = "org-${UUID.randomUUID()}"
+        def group = "group-${UUID.randomUUID()}"
+
+        def createResponse = webTestClient.post()
+                .uri("/api/transactions/open")
+                .header("Authorization", "Bearer ${accessToken}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(new Group(organization, group))
+                .exchange()
+                .expectStatus().isCreated()
+                .expectBody(Map)
+                .returnResult()
+                .responseBody
+
+        def commitRequest = new TransactionToken(
+                createResponse.transactionId as String,
+                createResponse.secret as String,
+                new Group(organization, group)
+        )
+
+        webTestClient.post()
+                .uri("/api/transactions/commit")
+                .header("Authorization", "Bearer ${accessToken}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(commitRequest)
+                .exchange()
+                .expectStatus().isOk()
+
+        webTestClient.post()
+                .uri("/api/transactions/commit")
+                .header("Authorization", "Bearer ${accessToken}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(commitRequest)
+                .exchange()
+                .expectStatus().isEqualTo(HttpStatus.CONFLICT)
     }
 }

@@ -25,9 +25,12 @@ import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.attribute.PosixFilePermissions
+import java.time.Instant
+import java.util.concurrent.locks.ReentrantLock
 
 /**
  * Shared implementation for the Jade/Tipi Keycloak token CLIs.
@@ -41,6 +44,7 @@ class JadeTipiCli {
     private final String fallbackClientId
     private final String fallbackClientSecret
     private final String fallbackApiUrl
+    private ClientLogger logger
 
     JadeTipiCli(
             String programName,
@@ -58,6 +62,7 @@ class JadeTipiCli {
         this.fallbackKeycloakUrl = fallbackKeycloakUrl
         this.fallbackRealm = fallbackRealm
         this.fallbackApiUrl = fallbackApiUrl
+        this.logger = new ClientLogger(fallbackClientId)
     }
 
     void run(String[] args) {
@@ -96,11 +101,14 @@ class JadeTipiCli {
             case 'open-transaction':
                 handleOpenTransaction(commandArgs, globalVerbose)
                 break
+            case 'commit':
+                handleCommit(commandArgs, globalVerbose)
+                break
             case 'help':
                 printGlobalUsage(cli)
                 break
             default:
-                System.err.println("Unknown command: ${command}\n")
+        printError("Unknown command: ${command}\n")
                 printGlobalUsage(cli)
                 System.exit(1)
         }
@@ -152,60 +160,27 @@ class JadeTipiCli {
 
         boolean verbose = options.'verbose'
 
-        requestTokenAndPrint(effective, globalVerbose || verbose)
+        updateLogger(effective.clientId)
+        Map tokenResult = fetchAccessToken(effective, globalVerbose || verbose)
+        executeOpenTransaction(effective, tokenResult, globalVerbose || verbose)
     }
 
-    private void requestTokenAndPrint(Map<String, String> effective, boolean verbose) {
-        String tokenEndpoint = buildTokenEndpoint(effective.url, effective.realm)
-        String formBody = buildClientCredentialsBody(effective.clientId, effective.clientSecret)
+    private void executeOpenTransaction(Map<String, String> effective, Map tokenResult, boolean verbose) {
+        String token = tokenResult.token as String
+        Map<String, Object> payloadClaims = (Map<String, Object>) (tokenResult.claims ?: [:])
 
-        HttpClient client = HttpClient.newHttpClient()
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(tokenEndpoint))
-                .header('Content-Type', 'application/x-www-form-urlencoded')
-                .POST(HttpRequest.BodyPublishers.ofString(formBody))
-                .build()
+        String organization = (effective.organizationOverride ?: payloadClaims?.get('tipi_org')) as String
+        String group = (effective.groupOverride ?: payloadClaims?.get('tipi_group')) as String
 
-        try {
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString())
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                System.err.println("Failed to obtain token (${response.statusCode()}): ${response.body()}")
-                System.exit(1)
-            }
-
-            Map payload = (Map) new JsonSlurper().parseText(response.body())
-            if (!payload.access_token) {
-                System.err.println('Token response missing access_token field.')
-                System.exit(1)
-            }
-
-            String token = payload.access_token as String
-            String decodedPayloadJson = decodeJwtPayload(token)
-            Map<String, Object> payloadClaims = [:]
-            if (decodedPayloadJson) {
-                payloadClaims = (Map<String, Object>) new JsonSlurper().parseText(decodedPayloadJson)
-            }
-
-            if (verbose) {
-                println token
-                if (!payloadClaims.isEmpty()) {
-                    println ''
-                    println JsonOutput.prettyPrint(JsonOutput.toJson(payloadClaims))
-                    println ''
-                }
-            }
-
-            String organization = (effective.organizationOverride ?: payloadClaims?.get('tipi_org')) as String
-            String group = (effective.groupOverride ?: payloadClaims?.get('tipi_group')) as String
-
-            if (!organization?.trim()) {
-                System.err.println("Organization could not be determined. Provide --organization or ensure the JWT contains the 'tipi_org' claim.")
-                System.exit(1)
-            }
-            if (!group?.trim()) {
-            System.err.println("Group could not be determined. Provide --group or ensure the JWT contains the 'tipi_group' claim.")
+        if (!organization?.trim()) {
+            printError("Organization could not be determined. Provide --organization or ensure the JWT contains the 'tipi_org' claim.")
             System.exit(1)
         }
+        if (!group?.trim()) {
+            printError("Group could not be determined. Provide --group or ensure the JWT contains the 'tipi_group' claim.")
+            System.exit(1)
+        }
+        logger?.info("Opening transaction for organization=${organization}, group=${group}")
 
         String apiBase = sanitizeBaseUrl(effective.apiUrl)
         URI transactionUri = URI.create("${apiBase}/api/transactions/open")
@@ -215,12 +190,7 @@ class JadeTipiCli {
         ]
         String transactionBody = JsonOutput.toJson(transactionPayload)
 
-        if (verbose) {
-            println "POST ${transactionUri}"
-            println JsonOutput.prettyPrint(JsonOutput.toJson(transactionPayload))
-            println ''
-        }
-
+        HttpClient client = HttpClient.newHttpClient()
         HttpRequest transactionRequest = HttpRequest.newBuilder()
                 .uri(transactionUri)
                 .header('Content-Type', 'application/json')
@@ -228,30 +198,158 @@ class JadeTipiCli {
                 .POST(HttpRequest.BodyPublishers.ofString(transactionBody))
                 .build()
 
-        HttpResponse<String> transactionResponse = client.send(transactionRequest, HttpResponse.BodyHandlers.ofString())
-        if (transactionResponse.statusCode() < 200 || transactionResponse.statusCode() >= 300) {
-            System.err.println("Failed to open transaction (${transactionResponse.statusCode()}): ${transactionResponse.body()}")
-            System.exit(1)
-        }
+        try {
+            HttpResponse<String> transactionResponse = client.send(transactionRequest, HttpResponse.BodyHandlers.ofString())
+            if (transactionResponse.statusCode() < 200 || transactionResponse.statusCode() >= 300) {
+                printError("Failed to open transaction (${transactionResponse.statusCode()}): ${transactionResponse.body()}")
+                System.exit(1)
+            }
 
-        String transactionResponseBody = transactionResponse.body()
-        Map txnPayload = (Map) new JsonSlurper().parseText(transactionResponseBody)
-        String transactionId = txnPayload.transactionId as String
-        persistTransactionToken(effective.clientId as String, transactionId, transactionResponseBody)
+            String transactionResponseBody = transactionResponse.body()
+            Map txnPayload = (Map) new JsonSlurper().parseText(transactionResponseBody)
+            String transactionId = txnPayload.transactionId as String
+            persistTransactionToken(effective.clientId as String, transactionId, transactionResponseBody)
 
-        println transactionId
+            println transactionId
+            logger?.info("Opened transaction ${transactionId} for organization=${organization}, group=${group}")
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt()
-            System.err.println("Token request interrupted: ${e.message}")
+            printError("Transaction request interrupted: ${e.message}")
             System.exit(1)
         } catch (IOException e) {
-            System.err.println("Error requesting token: ${e.message}")
+            printError("Error opening transaction: ${e.message}")
             System.exit(1)
         }
     }
 
+    private void handleCommit(String[] args, boolean globalVerbose) {
+        String defaultUrl = resolveEnv('KEYCLOAK_URL', fallbackKeycloakUrl)
+        String defaultRealmValue = resolveEnv('REALM', fallbackRealm)
+        String defaultClientIdValue = resolveEnv('CLIENT_ID', fallbackClientId)
+        String defaultClientSecretValue = resolveEnv('CLIENT_SECRET', fallbackClientSecret)
+        String defaultApiUrl = resolveEnv('API_URL', fallbackApiUrl)
+
+        def cli = new CliBuilder(
+                name: "${programName} commit",
+                usage: "${programName} commit -t <transactionId> [-t <transactionId> ...] [options]",
+                header: 'Commit one or more open transactions.',
+                footer: "\nEnvironment overrides: ${envPrefix}_KEYCLOAK_URL, ${envPrefix}_REALM, ${envPrefix}_CLIENT_ID, ${envPrefix}_CLIENT_SECRET, ${envPrefix}_API_URL"
+        )
+        cli.with {
+            h(longOpt: 'help', 'Show this help message')
+            _(longOpt: 'url', args: 1, argName: 'keycloak-url', 'Keycloak base URL', defaultValue: defaultUrl)
+            _(longOpt: 'realm', args: 1, argName: 'realm', 'Keycloak realm', defaultValue: defaultRealmValue)
+            _(longOpt: 'client-id', args: 1, argName: 'client-id', 'OAuth client identifier', defaultValue: defaultClientIdValue)
+            _(longOpt: 'client-secret', args: 1, argName: 'secret', 'OAuth client secret', defaultValue: defaultClientSecretValue)
+            _(longOpt: 'api-url', args: 1, argName: 'api-url', 'Backend API base URL', defaultValue: defaultApiUrl)
+            t(longOpt: 'transaction', args: 1, argName: 'transactionId', 'Transaction ID to commit (repeatable)')
+            v(longOpt: 'verbose', 'Print the raw JWT and decoded payload')
+        }
+
+        OptionAccessor options = cli.parse(args)
+        if (!options) {
+            System.exit(1)
+        }
+        if (options.h) {
+            cli.usage()
+            return
+        }
+
+        List<String> transactionIds = normalizeTransactionIds(options.'transaction')
+        if (transactionIds.isEmpty()) {
+            printError("At least one -t/--transaction value is required.")
+            System.exit(1)
+        }
+
+        Map<String, String> effective = [
+                url         : options.'url' ?: defaultUrl,
+                realm       : options.'realm' ?: defaultRealmValue,
+                clientId    : options.'client-id' ?: defaultClientIdValue,
+                clientSecret: options.'client-secret' ?: defaultClientSecretValue,
+                apiUrl      : options.'api-url' ?: defaultApiUrl
+        ]
+
+        boolean verbose = options.'verbose'
+
+        updateLogger(effective.clientId)
+        Map tokenResult = fetchAccessToken(effective, globalVerbose || verbose)
+        executeCommit(effective, tokenResult, transactionIds)
+    }
+
+    private List<String> normalizeTransactionIds(Object rawTransactions) {
+        List<String> ids = []
+        if (rawTransactions instanceof List) {
+            ids.addAll(rawTransactions.collect { it?.toString() }.findAll { it })
+        } else if (rawTransactions) {
+            ids.add(rawTransactions.toString())
+        }
+        return ids
+    }
+
+    private void executeCommit(Map<String, String> effective, Map tokenResult, List<String> transactionIds) {
+        String token = tokenResult.token as String
+        HttpClient client = HttpClient.newHttpClient()
+        String apiBase = sanitizeBaseUrl(effective.apiUrl)
+        URI commitUri = URI.create("${apiBase}/api/transactions/commit")
+
+        transactionIds.each { String transactionId ->
+            Map stored = loadStoredTransaction(effective.clientId as String, transactionId)
+            String payloadJson = stored.json as String
+            HttpRequest commitRequest = HttpRequest.newBuilder()
+                    .uri(commitUri)
+                    .header('Content-Type', 'application/json')
+                    .header('Authorization', "Bearer ${token}")
+                    .POST(HttpRequest.BodyPublishers.ofString(payloadJson))
+                    .build()
+
+            try {
+                logger?.info("Committing transaction ${transactionId}")
+                HttpResponse<String> commitResponse = client.send(commitRequest, HttpResponse.BodyHandlers.ofString())
+                int status = commitResponse.statusCode()
+                String commitResponseBody = commitResponse.body()
+                if (status == 409) {
+                    handleCommitConflict(transactionId, commitResponseBody)
+                }
+                if (status < 200 || status >= 300) {
+                    printError("Failed to commit transaction ${transactionId} (${status}): ${commitResponseBody}")
+                    System.exit(1)
+                }
+
+                Map responsePayload = (Map) new JsonSlurper().parseText(commitResponseBody)
+                String commitId = responsePayload.commitId as String
+                persistCommitRecord(effective.clientId as String, transactionId, commitResponseBody)
+                println commitId ?: transactionId
+                logger?.info("Committed transaction ${transactionId} with commitId=${commitId}")
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt()
+                printError("Commit request interrupted for ${transactionId}: ${e.message}")
+                System.exit(1)
+            } catch (IOException e) {
+                printError("Error committing transaction ${transactionId}: ${e.message}")
+                System.exit(1)
+            }
+        }
+    }
+
+    private void handleCommitConflict(String transactionId, String responseBody) {
+        String message = extractErrorMessage(responseBody)
+        String base = "Transaction ${transactionId} has already been committed."
+        if (message && !message.equalsIgnoreCase('Transaction already committed')) {
+            logger?.warn("${base} Details: ${message}")
+            printError("${base} Details: ${message}")
+        } else {
+            logger?.warn(base)
+            printError(base)
+        }
+        System.exit(1)
+    }
+
     private String resolveEnv(String suffix, String fallback) {
         return System.getenv("${envPrefix}_${suffix}") ?: fallback
+    }
+
+    private void updateLogger(String clientId) {
+        this.logger = new ClientLogger(clientId ?: fallbackClientId)
     }
 
     private static String buildTokenEndpoint(String baseUrl, String realm) {
@@ -274,7 +372,7 @@ class JadeTipiCli {
     private static String decodeJwtPayload(String token) {
         String[] parts = token.split('\\.')
         if (parts.length < 2) {
-            System.err.println('Token did not contain a payload segment.')
+            printError('Token did not contain a payload segment.')
             return null
         }
 
@@ -300,11 +398,11 @@ class JadeTipiCli {
 
     private void persistTransactionToken(String clientId, String transactionId, String jsonBody) {
         if (!clientId?.trim()) {
-            System.err.println('Client identifier is required to store the transaction token.')
+            printError('Client identifier is required to store the transaction token.')
             System.exit(1)
         }
         if (!transactionId?.trim()) {
-            System.err.println('Transaction response did not include a transactionId; cannot persist token.')
+            printError('Transaction response did not include a transactionId; cannot persist token.')
             System.exit(1)
         }
 
@@ -313,8 +411,31 @@ class JadeTipiCli {
         try {
             Files.writeString(destination, jsonBody, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
             applyOwnerOnlyPermissions(destination, "rw-------")
+            logger?.info("Stored transaction token for ${transactionId} at ${destination}")
         } catch (IOException e) {
-            System.err.println("Failed to store transaction token at ${destination}: ${e.message}")
+            printError("Failed to store transaction token at ${destination}: ${e.message}")
+            System.exit(1)
+        }
+    }
+
+    private void persistCommitRecord(String clientId, String transactionId, String jsonBody) {
+        if (!transactionId?.trim()) {
+            printError('Transaction ID is required to store commit metadata.')
+            System.exit(1)
+        }
+        if (!clientId?.trim()) {
+            printError('Client identifier is required to store commit metadata.')
+            System.exit(1)
+        }
+
+        Path directory = ensureCommitDirectory(clientId)
+        Path destination = directory.resolve("${transactionId}.json")
+        try {
+            Files.writeString(destination, jsonBody, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+            applyOwnerOnlyPermissions(destination, "rw-------")
+            logger?.info("Stored commit record for ${transactionId} at ${destination}")
+        } catch (IOException e) {
+            printError("Failed to store commit data at ${destination}: ${e.message}")
             System.exit(1)
         }
     }
@@ -322,7 +443,7 @@ class JadeTipiCli {
     private Path ensureTransactionsDirectory(String clientId) {
         String home = System.getProperty('user.home')
         if (!home?.trim()) {
-            System.err.println("Cannot determine user home directory to store transaction tokens.")
+            printError("Cannot determine user home directory to store transaction tokens.")
             System.exit(1)
         }
 
@@ -331,16 +452,139 @@ class JadeTipiCli {
             Files.createDirectories(directory)
             applyOwnerOnlyPermissions(directory, "rwx------")
         } catch (IOException e) {
-            System.err.println("Unable to create transactions directory ${directory}: ${e.message}")
+            printError("Unable to create transactions directory ${directory}: ${e.message}")
             System.exit(1)
         }
 
         if (!Files.isDirectory(directory) || !Files.isReadable(directory) || !Files.isWritable(directory)) {
-            System.err.println("Transactions directory ${directory} must exist and be both readable and writable.")
+            printError("Transactions directory ${directory} must exist and be both readable and writable.")
             System.exit(1)
         }
 
         return directory
+    }
+
+    private String extractErrorMessage(String responseBody) {
+        if (!responseBody) {
+            return null
+        }
+        try {
+            Map payload = (Map) new JsonSlurper().parseText(responseBody)
+            String message = payload.message as String
+            if (message?.trim()) {
+                return message
+            }
+            String description = payload.error_description as String
+            if (description?.trim()) {
+                return description
+            }
+            String error = payload.error as String
+            return error?.trim()
+        } catch (Exception ignored) {
+            return responseBody
+        }
+    }
+
+    private Path ensureCommitDirectory(String clientId) {
+        String home = System.getProperty('user.home')
+        if (!home?.trim()) {
+            printError("Cannot determine user home directory to store commit metadata.")
+            System.exit(1)
+        }
+
+        Path directory = Paths.get(home, '.jade-tipi', 'clients', clientId, 'commits')
+        try {
+            Files.createDirectories(directory)
+            applyOwnerOnlyPermissions(directory, "rwx------")
+        } catch (IOException e) {
+            printError("Unable to create commit directory ${directory}: ${e.message}")
+            System.exit(1)
+        }
+
+        if (!Files.isDirectory(directory) || !Files.isReadable(directory) || !Files.isWritable(directory)) {
+            printError("Commit directory ${directory} must exist and be both readable and writable.")
+            System.exit(1)
+        }
+
+        return directory
+    }
+
+    private Map fetchAccessToken(Map<String, String> effective, boolean verbose) {
+        String tokenEndpoint = buildTokenEndpoint(effective.url, effective.realm)
+        String formBody = buildClientCredentialsBody(effective.clientId, effective.clientSecret)
+
+        HttpClient client = HttpClient.newHttpClient()
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(tokenEndpoint))
+                .header('Content-Type', 'application/x-www-form-urlencoded')
+                .POST(HttpRequest.BodyPublishers.ofString(formBody))
+                .build()
+
+        try {
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString())
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                printError("Failed to obtain token (${response.statusCode()}): ${response.body()}")
+                System.exit(1)
+            }
+
+            Map payload = (Map) new JsonSlurper().parseText(response.body())
+            if (!payload.access_token) {
+                printError('Token response missing access_token field.')
+                System.exit(1)
+            }
+
+            String token = payload.access_token as String
+            String decodedPayloadJson = decodeJwtPayload(token)
+            Map<String, Object> payloadClaims = [:]
+            if (decodedPayloadJson) {
+                payloadClaims = (Map<String, Object>) new JsonSlurper().parseText(decodedPayloadJson)
+            }
+
+            if (verbose) {
+                println token
+                if (!payloadClaims.isEmpty()) {
+                    println ''
+                    println JsonOutput.prettyPrint(JsonOutput.toJson(payloadClaims))
+                    println ''
+                }
+            }
+
+            return [token: token, claims: payloadClaims]
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt()
+            printError("Token request interrupted: ${e.message}")
+            System.exit(1)
+        } catch (IOException e) {
+            printError("Error requesting token: ${e.message}")
+            System.exit(1)
+        }
+    }
+
+    private Map loadStoredTransaction(String clientId, String transactionId) {
+        if (!transactionId?.trim()) {
+            printError("Transaction ID is required.")
+            System.exit(1)
+        }
+
+        Path directory = ensureTransactionsDirectory(clientId)
+        Path tokenFile = directory.resolve("${transactionId}.json")
+        if (!Files.exists(tokenFile)) {
+            printError("Stored transaction ${transactionId} was not found at ${tokenFile}.")
+            System.exit(1)
+        }
+        if (!Files.isReadable(tokenFile)) {
+            printError("Stored transaction ${transactionId} is not readable at ${tokenFile}.")
+            System.exit(1)
+        }
+
+        try {
+            String json = Files.readString(tokenFile)
+            Map payload = (Map) new JsonSlurper().parseText(json)
+            return [json: json, payload: payload]
+        } catch (IOException e) {
+            printError("Failed to read stored transaction ${transactionId}: ${e.message}")
+            System.exit(1)
+        }
     }
 
     private void applyOwnerOnlyPermissions(Path path, String permissions) {
@@ -356,7 +600,7 @@ class JadeTipiCli {
         } catch (UnsupportedOperationException ignored) {
             // Non-POSIX FS for this path; nothing to do.
         } catch (IOException e) {
-            System.err.println("Unable to set permissions on ${path}: ${e.message}")
+            printError("Unable to set permissions on ${path}: ${e.message}")
             System.exit(1)
         }
     }
@@ -366,11 +610,76 @@ class JadeTipiCli {
 
 Usage:
   ${programName} open-transaction [options]
+  ${programName} commit -t <transactionId> [options]
   ${programName} help
 
 Commands:
-  open-transaction   Obtain a JWT for service-to-service transactions.
+  open-transaction   Obtain a JWT and open a transaction for document writes.
+  commit             Commit one or more previously opened transactions.
 """
         cli.usage()
+    }
+
+    private void printError(Object message) {
+        String text = message?.toString() ?: ''
+        String plain = text.startsWith('ERROR ') ? text.substring('ERROR '.length()) : text
+        logger?.error(plain)
+        if (text.startsWith('ERROR ')) {
+            System.err.println(text)
+        } else {
+            System.err.println("ERROR ${text}")
+        }
+    }
+
+    private static class ClientLogger {
+        private static final long MAX_BYTES = 1_048_576L
+        private final Path logDir
+        private final Path logFile
+        private final ReentrantLock lock = new ReentrantLock()
+
+        ClientLogger(String clientId) {
+            String resolvedId = clientId?.trim() ? clientId.trim() : 'unknown-client'
+            String home = System.getProperty('user.home') ?: '.'
+            logDir = Paths.get(home, 'logs')
+            try {
+                Files.createDirectories(logDir)
+            } catch (IOException e) {
+                System.err.println("ERROR Unable to create log directory ${logDir}: ${e.message}")
+            }
+            logFile = logDir.resolve("${resolvedId}.log")
+        }
+
+        void info(String message) {
+            write('INFO', message)
+        }
+
+        void warn(String message) {
+            write('WARN', message)
+        }
+
+        void error(String message) {
+            write('ERROR', message)
+        }
+
+        private void write(String level, String message) {
+            lock.lock()
+            try {
+                rotateIfNeeded()
+                String entry = "${Instant.now()} [${level}] ${message}${System.lineSeparator()}"
+                Files.writeString(logFile, entry, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+            } catch (IOException e) {
+                System.err.println("ERROR Unable to write log entry: ${e.message}")
+            } finally {
+                lock.unlock()
+            }
+        }
+
+        private void rotateIfNeeded() throws IOException {
+            if (Files.exists(logFile) && Files.size(logFile) >= MAX_BYTES) {
+                Path backup = logFile.resolveSibling("${logFile.fileName}.1")
+                Files.deleteIfExists(backup)
+                Files.move(logFile, backup, StandardCopyOption.REPLACE_EXISTING)
+            }
+        }
     }
 }

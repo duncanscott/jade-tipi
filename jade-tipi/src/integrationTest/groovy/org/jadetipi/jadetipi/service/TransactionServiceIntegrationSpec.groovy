@@ -81,4 +81,18 @@ class TransactionServiceIntegrationSpec extends Specification {
         stored.commit == commit.commitId()
         stored.committed != null
     }
+
+    def "commitTransaction fails when transaction already committed"() {
+        given:
+        Group group = new Group('jade-tipi_org','some-group')
+        TransactionToken token = transactionService.openTransaction(group).block()
+
+        when:
+        transactionService.commitTransaction(token).block()
+        transactionService.commitTransaction(token).block()
+
+        then:
+        def ex = thrown(IllegalStateException)
+        ex.message == 'Transaction already committed'
+    }
 }

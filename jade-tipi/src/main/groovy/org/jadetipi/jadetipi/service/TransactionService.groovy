@@ -79,6 +79,9 @@ class TransactionService {
                     if (storedSecret != transactionToken.secret()) {
                         return Mono.error(new IllegalArgumentException('Invalid transaction secret'))
                     }
+                    if (doc.get('commit') != null) {
+                        return Mono.error(new IllegalStateException('Transaction already committed'))
+                    }
 
                     doc.put('commit', commitId)
                     doc.put('committed', Instant.now())
