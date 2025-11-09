@@ -28,7 +28,10 @@ class SecurityConfig {
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration()
-        configuration.addAllowedOriginPattern('http://localhost:*') // Allow all localhost ports
+        // Allow all localhost ports for local development
+        configuration.addAllowedOriginPattern('http://localhost:*')
+        // Allow specific IP address for development on local network
+        configuration.addAllowedOrigin('http://192.168.1.231:3000')
         configuration.addAllowedMethod('*') // Allow all HTTP methods
         configuration.addAllowedHeader('*') // Allow all headers
         configuration.allowCredentials = true

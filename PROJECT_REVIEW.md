@@ -21,8 +21,6 @@ The Jade-Tipi project demonstrates **solid engineering practices** with a modern
 - Full-stack application with Next.js frontend
 
 **Key Areas for Improvement (Backend):**
-- Remove hardcoded secrets from test code
-- Consolidate duplicate CORS configuration
 - Add pagination to document listing
 - Implement transaction TTL and cleanup
 - Fix test file naming typo
@@ -45,71 +43,98 @@ The Jade-Tipi project demonstrates **solid engineering practices** with a modern
 
 ## 1. CRITICAL ISSUES
 
-### 1.1 Hardcoded Secrets in Test Code (SECURITY)
+### 1.1 Hardcoded Secrets in Test Code (ACCEPTABLE FOR DEMO)
 
 **Location:** `KeycloakTestHelper.groovy:28-29`
 
-**Issue:**
+**Current Implementation:**
 ```groovy
 private static final String CLIENT_SECRET = System.getenv("TEST_CLIENT_SECRET") ?:
-    "7e8d5df5-5afb-4cc0-8d56-9f3f5c7cc5fd"  // ❌ NEVER hardcode secrets
+    "7e8d5df5-5afb-4cc0-8d56-9f3f5c7cc5fd"  // Test secret for demo/development
 ```
 
-**Impact:** Production secret in source code is a security vulnerability, even as fallback value.
+**Status:** ✅ **ACCEPTABLE FOR DEMONSTRATION PROJECT**
 
-**Recommendation:**
-- Remove hardcoded fallback
-- Make TEST_CLIENT_SECRET required in CI/CD
-- Add validation to fail fast if environment variable missing
-- Document secret management in README
+**Rationale:**
+- This is a demonstration/educational project that will not be deployed to production as-is
+- The Keycloak component will not be deployed with these test credentials in production
+- Test secrets provide convenience for local development and demo purposes
+- No real sensitive data is being protected by these credentials
+- Production deployment will use proper secret management (HashiCorp Vault, AWS Secrets Manager, etc.)
+
+**Production Deployment Requirement:**
+When adapting this project for production use, all secrets MUST be externalized using environment variables or dedicated secret management systems. See `.claude/coding-guidelines.md` for details.
 
 ---
 
 ### 1.2 Duplicate CORS Configuration (CONFIGURATION)
 
-**Locations:**
-- `SecurityConfig.groovy:59-68`
-- `WebConfig.groovy:26-32`
+**Status:** ✅ **RESOLVED**
 
-**Issue:** CORS is configured in two different places using different approaches:
-- SecurityConfig uses `corsConfigurationSource()` with pattern matching
-- WebConfig uses `addCorsMappings()` registry approach
+**Previous Issue:** CORS was configured in two places:
+- SecurityConfig used `corsConfigurationSource()` with pattern matching
+- WebConfig used `addCorsMappings()` registry approach
 
-**Impact:** Conflicting configurations may cause unexpected behavior. Debugging CORS issues becomes difficult.
+**Resolution:**
+- Consolidated all CORS configuration into SecurityConfig.corsConfigurationSource()
+- Removed duplicate CORS configuration from WebConfig
+- Enhanced configuration to support both localhost pattern matching and specific IP address
+- Added documentation comments to WebConfig explaining the consolidation
 
-**Recommendation:**
-- Consolidate all CORS configuration into SecurityConfig
-- Remove CORS configuration from WebConfig
-- Add tests for CORS headers
+**Current Implementation (SecurityConfig.groovy:29-42):**
+```groovy
+@Bean
+CorsConfigurationSource corsConfigurationSource() {
+    CorsConfiguration configuration = new CorsConfiguration()
+    // Allow all localhost ports for local development
+    configuration.addAllowedOriginPattern('http://localhost:*')
+    // Allow specific IP address for development on local network
+    configuration.addAllowedOrigin('http://192.168.1.231:3000')
+    configuration.addAllowedMethod('*') // Allow all HTTP methods
+    configuration.addAllowedHeader('*') // Allow all headers
+    configuration.allowCredentials = true
+
+    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource()
+    source.registerCorsConfiguration('/**', configuration)
+    return source
+}
+```
+
+**Future Improvement:**
+- Add integration tests for CORS headers validation
 
 ---
 
 ### 1.3 Blocking Operations in Reactive Context (PERFORMANCE)
 
+**Status:** ✅ **ACCEPTABLE FOR STARTUP CODE**
+
 **Location:** `MongoDbInitializer.groovy:67-71`
 
-**Issue:**
+**Current Implementation:**
 ```groovy
 mongoTemplate.save(jsonContent, COLLECTION_NAME)
     .doOnSuccess { saved -> /* ... */ }
     .doOnError { error -> /* ... */ }
-    .block()  // ❌ Defeats reactive programming
+    .block()  // Used during application startup
 ```
 
-**Impact:** Blocks the event loop during startup, negating benefits of reactive stack.
+**Assessment:**
+Blocking operations during application initialization and startup are **acceptable** for this project.
 
-**Recommendation:**
-```groovy
-@Component
-class MongoDbInitializer {
-    @EventListener(ApplicationReadyEvent.class)
-    Mono<Void> initializeMongoDB(ApplicationReadyEvent event) {
-        return mongoTemplate.save(jsonContent, COLLECTION_NAME)
-            .doOnSuccess { saved -> /* ... */ }
-            .then()
-    }
-}
-```
+**Rationale:**
+- Performance is not critical during startup (happens once, not per request)
+- Simpler, more readable code during initialization
+- Easier debugging and troubleshooting
+- Current implementation in `MongoDbInitializer` is appropriate for startup initialization
+
+**Acceptable blocking scenarios:**
+- Database initialization (`MongoDbInitializer`)
+- Index creation during startup
+- Configuration loading and validation
+- Resource preloading
+
+**Important:** Blocking operations should NEVER be used in request handling paths. See `.claude/coding-guidelines.md` for details.
 
 ---
 
@@ -502,28 +527,36 @@ Mono<ResponseEntity<TransactionToken>> openTransaction(
 ```
 
 **Security Concerns:**
-- ⚠️ Duplicate CORS configuration (SecurityConfig + WebConfig)
-- ⚠️ Hardcoded Keycloak credentials in test helper
+- ✅ CORS configuration consolidated (no duplication)
+- ✅ Hardcoded Keycloak credentials in test helper (acceptable for demo project)
 - ⚠️ Actuator endpoints expose all operations (`include: '*'`)
 - ⚠️ Localhost CORS origins hardcoded (not production-ready)
 
 ---
 
-### 4.2 Secrets Management ⚠️
+### 4.2 Secrets Management
 
-**Critical Issues:**
-1. Test client secret hardcoded as fallback (KeycloakTestHelper.groovy)
-2. API issuer-uri hardcoded in application.yml
+**Status:** ✅ **APPROPRIATE FOR DEMONSTRATION PROJECT**
 
-**Good Practices:**
-- Uses environment variables with .env file
-- Docker Compose specifies credentials as environment variables
-- Keycloak import realm JSON for dev setup
+**Current Approach:**
+1. Test client secret hardcoded as fallback in KeycloakTestHelper.groovy (**acceptable for demo**)
+2. API issuer-uri configured in application.yml for local development
+3. Environment variables used with .env file for Docker Compose
+4. Keycloak realm imported from JSON for consistent dev setup
 
-**Recommendation:**
-- Use Spring Cloud Config or external secret management (HashiCorp Vault, AWS Secrets Manager)
-- Never commit secrets, even for testing
-- Document secret rotation procedures
+**Rationale:**
+This is a demonstration project that will not go to production with the current configuration. Hardcoded test secrets provide:
+- Ease of setup for developers and reviewers
+- Consistent local development environment
+- No security risk (no real data, no production deployment)
+
+**Production Deployment Requirements:**
+When adapting this codebase for production use:
+- All secrets MUST be externalized using Spring Cloud Config or external secret management (HashiCorp Vault, AWS Secrets Manager)
+- Test helper classes MUST NOT contain fallback secrets
+- Secret rotation procedures MUST be documented
+- Keycloak realm MUST use production-grade credentials
+- See `.claude/coding-guidelines.md` for complete secret management requirements
 
 ---
 
@@ -1442,11 +1475,12 @@ export function Navigation() {
 
 ### 10.1 High Priority
 
-1. **Remove hardcoded secrets** (KeycloakTestHelper.groovy)
-2. **Consolidate CORS configuration** (remove duplication)
-3. **Add pagination** to document listing
-4. **Implement transaction TTL** and cleanup
-5. **Complete TransactionCreate refactoring** (git status shows incomplete)
+1. ✅ ~~**Hardcoded test secrets**~~ (ACCEPTABLE FOR DEMO - see `.claude/coding-guidelines.md`)
+2. ✅ ~~**Consolidate CORS configuration**~~ (COMPLETED)
+3. ✅ ~~**Blocking operations in reactive context**~~ (ACCEPTABLE FOR STARTUP - see `.claude/coding-guidelines.md`)
+4. **Add pagination** to document listing
+5. **Implement transaction TTL** and cleanup
+6. **Complete TransactionCreate refactoring** (git status shows incomplete)
 
 ### 10.2 Medium Priority
 
@@ -1548,9 +1582,9 @@ Flux<ObjectNode> findAllSummary(int page, int size) {
 4. ✅ ~~Extract constants~~ (COMPLETED)
 5. ✅ ~~Implement logging strategy~~ (COMPLETED)
 6. ✅ ~~Create unit tests~~ (COMPLETED)
-7. 🔴 Remove hardcoded Keycloak secret from KeycloakTestHelper
-8. 🔴 Consolidate CORS configuration (remove duplication)
-9. 🔴 Replace .block() in MongoDbInitializer with reactive startup
+7. ✅ ~~Hardcoded test secrets~~ (ACCEPTABLE FOR DEMO - see `.claude/coding-guidelines.md`)
+8. ✅ ~~Consolidate CORS configuration~~ (COMPLETED)
+9. ✅ ~~Blocking operations during startup~~ (ACCEPTABLE - see `.claude/coding-guidelines.md`)
 10. 🔴 Add pagination to document list endpoint
 
 ### HIGH (Sprint Priority)
@@ -1615,8 +1649,8 @@ The Jade-Tipi full-stack project demonstrates **solid engineering practices** wi
 **Next Steps for Production Readiness:**
 
 **Immediate (Critical):**
-1. Security hardening (remove hardcoded secrets, consolidate CORS)
-2. Performance optimization (pagination, indexes, reactive startup)
+1. Security hardening (restrict actuator endpoints)
+2. Performance optimization (pagination, indexes)
 3. Fix test file naming typo
 
 **Short-term (High Priority):**

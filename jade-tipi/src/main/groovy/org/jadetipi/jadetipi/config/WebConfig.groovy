@@ -13,20 +13,16 @@
 package org.jadetipi.jadetipi.config
 
 import org.springframework.context.annotation.Configuration
-import org.springframework.web.reactive.config.CorsRegistry
 import org.springframework.web.reactive.config.EnableWebFlux
-import org.springframework.web.reactive.config.WebFluxConfigurer
 
+/**
+ * WebFlux configuration.
+ *
+ * Note: CORS configuration has been consolidated into SecurityConfig to avoid duplication.
+ * See SecurityConfig.corsConfigurationSource() for all CORS settings.
+ */
 @Configuration
 @EnableWebFlux
-class WebConfig implements WebFluxConfigurer {
-
-    @Override
-    void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/**")
-                .allowedOrigins("http://localhost:3000", "http://192.168.1.231:3000")
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                .allowedHeaders("*")
-                .allowCredentials(true)
-    }
+class WebConfig {
+    // CORS configuration removed - see SecurityConfig
 }
