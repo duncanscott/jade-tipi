@@ -86,7 +86,7 @@ class MongoDbInitializer implements CommandLineRunner {
                     log.info "Creating collections from 'collections' document"
                     jsonContent.each { collectionKey, collectionData ->
                         if (collectionKey != "_id" && collectionData instanceof Map) {
-                            def collectionName = collectionData.get("name")
+                            def collectionName = collectionData.get("abbreviation")
                             if (collectionName) {
                                 mongoTemplate.collectionExists(collectionName)
                                         .flatMap { exists ->
@@ -109,6 +109,7 @@ class MongoDbInitializer implements CommandLineRunner {
             }
         }
 
+        /*
         // Create open-transactions collection
         def openTransactionsCollection = "open-transactions"
         mongoTemplate.collectionExists(openTransactionsCollection)
@@ -124,5 +125,6 @@ class MongoDbInitializer implements CommandLineRunner {
                 .block()
 
         log.info "MongoDB initialization completed"
+         */
     }
 }

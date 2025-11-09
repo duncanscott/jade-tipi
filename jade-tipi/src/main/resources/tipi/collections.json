@@ -1,30 +1,30 @@
 {
   "entity": {
     "name": "entity",
-    "abbreviation": "en"
+    "abbreviation": "ent"
   },
   "property": {
     "name": "property",
-    "abbreviation": "pp"
+    "abbreviation": "ppy"
   },
   "link": {
     "name": "link",
-    "abbreviation": "ln"
+    "abbreviation": "lnk"
   },
   "group": {
     "name": "group",
-    "abbreviation": "gp"
+    "abbreviation": "grp"
   },
   "type": {
     "name": "type",
-    "abbreviation": "ty"
+    "abbreviation": "typ"
   },
   "validation": {
     "name": "validation",
-    "abbreviation": "va"
+    "abbreviation": "vdn"
   },
   "transaction": {
     "name": "transaction",
-    "abbreviation": "tx"
+    "abbreviation": "txn"
   }
 }

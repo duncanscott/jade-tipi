@@ -30,8 +30,8 @@ import org.springframework.web.server.ResponseStatusException
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 
-import static org.jadetipi.jadetipi.Constants.FIELD_DELETED_COUNT
-import static org.jadetipi.jadetipi.Constants.MAX_DOCUMENT_SIZE_BYTES
+import static org.jadetipi.jadetipi.util.Constants.FIELD_DELETED_COUNT
+import static org.jadetipi.jadetipi.util.Constants.MAX_DOCUMENT_SIZE_BYTES
 
 @Slf4j
 @RestController

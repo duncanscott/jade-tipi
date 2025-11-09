@@ -24,8 +24,8 @@ import reactor.core.publisher.Mono
 
 import java.time.Instant
 
-import static org.jadetipi.jadetipi.Constants.COLLECTION_TRANSACTIONS
-import static org.jadetipi.jadetipi.Constants.TRANSACTION_ID_SEPARATOR
+import static org.jadetipi.jadetipi.util.Constants.COLLECTION_TRANSACTIONS
+import static org.jadetipi.jadetipi.util.Constants.TRANSACTION_ID_SEPARATOR
 
 /**
  * Generates transaction identifiers and secrets, and persists them to MongoDB.

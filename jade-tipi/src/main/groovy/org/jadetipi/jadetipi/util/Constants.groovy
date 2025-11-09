@@ -10,7 +10,7 @@
  *
  * https://jade-tipi.org/license
  */
-package org.jadetipi.jadetipi
+package org.jadetipi.jadetipi.util
 
 /**
  * Application-wide constants.
@@ -26,7 +26,7 @@ class Constants {
 
     // Collection names
     static final String COLLECTION_DOCUMENTS = 'objectNodes'
-    static final String COLLECTION_TRANSACTIONS = 'transaction'
+    static final String COLLECTION_TRANSACTIONS = 'txn'
     static final String COLLECTION_TIPI = 'tipi'
 
     // Transaction

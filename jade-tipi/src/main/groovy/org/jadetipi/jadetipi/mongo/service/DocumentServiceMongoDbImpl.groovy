@@ -25,11 +25,11 @@ import org.springframework.stereotype.Service
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 
-import static org.jadetipi.jadetipi.Constants.COLLECTION_DOCUMENTS
-import static org.jadetipi.jadetipi.Constants.FIELD_CHILDREN
-import static org.jadetipi.jadetipi.Constants.FIELD_ID
-import static org.jadetipi.jadetipi.Constants.FIELD_NAME
-import static org.jadetipi.jadetipi.Constants.OBJECTID_PATTERN
+import static org.jadetipi.jadetipi.util.Constants.COLLECTION_DOCUMENTS
+import static org.jadetipi.jadetipi.util.Constants.FIELD_CHILDREN
+import static org.jadetipi.jadetipi.util.Constants.FIELD_ID
+import static org.jadetipi.jadetipi.util.Constants.FIELD_NAME
+import static org.jadetipi.jadetipi.util.Constants.OBJECTID_PATTERN
 
 @Slf4j
 @Service
