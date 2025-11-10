@@ -33,7 +33,7 @@ class TransactionServiceIntegrationSpec extends Specification {
     @Autowired
     ReactiveMongoTemplate mongoTemplate
 
-    private static final String COLLECTION_NAME = "transaction"
+    private static final String COLLECTION_NAME = "txn"
 
     def cleanup() {
         mongoTemplate.collectionExists(COLLECTION_NAME)
@@ -58,9 +58,9 @@ class TransactionServiceIntegrationSpec extends Specification {
         and: "document is persisted with the secret"
         def stored = mongoTemplate.findById(token.transactionId(), Map, COLLECTION_NAME).block()
         stored != null
-        stored.secret == token.secret()
-        stored.organization == group.organization()
-        stored.group == group.group()
+        stored.txn.secret == token.secret()
+        stored.grp.organization == group.organization()
+        stored.grp.group == group.group()
     }
 
     def "commitTransaction validates secret and stores commit metadata"() {
@@ -78,8 +78,8 @@ class TransactionServiceIntegrationSpec extends Specification {
 
         and:
         def stored = mongoTemplate.findById(token.transactionId(), Map, COLLECTION_NAME).block()
-        stored.commit == commit.commitId()
-        stored.committed != null
+        stored.txn.commit == commit.commitId()
+        stored.txn.committed != null
     }
 
     def "commitTransaction fails when transaction already committed"() {

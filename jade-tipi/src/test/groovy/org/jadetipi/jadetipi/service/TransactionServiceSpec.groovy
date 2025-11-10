@@ -37,7 +37,7 @@ class TransactionServiceSpec extends Specification {
         def group = new Group('test-org', 'test-group')
         idGenerator.nextId() >> 'abc123xyz'
         idGenerator.nextKey() >> 'secretKey123'
-        mongoTemplate.save(_ as Map, 'transaction') >> Mono.just([:])
+        mongoTemplate.save(_ as Map, 'txn') >> Mono.just([:])
 
         when: "opening a transaction"
         def result = service.openTransaction(group)
@@ -60,7 +60,7 @@ class TransactionServiceSpec extends Specification {
 
         and: "capture the saved document"
         Map savedDoc = null
-        mongoTemplate.save(_ as Map, 'transaction') >> { Map doc, String collection ->
+        mongoTemplate.save(_ as Map, 'txn') >> { Map doc, String collection ->
             savedDoc = doc
             Mono.just(doc)
         }
@@ -133,10 +133,10 @@ class TransactionServiceSpec extends Specification {
 
         and: "mocked dependencies"
         idGenerator.nextId() >> 'commit-456'
-        mongoTemplate.findById('tx-123', Map.class, 'transaction') >> Mono.just(existingDoc)
+        mongoTemplate.findById('tx-123', Map.class, 'txn') >> Mono.just(existingDoc)
 
         Map savedDoc = null
-        mongoTemplate.save(_ as Map, 'transaction') >> { Map doc, String collection ->
+        mongoTemplate.save(_ as Map, 'txn') >> { Map doc, String collection ->
             savedDoc = doc
             Mono.just(doc)
         }
@@ -162,7 +162,7 @@ class TransactionServiceSpec extends Specification {
         def group = new Group('org1', 'group1')
         def token = new TransactionToken('tx-404', 'secret123', group)
         idGenerator.nextId() >> 'commit-id'
-        mongoTemplate.findById('tx-404', Map.class, 'transaction') >> Mono.empty()
+        mongoTemplate.findById('tx-404', Map.class, 'txn') >> Mono.empty()
 
         when: "committing transaction"
         def result = service.commitTransaction(token)
@@ -195,7 +195,7 @@ class TransactionServiceSpec extends Specification {
             ]
         ]
         idGenerator.nextId() >> 'commit-id'
-        mongoTemplate.findById('tx-123', Map.class, 'transaction') >> Mono.just(existingDoc)
+        mongoTemplate.findById('tx-123', Map.class, 'txn') >> Mono.just(existingDoc)
 
         when: "committing with wrong secret"
         def result = service.commitTransaction(token)
@@ -228,7 +228,7 @@ class TransactionServiceSpec extends Specification {
             ]
         ]
         idGenerator.nextId() >> 'commit-id'
-        mongoTemplate.findById('tx-123', Map.class, 'transaction') >> Mono.just(existingDoc)
+        mongoTemplate.findById('tx-123', Map.class, 'txn') >> Mono.just(existingDoc)
 
         when: "committing again"
         def result = service.commitTransaction(token)

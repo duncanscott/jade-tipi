@@ -73,14 +73,16 @@ class TransactionControllerIntegrationTest {
         assert response.group.group == group
 
         def transactionQuery = Query.query(Criteria.where("_id").is(response.transactionId))
-        def createdDocument = reactiveMongoTemplate.findOne(transactionQuery, Document, "transaction").block()
+        def createdDocument = reactiveMongoTemplate.findOne(transactionQuery, Document, "txn").block()
         try {
             assert createdDocument != null
-            assert createdDocument.getString("secret") == response.secret
-            assert createdDocument.getString("organization") == organization
-            assert createdDocument.getString("group") == group
+            def txn = createdDocument.get("txn", Document)
+            def grp = createdDocument.get("grp", Document)
+            assert txn.getString("secret") == response.secret
+            assert grp.getString("organization") == organization
+            assert grp.getString("group") == group
         } finally {
-            reactiveMongoTemplate.remove(transactionQuery, "transaction").block()
+            reactiveMongoTemplate.remove(transactionQuery, "txn").block()
         }
     }
 
@@ -122,14 +124,15 @@ class TransactionControllerIntegrationTest {
         assert commitResponse.commitId
 
         def transactionQuery = Query.query(Criteria.where("_id").is(createResponse.transactionId))
-        def committedDocument = reactiveMongoTemplate.findOne(transactionQuery, Document, "transaction").block()
+        def committedDocument = reactiveMongoTemplate.findOne(transactionQuery, Document, "txn").block()
         try {
             assert committedDocument != null
-            assert committedDocument.getString("secret") == createResponse.secret
-            assert committedDocument.getString("commit") == commitResponse.commitId
-            assert committedDocument.get("committed") != null
+            def txn = committedDocument.get("txn", Document)
+            assert txn.getString("secret") == createResponse.secret
+            assert txn.getString("commit") == commitResponse.commitId
+            assert txn.get("committed") != null
         } finally {
-            reactiveMongoTemplate.remove(transactionQuery, "transaction").block()
+            reactiveMongoTemplate.remove(transactionQuery, "txn").block()
         }
     }
 
