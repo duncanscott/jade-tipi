@@ -35,7 +35,7 @@ class TestSecurityConfig {
             Map<String, Object> claims = [
                 sub: "test-user",
                 tipi_org: "test-org",
-                tipi_group: "test-group",
+                tipi_group: "test-grp",
                 iat: Instant.now().epochSecond,
                 exp: Instant.now().plusSeconds(3600).epochSecond
             ]

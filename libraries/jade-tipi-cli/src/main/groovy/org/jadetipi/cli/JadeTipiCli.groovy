@@ -204,7 +204,7 @@ class JadeTipiCli {
 
             String transactionResponseBody = transactionResponse.body()
             Map txnPayload = (Map) new JsonSlurper().parseText(transactionResponseBody)
-            String transactionId = txnPayload.transactionId as String
+            String transactionId = txnPayload.id as String
             persistTransactionToken(effective.clientId as String, transactionId, transactionResponseBody)
 
             println transactionId

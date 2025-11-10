@@ -48,20 +48,25 @@ class TransactionService {
      * Opens a new transaction record and returns its public/secret components.
      */
     Mono<TransactionToken> openTransaction(Group group) {
-        Assert.notNull(group, 'group must not be null')
+        Assert.notNull(group, 'grp must not be null')
         Assert.hasText(group.organization(), 'organization must not be blank')
-        Assert.hasText(group.group(), 'group must not be blank')
+        Assert.hasText(group.group(), 'grp must not be blank')
 
         String transactionId = nextId(group)
         String secret = idGenerator.nextKey()
 
         log.debug('Opening transaction: id={}', transactionId)
 
+        String openSeq = extractSequencePart(transactionId)
+        String openedTimestamp = extractTimestampAsIso8601(transactionId)
+
         Map<String, Object> txn = [
                 id        : transactionId,
                 secret    : secret,
                 commit    : null,
-                opened    : Instant.now(),
+                open_seq  : openSeq,
+                opened    : openedTimestamp,
+                commit_seq: null,
                 committed : null
         ] as Map<String,Object>
 
@@ -87,65 +92,69 @@ class TransactionService {
      */
     Mono<CommitToken> commitTransaction(TransactionToken transactionToken) {
         Assert.notNull(transactionToken, 'transactionToken must not be null')
-        Assert.hasText(transactionToken.transactionId(), 'transactionId must not be blank')
+        Assert.hasText(transactionToken.id(), 'id must not be blank')
         Assert.hasText(transactionToken.secret(), 'secret must not be blank')
-        Assert.notNull(transactionToken.group(), 'group must not be null')
-        Assert.hasText(transactionToken.group().organization(), 'organization must not be blank')
-        Assert.hasText(transactionToken.group().group(), 'group must not be blank')
+        Assert.notNull(transactionToken.grp(), 'grp must not be null')
+        Assert.hasText(transactionToken.grp().organization(), 'organization must not be blank')
+        Assert.hasText(transactionToken.grp().group(), 'grp must not be blank')
 
-        String commitId = nextId(transactionToken.group())
-        log.debug('Committing transaction: id={}, commit={}', transactionToken.transactionId(), commitId)
+        String commitId = nextId(transactionToken.grp())
+        log.debug('Committing transaction: id={}, commit={}', transactionToken.id(), commitId)
 
-        return mongoTemplate.findById(transactionToken.transactionId(), Map.class, COLLECTION_NAME)
+        return mongoTemplate.findById(transactionToken.id(), Map.class, COLLECTION_NAME)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException('Transaction not found')))
                 .flatMap { Map doc ->
                     Map<String, Object> txn = doc.get('txn') as Map<String, Object>
                     if (txn == null) {
-                        log.error('Transaction document missing txn field: id={}', transactionToken.transactionId())
+                        log.error('Transaction document missing txn field: id={}', transactionToken.id())
                         return Mono.error(new IllegalStateException('Invalid transaction document structure'))
                     }
 
                     String storedSecret = txn.get('secret') as String
                     if (storedSecret != transactionToken.secret()) {
-                        log.warn('Invalid secret for transaction: id={}', transactionToken.transactionId())
+                        log.warn('Invalid secret for transaction: id={}', transactionToken.id())
                         return Mono.error(new IllegalArgumentException('Invalid transaction secret'))
                     }
                     if (txn.get('commit') != null) {
-                        log.warn('Transaction already committed: id={}', transactionToken.transactionId())
+                        log.warn('Transaction already committed: id={}', transactionToken.id())
                         return Mono.error(new IllegalStateException('Transaction already committed'))
                     }
 
+                    String commitSeq = extractSequencePart(commitId)
+                    String committedTimestamp = extractTimestampAsIso8601(commitId)
+
                     txn.put('commit', commitId)
-                    txn.put('committed', Instant.now())
+                    txn.put('commit_seq', commitSeq)
+                    txn.put('committed', committedTimestamp)
 
                     return mongoTemplate.save(doc, COLLECTION_NAME)
                             .doOnSuccess { log.info('Transaction committed: id={}, commit={}',
-                                transactionToken.transactionId(), commitId) }
+                                transactionToken.id(), commitId) }
                             .doOnError { ex -> log.error('Failed to commit transaction: id={}',
-                                transactionToken.transactionId(), ex) }
-                            .thenReturn(new CommitToken(transactionToken.transactionId(), commitId))
+                                transactionToken.id(), ex) }
+                            .thenReturn(new CommitToken(transactionToken.id(), commitId))
                 } as Mono<CommitToken>
     }
 
     /**
-     * Generates a transaction identifier with format: {tipiId}~{organization}~{group}
+     * Generates a transaction identifier with format: {tipiId}~{organization}~{grp}
      *
-     * Example: "abc123xyz~jade-tipi_org~some-group"
+     * Example: "abc123xyz~jade-tipi_org~some-grp"
      *
      * The transaction ID is globally unique and contains:
      * - tipiId: Random identifier from IdGenerator (20 chars, base62)
      * - organization: Organization identifier
-     * - group: Group identifier within organization
+     * - grp: Group identifier within organization
      * - separator: '~' character (TRANSACTION_ID_SEPARATOR)
      *
      * This format allows:
-     * - Easy extraction of organization/group from transaction ID
+     * - Easy extraction of organization/grp from transaction ID
      * - Natural shard key for distributed deployments
      * - Human-readable transaction identification
      * - Hierarchical organization of transactions
      *
-     * @param group The group containing organization and group identifiers
-     * @return A globally unique transaction ID in the format tipiId~organization~group
+     * @param group The grp containing organization and grp identifiers
+     * @return A globally unique transaction ID in the format tipiId~organization~grp
      */
     private String nextId(Group group) {
         StringBuilder sb = new StringBuilder(idGenerator.nextId())
@@ -154,5 +163,42 @@ class TransactionService {
         sb.append(TRANSACTION_ID_SEPARATOR)
         sb.append(group.group())
         return sb.toString()
+    }
+
+    /**
+     * Extracts the sequence part from a transaction/commit ID.
+     * For ID format: prefix~timestamp~seq~org~group
+     * Returns: timestamp~seq (e.g., "1762736289657~aaa")
+     */
+    private static String extractSequencePart(String id) {
+        if (id == null || id.isEmpty()) {
+            throw new IllegalArgumentException('ID cannot be null or empty')
+        }
+        String[] parts = id.split(TRANSACTION_ID_SEPARATOR, -1)
+        if (parts.length < 3) {
+            throw new IllegalArgumentException("Invalid ID format: ${id}")
+        }
+        return parts[1] + TRANSACTION_ID_SEPARATOR + parts[2]
+    }
+
+    /**
+     * Extracts the epoch timestamp from an ID and converts it to ISO8601 format.
+     * For ID format: prefix~timestamp~seq~org~group
+     * Parses timestamp (in milliseconds) and returns ISO8601 string.
+     */
+    private static String extractTimestampAsIso8601(String id) {
+        if (id == null || id.isEmpty()) {
+            throw new IllegalArgumentException('ID cannot be null or empty')
+        }
+        String[] parts = id.split(TRANSACTION_ID_SEPARATOR, -1)
+        if (parts.length < 2) {
+            throw new IllegalArgumentException("Invalid ID format: ${id}")
+        }
+        try {
+            long epochMillis = Long.parseLong(parts[1])
+            return Instant.ofEpochMilli(epochMillis).toString()
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Invalid timestamp in ID: ${id}", e)
+        }
     }
 }

@@ -50,7 +50,7 @@ class TransactionControllerIntegrationTest {
     @Test
     void 'should create transaction and persist record when authenticated'() {
         def organization = "org-${UUID.randomUUID()}"
-        def group = "group-${UUID.randomUUID()}"
+        def group = "grp-${UUID.randomUUID()}"
 
         def response = webTestClient.post()
                 .uri("/api/transactions/open")
@@ -64,21 +64,25 @@ class TransactionControllerIntegrationTest {
                 .responseBody
 
         assert response != null
-        assert response.transactionId
+        assert response.id
         assert response.secret
-        assert (response.transactionId as String).contains(organization)
-        assert (response.transactionId as String).contains(group)
-        assert response.group
-        assert response.group.organization == organization
-        assert response.group.group == group
+        assert (response.id as String).contains(organization)
+        assert (response.id as String).contains(group)
+        assert response.grp
+        assert response.grp.organization == organization
+        assert response.grp.group == group
 
-        def transactionQuery = Query.query(Criteria.where("_id").is(response.transactionId))
+        def transactionQuery = Query.query(Criteria.where("_id").is(response.id))
         def createdDocument = reactiveMongoTemplate.findOne(transactionQuery, Document, "txn").block()
         try {
             assert createdDocument != null
             def txn = createdDocument.get("txn", Document)
             def grp = createdDocument.get("grp", Document)
             assert txn.getString("secret") == response.secret
+            assert txn.getString("open_seq") != null
+            assert txn.getString("opened") != null
+            assert txn.getString("commit_seq") == null
+            assert txn.get("committed") == null
             assert grp.getString("organization") == organization
             assert grp.getString("group") == group
         } finally {
@@ -89,7 +93,7 @@ class TransactionControllerIntegrationTest {
     @Test
     void 'should commit transaction and write commit metadata when authenticated'() {
         def organization = "org-${UUID.randomUUID()}"
-        def group = "group-${UUID.randomUUID()}"
+        def group = "grp-${UUID.randomUUID()}"
 
         def createResponse = webTestClient.post()
                 .uri("/api/transactions/open")
@@ -103,7 +107,7 @@ class TransactionControllerIntegrationTest {
                 .responseBody
 
         def commitRequest = new TransactionToken(
-                createResponse.transactionId as String,
+                createResponse.id as String,
                 createResponse.secret as String,
                 new Group(organization, group)
         )
@@ -120,16 +124,17 @@ class TransactionControllerIntegrationTest {
                 .responseBody
 
         assert commitResponse != null
-        assert commitResponse.transactionId == createResponse.transactionId
+        assert commitResponse.transactionId == createResponse.id
         assert commitResponse.commitId
 
-        def transactionQuery = Query.query(Criteria.where("_id").is(createResponse.transactionId))
+        def transactionQuery = Query.query(Criteria.where("_id").is(createResponse.id))
         def committedDocument = reactiveMongoTemplate.findOne(transactionQuery, Document, "txn").block()
         try {
             assert committedDocument != null
             def txn = committedDocument.get("txn", Document)
             assert txn.getString("secret") == createResponse.secret
             assert txn.getString("commit") == commitResponse.commitId
+            assert txn.getString("commit_seq") != null
             assert txn.get("committed") != null
         } finally {
             reactiveMongoTemplate.remove(transactionQuery, "txn").block()
@@ -139,7 +144,7 @@ class TransactionControllerIntegrationTest {
     @Test
     void 'should return conflict when committing an already committed transaction'() {
         def organization = "org-${UUID.randomUUID()}"
-        def group = "group-${UUID.randomUUID()}"
+        def group = "grp-${UUID.randomUUID()}"
 
         def createResponse = webTestClient.post()
                 .uri("/api/transactions/open")
@@ -153,7 +158,7 @@ class TransactionControllerIntegrationTest {
                 .responseBody
 
         def commitRequest = new TransactionToken(
-                createResponse.transactionId as String,
+                createResponse.id as String,
                 createResponse.secret as String,
                 new Group(organization, group)
         )

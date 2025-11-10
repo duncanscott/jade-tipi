@@ -33,9 +33,9 @@ class TransactionServiceSpec extends Specification {
     }
 
     def "openTransaction should generate valid transaction ID with correct format"() {
-        given: "a group and mocked ID generator"
-        def group = new Group('test-org', 'test-group')
-        idGenerator.nextId() >> 'abc123xyz'
+        given: "a grp and mocked ID generator"
+        def group = new Group('test-org', 'test-grp')
+        idGenerator.nextId() >> 'abc123xyz~1234567890~aaa'
         idGenerator.nextKey() >> 'secretKey123'
         mongoTemplate.save(_ as Map, 'txn') >> Mono.just([:])
 
@@ -45,17 +45,17 @@ class TransactionServiceSpec extends Specification {
         then: "transaction ID should have correct format"
         StepVerifier.create(result)
                 .expectNextMatches { token ->
-                    token.transactionId() == 'abc123xyz~test-org~test-group' &&
+                    token.id() == 'abc123xyz~1234567890~aaa~test-org~test-grp' &&
                     token.secret() == 'secretKey123' &&
-                    token.group() == group
+                    token.grp() == group
                 }
                 .verifyComplete()
     }
 
     def "openTransaction should persist transaction to MongoDB"() {
-        given: "a group"
+        given: "a grp"
         def group = new Group('org1', 'group1')
-        idGenerator.nextId() >> 'id123'
+        idGenerator.nextId() >> 'id123~1234567890~abc'
         idGenerator.nextKey() >> 'secret456'
 
         and: "capture the saved document"
@@ -70,20 +70,22 @@ class TransactionServiceSpec extends Specification {
 
         then: "document should be saved with correct fields"
         savedDoc != null
-        savedDoc._id == 'id123~org1~group1'
+        savedDoc._id == 'id123~1234567890~abc~org1~group1'
         savedDoc.grp != null
         savedDoc.grp.organization == 'org1'
         savedDoc.grp.group == 'group1'
         savedDoc.txn != null
-        savedDoc.txn.id == 'id123~org1~group1'
+        savedDoc.txn.id == 'id123~1234567890~abc~org1~group1'
         savedDoc.txn.secret == 'secret456'
         savedDoc.txn.commit == null
+        savedDoc.txn.open_seq != null
         savedDoc.txn.opened != null
+        savedDoc.txn.commit_seq == null
         savedDoc.txn.committed == null
     }
 
     def "openTransaction should reject null group"() {
-        when: "opening transaction with null group"
+        when: "opening transaction with null grp"
         service.openTransaction(null)
 
         then: "IllegalArgumentException should be thrown"
@@ -91,8 +93,8 @@ class TransactionServiceSpec extends Specification {
     }
 
     def "openTransaction should reject blank organization"() {
-        given: "group with blank organization"
-        def group = new Group('', 'test-group')
+        given: "grp with blank organization"
+        def group = new Group('', 'test-grp')
 
         when: "opening transaction"
         service.openTransaction(group)
@@ -102,7 +104,7 @@ class TransactionServiceSpec extends Specification {
     }
 
     def "openTransaction should reject blank group name"() {
-        given: "group with blank name"
+        given: "grp with blank name"
         def group = new Group('test-org', '')
 
         when: "opening transaction"
@@ -132,7 +134,7 @@ class TransactionServiceSpec extends Specification {
         ]
 
         and: "mocked dependencies"
-        idGenerator.nextId() >> 'commit-456'
+        idGenerator.nextId() >> 'commit-456~9876543210~xyz'
         mongoTemplate.findById('tx-123', Map.class, 'txn') >> Mono.just(existingDoc)
 
         Map savedDoc = null
@@ -148,12 +150,13 @@ class TransactionServiceSpec extends Specification {
         StepVerifier.create(result)
                 .expectNextMatches { commit ->
                     commit.transactionId() == 'tx-123' &&
-                    commit.commitId() == 'commit-456~org1~group1'
+                    commit.commitId() == 'commit-456~9876543210~xyz~org1~group1'
                 }
                 .verifyComplete()
 
         and: "document should be updated with commit info"
-        savedDoc.txn.commit == 'commit-456~org1~group1'
+        savedDoc.txn.commit == 'commit-456~9876543210~xyz~org1~group1'
+        savedDoc.txn.commit_seq != null
         savedDoc.txn.committed != null
     }
 
@@ -161,7 +164,7 @@ class TransactionServiceSpec extends Specification {
         given: "a transaction token for non-existent transaction"
         def group = new Group('org1', 'group1')
         def token = new TransactionToken('tx-404', 'secret123', group)
-        idGenerator.nextId() >> 'commit-id'
+        idGenerator.nextId() >> 'commit-id~9999999999~zzz'
         mongoTemplate.findById('tx-404', Map.class, 'txn') >> Mono.empty()
 
         when: "committing transaction"
@@ -194,7 +197,7 @@ class TransactionServiceSpec extends Specification {
                 committed: null
             ]
         ]
-        idGenerator.nextId() >> 'commit-id'
+        idGenerator.nextId() >> 'commit-id~8888888888~yyy'
         mongoTemplate.findById('tx-123', Map.class, 'txn') >> Mono.just(existingDoc)
 
         when: "committing with wrong secret"
@@ -227,7 +230,7 @@ class TransactionServiceSpec extends Specification {
                 committed: new Date()
             ]
         ]
-        idGenerator.nextId() >> 'commit-id'
+        idGenerator.nextId() >> 'commit-id~7777777777~xxx'
         mongoTemplate.findById('tx-123', Map.class, 'txn') >> Mono.just(existingDoc)
 
         when: "committing again"

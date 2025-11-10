@@ -18,7 +18,7 @@ import jakarta.validation.constraints.NotBlank;
  * Public token returned when a transaction is created.
  */
 public record CommitToken(
-        @NotBlank(message = "transactionId is required")
+        @NotBlank(message = "id is required")
         String transactionId,
 
         @NotBlank(message = "commitId is required")

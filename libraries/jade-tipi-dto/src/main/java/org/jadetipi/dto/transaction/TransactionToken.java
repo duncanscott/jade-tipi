@@ -21,14 +21,14 @@ import org.jadetipi.dto.permission.Group;
  * Public token returned when a transaction is created.
  */
 public record TransactionToken(
-        @NotBlank(message = "transactionId is required")
-        String transactionId,
+        @NotBlank(message = "id is required")
+        String id,
 
         @NotBlank(message = "secret is required")
         String secret,
 
         @Valid
-        @NotNull(message = "group is required")
-        Group group
+        @NotNull(message = "grp is required")
+        Group grp
 ) {
 }

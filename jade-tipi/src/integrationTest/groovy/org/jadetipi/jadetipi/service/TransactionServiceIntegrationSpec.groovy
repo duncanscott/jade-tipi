@@ -43,29 +43,33 @@ class TransactionServiceIntegrationSpec extends Specification {
 
     def "openTransaction stores secret and returns composed transaction id"() {
         given:
-        Group group = new Group('jade-tipi_org','some-group')
+        Group group = new Group('jade-tipi_org','some-grp')
 
         when:
         def token = transactionService.openTransaction(group).block()
 
         then:
         token != null
-        token.transactionId().endsWith("~${group.organization()}~${group.group()}")
+        token.id().endsWith("~${group.organization()}~${group.group()}")
         token.secret() != null
         token.secret().length() == 43
-        token.group() == group
+        token.grp() == group
 
         and: "document is persisted with the secret"
-        def stored = mongoTemplate.findById(token.transactionId(), Map, COLLECTION_NAME).block()
+        def stored = mongoTemplate.findById(token.id(), Map, COLLECTION_NAME).block()
         stored != null
         stored.txn.secret == token.secret()
+        stored.txn.open_seq != null
+        stored.txn.opened != null
+        stored.txn.commit_seq == null
+        stored.txn.committed == null
         stored.grp.organization == group.organization()
         stored.grp.group == group.group()
     }
 
     def "commitTransaction validates secret and stores commit metadata"() {
         given:
-        Group group = new Group('jade-tipi_org','some-group')
+        Group group = new Group('jade-tipi_org','some-grp')
         TransactionToken token = transactionService.openTransaction(group).block()
 
         when:
@@ -73,18 +77,19 @@ class TransactionServiceIntegrationSpec extends Specification {
 
         then:
         commit != null
-        commit.transactionId() == token.transactionId()
+        commit.transactionId() == token.id()
         commit.commitId().endsWith("~${group.organization()}~${group.group()}")
 
         and:
-        def stored = mongoTemplate.findById(token.transactionId(), Map, COLLECTION_NAME).block()
+        def stored = mongoTemplate.findById(token.id(), Map, COLLECTION_NAME).block()
         stored.txn.commit == commit.commitId()
+        stored.txn.commit_seq != null
         stored.txn.committed != null
     }
 
     def "commitTransaction fails when transaction already committed"() {
         given:
-        Group group = new Group('jade-tipi_org','some-group')
+        Group group = new Group('jade-tipi_org','some-grp')
         TransactionToken token = transactionService.openTransaction(group).block()
 
         when:

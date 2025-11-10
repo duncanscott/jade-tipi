@@ -18,6 +18,6 @@ public record Group(
         @NotBlank(message = "organization is required")
         String organization,
 
-        @NotBlank(message = "group is required")
+        @NotBlank(message = "grp is required")
         String group) {
 }

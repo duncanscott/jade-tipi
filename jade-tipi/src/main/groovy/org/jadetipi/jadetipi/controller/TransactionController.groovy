@@ -44,10 +44,10 @@ class TransactionController {
     Mono<ResponseEntity<TransactionToken>> openTransaction(
             @Valid @RequestBody Group group, @AuthenticationPrincipal Jwt jwt) {
 
-        log.debug('Opening transaction for organization={}, group={}', group.organization(), group.group())
+        log.debug('Opening transaction for organization={}, grp={}', group.organization(), group.group())
 
         return transactionService.openTransaction(group)
-                .doOnSuccess { token -> log.info('Transaction opened: id={}', token.transactionId()) }
+                .doOnSuccess { token -> log.info('Transaction opened: id={}', token.id()) }
                 .map { token -> ResponseEntity.status(HttpStatus.CREATED).body(token) }
     }
 
@@ -55,11 +55,11 @@ class TransactionController {
     Mono<ResponseEntity<CommitToken>> commitTransaction(
             @Valid @RequestBody TransactionToken transactionToken, @AuthenticationPrincipal Jwt jwt) {
 
-        log.debug('Committing transaction: id={}', transactionToken.transactionId())
+        log.debug('Committing transaction: id={}', transactionToken.id())
 
         return transactionService.commitTransaction(transactionToken)
                 .doOnSuccess { commit -> log.info('Transaction committed: id={}, commit={}',
-                    transactionToken.transactionId(), commit.commitId()) }
+                    transactionToken.id(), commit.commitId()) }
                 .map { commit -> ResponseEntity.ok(commit) }
     }
 
