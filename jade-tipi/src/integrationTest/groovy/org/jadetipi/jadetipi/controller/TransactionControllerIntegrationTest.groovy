@@ -80,7 +80,7 @@ class TransactionControllerIntegrationTest {
             def grp = createdDocument.get("grp", Document)
             assert txn.getString("secret") == response.secret
             assert txn.getString("open_seq") != null
-            assert txn.getString("opened") != null
+            assert txn.getDate("opened") != null
             assert txn.getString("commit_seq") == null
             assert txn.get("committed") == null
             assert grp.getString("organization") == organization
@@ -135,7 +135,7 @@ class TransactionControllerIntegrationTest {
             assert txn.getString("secret") == createResponse.secret
             assert txn.getString("commit") == commitResponse.commitId
             assert txn.getString("commit_seq") != null
-            assert txn.get("committed") != null
+            assert txn.getDate("committed") != null
         } finally {
             reactiveMongoTemplate.remove(transactionQuery, "txn").block()
         }
