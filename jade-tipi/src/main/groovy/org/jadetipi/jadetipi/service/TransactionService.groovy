@@ -58,7 +58,7 @@ class TransactionService {
         log.debug('Opening transaction: id={}', transactionId)
 
         String openSeq = extractSequencePart(transactionId)
-        String openedTimestamp = extractTimestampAsIso8601(transactionId)
+        Instant openedTimestamp = extractTimestampFromId(transactionId)
 
         Map<String, Object> txn = [
                 id        : transactionId,
@@ -121,7 +121,7 @@ class TransactionService {
                     }
 
                     String commitSeq = extractSequencePart(commitId)
-                    String committedTimestamp = extractTimestampAsIso8601(commitId)
+                    Instant committedTimestamp = extractTimestampFromId(commitId)
 
                     txn.put('commit', commitId)
                     txn.put('commit_seq', commitSeq)
@@ -182,11 +182,11 @@ class TransactionService {
     }
 
     /**
-     * Extracts the epoch timestamp from an ID and converts it to ISO8601 format.
+     * Extracts the epoch timestamp from an ID and returns it as an Instant.
      * For ID format: prefix~timestamp~seq~org~group
-     * Parses timestamp (in milliseconds) and returns ISO8601 string.
+     * Parses timestamp (in milliseconds) and returns Instant.
      */
-    private static String extractTimestampAsIso8601(String id) {
+    private static Instant extractTimestampFromId(String id) {
         if (id == null || id.isEmpty()) {
             throw new IllegalArgumentException('ID cannot be null or empty')
         }
@@ -196,7 +196,7 @@ class TransactionService {
         }
         try {
             long epochMillis = Long.parseLong(parts[1])
-            return Instant.ofEpochMilli(epochMillis).toString()
+            return Instant.ofEpochMilli(epochMillis)
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("Invalid timestamp in ID: ${id}", e)
         }
