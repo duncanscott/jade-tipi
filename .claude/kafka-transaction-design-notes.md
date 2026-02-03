@@ -17,21 +17,50 @@ Transitioning from HTTP-based to Kafka-based transaction processing.
 ### ID Formats
 - **transactionId**: `<UUIDv7>~<org>~<group>~<client-id>`
 - **messageId**: `<UUIDv7>` (simple)
+- **entityId**: `<transactionId>~<messageId>~<type>~<subtype>`
 - UUIDv7 for timestamp + sortability; `uuid-creator` library for Java
+- No random prefix needed (UUIDv7 provides sufficient key distribution)
 
 ### Message Structure
 ```json
+// Transaction OPEN
 {
   "transactionId": "<UUIDv7>~<org>~<group>~<client>",
   "messageId": "<UUIDv7>",
-  "action": "OPEN|COMMIT|CREATE|UPDATE|DELETE|...",
+  "type": "txn",
+  "subtype": "open",
+  "payload": { ... }
+}
+
+// Transaction COMMIT
+{
+  "transactionId": "<UUIDv7>~<org>~<group>~<client>",
+  "messageId": "<UUIDv7>",
+  "type": "txn",
+  "subtype": "commit",
+  "payload": { ... }
+}
+
+// Entity operation (CREATE, UPDATE, DELETE)
+{
+  "transactionId": "<UUIDv7>~<org>~<group>~<client>",
+  "messageId": "<UUIDv7>",
+  "type": "sample",
+  "subtype": "plate-384",
+  "operation": "create",
   "payload": { ... }
 }
 ```
-- All messages have consistent structure
-- Action is CV (controlled vocabulary), extensible
-- Payload optional for OPEN/COMMIT, required for entity actions
+- **type**: Always present, category of thing (`txn`, `sample`, etc.)
+- **subtype**: Always present, refinement (`open`, `commit`, `plate-384`, etc.)
+- **operation**: Only for entity messages (`create`, `update`, `delete`)
 - Kafka message key = transactionId (partition ordering)
+
+### Entity Storage
+- All entities stored with entityId: `<transactionId>~<messageId>~<type>~<subtype>`
+- Transaction entities: `<transactionId>~<msgId>~txn~open`, `<transactionId>~<msgId>~txn~commit`
+- Query by transactionId + type + subtype to find transaction records
+- Self-describing IDs (type/subtype visible in ID)
 
 ### Infrastructure
 - Docker files moved to `docker/` directory
@@ -43,14 +72,22 @@ Transitioning from HTTP-based to Kafka-based transaction processing.
 - Per-message secret/hash validation (trust authenticated topic)
 - Backend-generated transaction IDs (client generates with UUIDv7)
 - Complex ID format with backend sequence numbers
+- Random prefix for key distribution (UUIDv7 sufficient)
+- "action" field (replaced by type/subtype + operation)
+
+## Library Consolidation Needed
+- `jade-tipi-id` and `jade-tipi-dto` have overlapping/muddled designs
+- `JadeTipiIdDto` has prefix, timestamp, sequence fields (obsolete)
+- `TransactionToken`, `TransactionOpen`, etc. have secret/hash fields (obsolete)
+- Need to consolidate around new message structure
 
 ## TODO
-1. Update DTOs for new message structure
+1. Consolidate/simplify DTO libraries
 2. Add Kafka dependencies to Spring Boot
 3. Create Kafka consumer with pattern subscription
 4. Implement topic registration endpoint
-5. MongoDB persistence (deferred - user has thought through)
-6. TTL cleanup for uncommitted transactions (MongoDB handles)
+5. MongoDB persistence for entities
+6. TTL cleanup for uncommitted transactions
 
 ## Files Changed (2026-02-02)
 - `docker/docker-compose.yml` - Added Kafka, fixed Keycloak healthcheck

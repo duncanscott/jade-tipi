@@ -44,11 +44,13 @@ The goal was to redesign for Kafka message streaming while maintaining security 
 - Simpler client implementation
 - No need for response channels to return secrets
 
-### 3. Transaction ID Format
+### 3. ID Formats
 
-**Decision:** `<UUIDv7>~<organization>~<group>~<client-id>`
+#### Transaction ID
 
-Example: `018fd849-2a40-7abc-8a45-111111111111~jade-tipi_org~my-group~jade-cli`
+**Format:** `<UUIDv7>~<organization>~<group>~<client-id>`
+
+**Example:** `018fd849-2a40-7abc-8a45-111111111111~jade-tipi_org~my-group~jade-cli`
 
 **Components:**
 - UUIDv7: Provides timestamp (epoch ms) + uniqueness, chronologically sortable
@@ -56,24 +58,42 @@ Example: `018fd849-2a40-7abc-8a45-111111111111~jade-tipi_org~my-group~jade-cli`
 - Group: From registered topic
 - Client-id: Keycloak client identifier
 
+#### Message ID
+
+**Format:** Simple `<UUIDv7>`
+
+**Example:** `018fd849-2a41-7123-8c67-333333333333`
+
+**Rationale:** Message IDs always exist within transaction context; full format would be redundant.
+
+#### Entity ID
+
+**Format:** `<transactionId>~<messageId>~<type>~<subtype>`
+
+**Example:** `018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli~018fd849-2a41-7123-8c67-333333333333~sample~plate-384`
+
+**Components:**
+- transactionId: Links entity to its creating transaction
+- messageId: Unique identifier for the creating message
+- type: Category of entity (e.g., `txn`, `sample`, `experiment`)
+- subtype: Refinement (e.g., `open`, `commit`, `plate-384`)
+
 **Rationale:**
-- Self-describing IDs work outside Kafka context
-- UUIDv7 chosen over UUIDv4 for embedded timestamp and sortability
-- Consistent with existing `~` separator convention
-- Client generates the ID (no HTTP call needed for ID generation)
+- Self-describing IDs (anyone can see type/subtype in the ID)
+- Every entity traces back to its originating transaction
+- Chronologically sortable via UUIDv7 components
 
-### 4. Message ID Format
+#### Key Distribution (Prefix Decision)
 
-**Decision:** Simple UUIDv7
-
-Example: `018fd849-2a41-7123-8c67-333333333333`
+**Decision:** No random prefix needed; UUIDv7 provides sufficient key distribution
 
 **Rationale:**
-- Message IDs always exist within transaction context
-- Full format would be redundant
-- Simpler for clients to generate
+- MongoDB handles timestamp-prefixed keys well (like its own ObjectIds)
+- The 74 random bits in UUIDv7 provide distribution within time periods
+- Dropping the prefix preserves chronological sortability
+- Simpler ID structure
 
-### 5. UUIDv7 Selection
+### 4. UUIDv7 Selection
 
 **Decision:** Use UUIDv7 (RFC 9562) for all ID generation
 
@@ -89,31 +109,101 @@ Example: `018fd849-2a41-7123-8c67-333333333333`
 
 **Library support:** Growing across all major languages. `uuid-creator` library recommended for Java.
 
-### 6. Message Structure
+### 5. Message Structure
 
-**Decision:** Uniform structure for all messages with action-based discrimination
+**Decision:** Uniform structure with type/subtype discrimination
+
+#### Transaction Messages
 
 ```json
+// OPEN transaction
 {
-  "transactionId": "<UUIDv7>~<org>~<group>~<client>",
-  "messageId": "<UUIDv7>",
-  "action": "<ACTION>",
-  "payload": { ... }
+  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli",
+  "messageId": "018fd849-2a40-7def-8b56-222222222222",
+  "type": "txn",
+  "subtype": "open",
+  "payload": { "description": "Importing sample batch" }
+}
+
+// COMMIT transaction
+{
+  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli",
+  "messageId": "018fd849-2a43-7789-8e89-555555555555",
+  "type": "txn",
+  "subtype": "commit",
+  "payload": { "comment": "Batch import complete" }
 }
 ```
 
-**Action controlled vocabulary:**
-- `OPEN` - Start transaction (payload optional, can contain metadata)
-- `COMMIT` - Finalize transaction (payload optional, can contain metadata)
-- `CREATE` - Create new entity
-- `UPDATE` - Modify existing entity
-- `DELETE` - Remove entity
-- *(extensible for future actions)*
+#### Entity Messages
+
+```json
+// CREATE entity
+{
+  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli",
+  "messageId": "018fd849-2a41-7123-8c67-333333333333",
+  "type": "sample",
+  "subtype": "plate-384",
+  "operation": "create",
+  "payload": {
+    "data": { "name": "Sample A", "volume": 100 }
+  }
+}
+
+// UPDATE entity
+{
+  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli",
+  "messageId": "018fd849-2a42-7456-8d78-444444444444",
+  "type": "sample",
+  "subtype": "plate-384",
+  "operation": "update",
+  "payload": {
+    "entityId": "...full entity ID...",
+    "data": { "volume": 150 }
+  }
+}
+
+// DELETE entity
+{
+  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli",
+  "messageId": "018fd849-2a42-7789-8e90-666666666666",
+  "type": "sample",
+  "subtype": "plate-384",
+  "operation": "delete",
+  "payload": {
+    "entityId": "...full entity ID..."
+  }
+}
+```
+
+**Field definitions:**
+- **type**: Always present. Category of thing (`txn`, `sample`, `experiment`, etc.)
+- **subtype**: Always present. Refinement (`open`, `commit`, `plate-384`, etc.)
+- **operation**: Only for entity messages (`create`, `update`, `delete`)
+- **payload**: Message-specific data
 
 **Rationale:**
-- Consistent structure across all message types
-- Optional payload on OPEN/COMMIT allows for future use cases
-- Action as CV (controlled vocabulary) is extensible
+- Type/subtype become part of entityId (self-describing IDs)
+- For transaction lifecycle, subtype IS the operation (`open`, `commit`)
+- For entities, operation is separate because type/subtype describe the entity, not the action
+
+### 6. Entity Storage Model
+
+**Storage key:** entityId = `<transactionId>~<messageId>~<type>~<subtype>`
+
+**Transaction entities:**
+```
+// OPEN record
+018fd849-...~jade-org~my-group~jade-cli~018fd849-...-222222~txn~open
+
+// COMMIT record
+018fd849-...~jade-org~my-group~jade-cli~018fd849-...-555555~txn~commit
+```
+
+**Finding transaction records:**
+- Query by transactionId + type="txn" + subtype="open" or "commit"
+- The messageId varies, so lookup is by indexed fields, not exact entityId match
+- Given any transactionId (from CREATE/UPDATE/DELETE messages), you can find both records
 
 ### 7. Kafka Message Key
 
@@ -156,26 +246,23 @@ Example: `018fd849-2a41-7123-8c67-333333333333`
 
 ---
 
-## Topics for Future Implementation
+## Library Consolidation Needed
 
-### Immediate Next Steps
+The existing DTO libraries have overlapping and now-obsolete designs:
 
-1. **Update DTOs** to match new message structure:
-   - Remove secret-related fields
-   - Add action field
-   - Simplify to new format
+### jade-tipi-id (`JadeTipiIdDto`)
+- Contains: prefix, timestamp, sequence, organization, group, uuid, type, subtype
+- **Obsolete:** prefix, timestamp, sequence fields
+- **Keep:** organization, group, type, subtype concepts
 
-2. **Add Kafka dependencies** to Spring Boot project
+### jade-tipi-dto (transaction DTOs)
+- `TransactionToken`: id, secret, grp — obsolete (secret-based)
+- `TransactionOpen`: transactionId, hash — obsolete (hash-based)
+- `TransactionAction`: transactionId, messageId, hash, message — obsolete (hash-based)
+- `TransactionCommit`: transactionId, messageId, hash, secret — obsolete (secret+hash)
+- `Group`: organization, group — still useful
 
-3. **Create Kafka consumer** with pattern subscription
-
-4. **Implement topic registration endpoint**
-
-### Deferred Decisions
-
-1. **MongoDB persistence model** for pending/committed transactions
-2. **TTL/cleanup** for uncommitted transactions (MongoDB will handle)
-3. **Specific payload schemas** for CREATE/UPDATE/DELETE actions
+**Recommendation:** Consolidate into new DTOs matching the Kafka message structure.
 
 ---
 
@@ -187,41 +274,60 @@ Example: `018fd849-2a41-7123-8c67-333333333333`
 
 // Message 1: OPEN
 {
-  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-tipi_org~my-group~jade-cli",
+  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli",
   "messageId": "018fd849-2a40-7def-8b56-222222222222",
-  "action": "OPEN",
+  "type": "txn",
+  "subtype": "open",
   "payload": { "description": "Importing sample batch" }
 }
 
-// Message 2: CREATE
+// Message 2: CREATE sample
 {
-  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-tipi_org~my-group~jade-cli",
+  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli",
   "messageId": "018fd849-2a41-7123-8c67-333333333333",
-  "action": "CREATE",
+  "type": "sample",
+  "subtype": "plate-384",
+  "operation": "create",
   "payload": {
-    "entityType": "sample",
     "data": { "name": "Sample A", "volume": 100 }
   }
 }
 
-// Message 3: CREATE
+// Message 3: CREATE sample
 {
-  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-tipi_org~my-group~jade-cli",
+  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli",
   "messageId": "018fd849-2a42-7456-8d78-444444444444",
-  "action": "CREATE",
+  "type": "sample",
+  "subtype": "plate-384",
+  "operation": "create",
   "payload": {
-    "entityType": "sample",
     "data": { "name": "Sample B", "volume": 200 }
   }
 }
 
 // Message 4: COMMIT
 {
-  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-tipi_org~my-group~jade-cli",
+  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli",
   "messageId": "018fd849-2a43-7789-8e89-555555555555",
-  "action": "COMMIT",
+  "type": "txn",
+  "subtype": "commit",
   "payload": { "comment": "Batch import complete" }
 }
+```
+
+**Resulting entity IDs:**
+```
+// OPEN entity
+018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli~018fd849-2a40-7def-8b56-222222222222~txn~open
+
+// Sample A entity
+018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli~018fd849-2a41-7123-8c67-333333333333~sample~plate-384
+
+// Sample B entity
+018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli~018fd849-2a42-7456-8d78-444444444444~sample~plate-384
+
+// COMMIT entity
+018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli~018fd849-2a43-7789-8e89-555555555555~txn~commit
 ```
 
 ---
@@ -232,6 +338,17 @@ Example: `018fd849-2a41-7123-8c67-333333333333`
 2. **Topic registration:** Associates topic with organization/group/client
 3. **Transaction isolation:** All messages in a topic share the same org/group/client
 4. **No per-message secrets:** Trust authenticated topic; simplifies implementation
+
+---
+
+## Next Steps
+
+1. **Consolidate DTO libraries** — create new DTOs matching Kafka message structure
+2. **Add Kafka dependencies** to Spring Boot project
+3. **Create Kafka consumer** with pattern subscription `jdtp-txn-.*`
+4. **Implement topic registration endpoint**
+5. **MongoDB persistence** — store entities with entityId as key
+6. **TTL cleanup** for uncommitted transactions
 
 ---
 
