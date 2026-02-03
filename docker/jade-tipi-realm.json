@@ -86,6 +86,17 @@
             "id.token.claim": "true",
             "userinfo.token.claim": "false"
           }
+        },
+        {
+          "name": "kafka-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "kafka-broker",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
         }
       ]
     },
@@ -135,6 +146,17 @@
             "id.token.claim": "true",
             "userinfo.token.claim": "false"
           }
+        },
+        {
+          "name": "kafka-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "kafka-broker",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
         }
       ]
     },
@@ -166,6 +188,37 @@
             "access.token.claim": "true",
             "id.token.claim": "true",
             "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "kafka-broker",
+      "name": "Kafka Broker",
+      "description": "Service account for Kafka broker inter-broker communication and token validation",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "kafka-broker-secret-12345",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
+      "redirectUris": [],
+      "webOrigins": [],
+      "attributes": {
+        "access.token.lifespan": "600"
+      },
+      "protocolMappers": [
+        {
+          "name": "kafka-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "kafka-broker",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
           }
         }
       ]

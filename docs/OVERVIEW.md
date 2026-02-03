@@ -44,9 +44,9 @@ An open scientific metadata framework and reference implementation focused on fl
 
 **Docker Services:**
 ```bash
-docker-compose up         # Start MongoDB and Keycloak
-docker-compose down       # Stop and remove containers
-docker-compose logs -f    # View logs from all services
+docker compose -f docker/docker-compose.yml up         # Start Keycloak and Kafka
+docker compose -f docker/docker-compose.yml down       # Stop and remove containers
+docker compose -f docker/docker-compose.yml logs -f    # View logs from all services
 ```
 
 ## Getting Started
@@ -60,8 +60,8 @@ docker-compose logs -f    # View logs from all services
 ### First Run
 
 ```bash
-# 1. Start MongoDB and Keycloak containers
-docker-compose up -d
+# 1. Start Keycloak and Kafka containers
+docker compose -f docker/docker-compose.yml up -d
 
 # 2. Wait for Keycloak to initialize (about 30 seconds)
 #    Check readiness: curl http://localhost:8484/health/ready
@@ -91,7 +91,7 @@ npm run dev
 Shut everything down when you are done exploring:
 
 ```bash
-docker-compose down
+docker compose -f docker/docker-compose.yml down
 ```
 
 ### Environment Configuration
@@ -212,8 +212,9 @@ The `jade-tipi` realm includes four pre-configured clients:
 ├── frontend/                 # Next.js 15 application
 ├── docs/                     # Protocol and architecture references
 ├── clients/                  # Gradle CLI prototypes (jade & tipi)
-├── jade-tipi-realm.json      # Keycloak realm configuration
-└── docker-compose.yml        # MongoDB and Keycloak containers
+└── docker/                   # Docker Compose configuration
+    ├── docker-compose.yml    # Keycloak and Kafka containers
+    └── jade-tipi-realm.json  # Keycloak realm configuration
 ```
 
 ## Troubleshooting
@@ -247,7 +248,7 @@ Integration tests require both MongoDB and Keycloak:
 
 ```bash
 # Start all services
-docker-compose up -d
+docker compose -f docker/docker-compose.yml up -d
 
 # Wait for Keycloak to be ready (30 seconds)
 sleep 30
@@ -266,7 +267,7 @@ docker restart jade-tipi-keycloak
 sleep 20
 ```
 
-The realm configuration in `jade-tipi-realm.json` is automatically imported when Keycloak starts with the `--import-realm` flag.
+The realm configuration in `docker/jade-tipi-realm.json` is automatically imported when Keycloak starts with the `--import-realm` flag.
 
 ## Next Steps
 

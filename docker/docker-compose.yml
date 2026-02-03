@@ -1,0 +1,108 @@
+services:
+  mongodb:
+    image: mongo:8.0
+    container_name: jade-tipi-mongo
+    ports:
+      - "127.0.0.1:27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: jdtp
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+    profiles:
+      - mongodb
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: jade-tipi-keycloak
+    command: start-dev --import-realm
+    environment:
+      KC_DB: dev-mem
+      KC_HOSTNAME: localhost
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "127.0.0.1:8484:8080"
+    volumes:
+      - ./jade-tipi-realm.json:/opt/keycloak/data/import/jade-tipi-realm.json:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  kafka:
+    image: apache/kafka:4.1.1
+    container_name: jade-tipi-kafka
+    ports:
+      - "127.0.0.1:9092:9092"
+      - "127.0.0.1:9093:9093"
+    environment:
+      # KRaft settings
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9094
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+      # Listener configuration
+      # INTERNAL: for inter-broker (SASL_PLAINTEXT with OAuth)
+      # EXTERNAL: for external clients (SASL_PLAINTEXT with OAuth)
+      # CONTROLLER: for KRaft controller
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9093,CONTROLLER://localhost:9094
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://localhost:9092,EXTERNAL://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:SASL_PLAINTEXT,EXTERNAL:SASL_PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+
+      # SASL/OAuth configuration
+      KAFKA_SASL_ENABLED_MECHANISMS: OAUTHBEARER
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: OAUTHBEARER
+
+      # OAuth callback handlers for token validation
+      KAFKA_LISTENER_NAME_INTERNAL_OAUTHBEARER_SASL_JAAS_CONFIG: |
+        org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required
+        clientId="kafka-broker"
+        clientSecret="kafka-broker-secret-12345"
+        scope="openid";
+      KAFKA_LISTENER_NAME_INTERNAL_OAUTHBEARER_SASL_LOGIN_CALLBACK_HANDLER_CLASS: org.apache.kafka.common.security.oauthbearer.secured.OAuthBearerLoginCallbackHandler
+      KAFKA_LISTENER_NAME_INTERNAL_OAUTHBEARER_SASL_SERVER_CALLBACK_HANDLER_CLASS: org.apache.kafka.common.security.oauthbearer.secured.OAuthBearerValidatorCallbackHandler
+
+      KAFKA_LISTENER_NAME_EXTERNAL_OAUTHBEARER_SASL_JAAS_CONFIG: |
+        org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required;
+      KAFKA_LISTENER_NAME_EXTERNAL_OAUTHBEARER_SASL_SERVER_CALLBACK_HANDLER_CLASS: org.apache.kafka.common.security.oauthbearer.secured.OAuthBearerValidatorCallbackHandler
+
+      # OAuth endpoints (Keycloak)
+      # Note: Using host.docker.internal for Docker-to-host communication on Mac/Windows
+      # For Linux, you may need to use the host IP or configure network_mode
+      KAFKA_SASL_OAUTHBEARER_TOKEN_ENDPOINT_URL: http://host.docker.internal:8484/realms/jade-tipi/protocol/openid-connect/token
+      KAFKA_SASL_OAUTHBEARER_JWKS_ENDPOINT_URL: http://host.docker.internal:8484/realms/jade-tipi/protocol/openid-connect/certs
+      KAFKA_SASL_OAUTHBEARER_EXPECTED_AUDIENCE: kafka-broker
+
+      # Cluster settings
+      CLUSTER_ID: jdtp-kafka-cluster-001
+
+      # Topic defaults
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+      # Logging
+      KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
+      KAFKA_LOG4J_LOGGERS: "org.apache.kafka.common.security=INFO"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    restart: unless-stopped
+    # For Linux, uncomment to allow Kafka to reach Keycloak on host
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+
+volumes:
+  mongodb_data:
+  kafka_data:
