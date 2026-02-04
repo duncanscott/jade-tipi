@@ -13,7 +13,7 @@
 package org.jadetipi.jadetipi.controller
 
 import org.bson.Document
-import org.jadetipi.dto.permission.Group
+import org.jadetipi.dto.message.Group
 import org.jadetipi.dto.transaction.TransactionToken
 import org.jadetipi.jadetipi.config.KeycloakTestHelper
 import org.junit.jupiter.api.BeforeAll
@@ -83,7 +83,7 @@ class TransactionControllerIntegrationTest {
             assert txn.getDate("opened") != null
             assert txn.getString("commit_seq") == null
             assert txn.get("committed") == null
-            assert grp.getString("organization") == organization
+            assert grp.getString("org") == organization
             assert grp.getString("group") == group
         } finally {
             reactiveMongoTemplate.remove(transactionQuery, "txn").block()

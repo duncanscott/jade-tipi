@@ -13,7 +13,7 @@
 package org.jadetipi.jadetipi.service
 
 import groovy.util.logging.Slf4j
-import org.jadetipi.dto.permission.Group
+import org.jadetipi.dto.message.Group
 import org.jadetipi.dto.transaction.CommitToken
 import org.jadetipi.dto.transaction.TransactionToken
 import org.jadetipi.id.IdGenerator
@@ -49,8 +49,8 @@ class TransactionService {
      */
     Mono<TransactionToken> openTransaction(Group group) {
         Assert.notNull(group, 'grp must not be null')
-        Assert.hasText(group.organization(), 'organization must not be blank')
-        Assert.hasText(group.group(), 'grp must not be blank')
+        Assert.hasText(group.org(), 'org must not be blank')
+        Assert.hasText(group.grp(), 'grp must not be blank')
 
         String transactionId = nextId(group)
         String secret = idGenerator.nextKey()
@@ -71,8 +71,8 @@ class TransactionService {
         ] as Map<String,Object>
 
         Map<String, Object> grp = [
-                organization : group.organization(),
-                group        : group.group()
+                organization : group.org(),
+                group        : group.grp()
         ] as Map<String,Object>
 
         Map<String, Object> doc = [
@@ -95,8 +95,8 @@ class TransactionService {
         Assert.hasText(transactionToken.id(), 'id must not be blank')
         Assert.hasText(transactionToken.secret(), 'secret must not be blank')
         Assert.notNull(transactionToken.grp(), 'grp must not be null')
-        Assert.hasText(transactionToken.grp().organization(), 'organization must not be blank')
-        Assert.hasText(transactionToken.grp().group(), 'grp must not be blank')
+        Assert.hasText(transactionToken.grp().org(), 'org must not be blank')
+        Assert.hasText(transactionToken.grp().grp(), 'grp must not be blank')
 
         String commitId = nextId(transactionToken.grp())
         log.debug('Committing transaction: id={}, commit={}', transactionToken.id(), commitId)
@@ -137,37 +137,37 @@ class TransactionService {
     }
 
     /**
-     * Generates a transaction identifier with format: {tipiId}~{organization}~{grp}
+     * Generates a transaction identifier with format: {tipiId}~{org}~{grp}
      *
      * Example: "abc123xyz~jade-tipi_org~some-grp"
      *
      * The transaction ID is globally unique and contains:
      * - tipiId: Random identifier from IdGenerator (20 chars, base62)
-     * - organization: Organization identifier
-     * - grp: Group identifier within organization
+     * - org: Organization identifier
+     * - grp: Group identifier within org
      * - separator: '~' character (TRANSACTION_ID_SEPARATOR)
      *
      * This format allows:
-     * - Easy extraction of organization/grp from transaction ID
+     * - Easy extraction of org/grp from transaction ID
      * - Natural shard key for distributed deployments
      * - Human-readable transaction identification
-     * - Hierarchical organization of transactions
+     * - Hierarchical org of transactions
      *
-     * @param group The grp containing organization and grp identifiers
-     * @return A globally unique transaction ID in the format tipiId~organization~grp
+     * @param group The grp containing org and grp identifiers
+     * @return A globally unique transaction ID in the format tipiId~org~grp
      */
     private String nextId(Group group) {
         StringBuilder sb = new StringBuilder(idGenerator.nextId())
         sb.append(TRANSACTION_ID_SEPARATOR)
-        sb.append(group.organization())
+        sb.append(group.org())
         sb.append(TRANSACTION_ID_SEPARATOR)
-        sb.append(group.group())
+        sb.append(group.grp())
         return sb.toString()
     }
 
     /**
      * Extracts the sequence part from a transaction/commit ID.
-     * For ID format: prefix~timestamp~seq~org~group
+     * For ID format: prefix~timestamp~seq~org~grp
      * Returns: timestamp~seq (e.g., "1762736289657~aaa")
      */
     private static String extractSequencePart(String id) {
@@ -183,7 +183,7 @@ class TransactionService {
 
     /**
      * Extracts the epoch timestamp from an ID and returns it as an Instant.
-     * For ID format: prefix~timestamp~seq~org~group
+     * For ID format: prefix~timestamp~seq~org~grp
      * Parses timestamp (in milliseconds) and returns Instant.
      */
     private static Instant extractTimestampFromId(String id) {

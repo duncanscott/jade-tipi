@@ -14,7 +14,7 @@ package org.jadetipi.jadetipi.controller
 
 import groovy.util.logging.Slf4j
 import jakarta.validation.Valid
-import org.jadetipi.dto.permission.Group
+import org.jadetipi.dto.message.Group
 import org.jadetipi.dto.transaction.CommitToken
 import org.jadetipi.dto.transaction.TransactionToken
 import org.jadetipi.jadetipi.service.TransactionService
@@ -44,7 +44,7 @@ class TransactionController {
     Mono<ResponseEntity<TransactionToken>> openTransaction(
             @Valid @RequestBody Group group, @AuthenticationPrincipal Jwt jwt) {
 
-        log.debug('Opening transaction for organization={}, grp={}', group.organization(), group.group())
+        log.debug('Opening transaction for org={}, grp={}', group.org(), group.grp())
 
         return transactionService.openTransaction(group)
                 .doOnSuccess { token -> log.info('Transaction opened: id={}', token.id()) }

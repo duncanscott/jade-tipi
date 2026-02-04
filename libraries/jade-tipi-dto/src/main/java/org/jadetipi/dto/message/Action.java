@@ -10,14 +10,16 @@
  *
  * https://jade-tipi.org/license
  */
-package org.jadetipi.dto.permission;
+package org.jadetipi.dto.message;
 
-import jakarta.validation.constraints.NotBlank;
+public enum Action {
+    OPEN,
+    COMMIT,
+    CREATE,
+    UPDATE,
+    DELETE;
 
-public record Group(
-        @NotBlank(message = "organization is required")
-        String organization,
-
-        @NotBlank(message = "grp is required")
-        String group) {
+    public String toString() {
+        return name().toLowerCase();
+    }
 }

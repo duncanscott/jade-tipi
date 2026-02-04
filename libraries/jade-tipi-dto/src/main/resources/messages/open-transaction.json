@@ -1,0 +1,15 @@
+{
+  "txn": {
+    "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+    "group": {
+      "org": "jade-tipi-org",
+      "grp": "development"
+    },
+    "client": "jade-cli"
+  },
+  "uuid": "018fd849-2a40-7def-8b56-222222222222",
+  "action": "open",
+  "data": {
+    "description": "importing sample batch"
+  }
+}

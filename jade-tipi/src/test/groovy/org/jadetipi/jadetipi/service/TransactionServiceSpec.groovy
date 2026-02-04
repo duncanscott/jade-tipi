@@ -12,7 +12,7 @@
  */
 package org.jadetipi.jadetipi.service
 
-import org.jadetipi.dto.permission.Group
+import org.jadetipi.dto.message.Group
 import org.jadetipi.dto.transaction.TransactionToken
 import org.jadetipi.id.IdGenerator
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
@@ -93,7 +93,7 @@ class TransactionServiceSpec extends Specification {
     }
 
     def "openTransaction should reject blank organization"() {
-        given: "grp with blank organization"
+        given: "grp with blank org"
         def group = new Group('', 'test-grp')
 
         when: "opening transaction"
