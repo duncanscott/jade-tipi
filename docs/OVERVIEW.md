@@ -149,7 +149,7 @@ For testing with curl or CLI clients, obtain a token from Keycloak:
 curl -X POST http://localhost:8484/realms/jade-tipi/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=client_credentials" \
-  -d "client_id=jade-tipi-backend" \
+  -d "client_id=jade-tipi" \
   -d "client_secret=d84c91af-7f37-4b8d-9157-0f6c6a91fb45"
 ```
 
@@ -159,7 +159,7 @@ curl -X POST http://localhost:8484/realms/jade-tipi/protocol/openid-connect/toke
 # Get access token
 TOKEN=$(curl -s -X POST http://localhost:8484/realms/jade-tipi/protocol/openid-connect/token \
   -d "grant_type=client_credentials" \
-  -d "client_id=jade-tipi-backend" \
+  -d "client_id=jade-tipi" \
   -d "client_secret=d84c91af-7f37-4b8d-9157-0f6c6a91fb45" | jq -r '.access_token')
 
 # Use token to access API
@@ -177,13 +177,14 @@ All responses are JSON format.
 
 ### Keycloak Realm Configuration
 
-The `jade-tipi` realm includes four pre-configured clients:
+The `jade-tipi` realm includes five pre-configured clients:
 
-1. **jade-tipi-backend** (confidential client)
+1. **jade-tipi** (confidential client)
    - Used by the Spring Boot backend for service account authentication
-   - Client ID: `jade-tipi-backend`
+   - Client ID: `jade-tipi`
    - Client Secret: `d84c91af-7f37-4b8d-9157-0f6c6a91fb45`
    - Supports: Authorization Code Flow, Client Credentials Grant
+   - Custom claims: `tipi_org`, `tipi_group`
 
 2. **jade-tipi-frontend** (public client)
    - Used by the Next.js frontend via NextAuth.js
@@ -191,16 +192,26 @@ The `jade-tipi` realm includes four pre-configured clients:
    - Uses PKCE for secure browser-based authentication
 
 3. **tipi-cli** (confidential client)
-   - CLI tool with custom claims (`tipi_org`, `tipi_group`)
+   - CLI tool for Tipi operations
    - Client ID: `tipi-cli`
    - Client Secret: `7e8d5df5-5afb-4cc0-8d56-9f3f5c7cc5fd`
+   - Custom claims: `tipi_org`, `tipi_group`
+   - Includes `kafka-audience` mapper for Kafka authentication
 
 4. **jade-cli** (confidential client)
-   - CLI tool with custom claims
+   - CLI tool for Jade operations
    - Client ID: `jade-cli`
    - Client Secret: `62ba4c1e-7f7e-46c7-9793-f752c63f2e10`
+   - Custom claims: `tipi_org`, `tipi_group`
+   - Includes `kafka-audience` mapper for Kafka authentication
 
-**Realm Configuration:** `jade-tipi-realm.json` is automatically imported on Keycloak startup.
+5. **kafka-broker** (confidential client)
+   - Service account for Kafka broker authentication
+   - Client ID: `kafka-broker`
+   - Client Secret: `kafka-broker-secret-12345`
+   - Used for inter-broker communication and token validation
+
+**Realm Configuration:** `docker/jade-tipi-realm.json` is automatically imported on Keycloak startup.
 
 ## Repository Layout
 

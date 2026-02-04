@@ -12,33 +12,80 @@
  */
 package org.jadetipi.dto.message;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.jadetipi.dto.util.Constants;
 
+import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Pattern;
 
 /**
  * Kafka message DTO for transaction and entity operations.
  *
- * <p>Message structure:
- * <ul>
- *   <li>txn: {@link Transaction} containing UUIDv7, grp, and client</li>
- *   <li>uuid: UUIDv7 unique to this message</li>
- *   <li>action: {@link Action} enum (OPEN, COMMIT, CREATE, UPDATE, DELETE)</li>
- *   <li>data: message-specific data</li>
- * </ul>
+ * <p>JSON structure:
+ * <pre>
+ * {
+ *   "txn": { "uuid": "...", "group": {...}, "client": "..." },
+ *   "uuid": "018fd849-2a40-7def-8b56-222222222222",
+ *   "action": "open",
+ *   "data": { ... }
+ * }
+ * </pre>
  *
- * <p>Message IDs are composed via {@link #getId()} as:
- * {@code <txn.idString()>-<uuid>-<action.idString()>}
+ * <p>Message ID format: {@code <txn.getId()>~<uuid>}
  *
  * <p>Equality is based on txn and uuid only.
+ *
+ * <p>All keys in the {@code data} map (including nested objects) must use snake_case
+ * format (lowercase letters, digits, and underscores, starting with a letter).
  */
 public record Message(
-        Transaction txn,
-        String uuid,
-        Action action,
-        Map<String, Object> data
+        @JsonProperty("txn") Transaction txn,
+        @JsonProperty("uuid") String uuid,
+        @JsonProperty("action") Action action,
+        @JsonProperty("data") Map<String, Object> data
 ) {
+    private static final Pattern SNAKE_CASE = Pattern.compile("^[a-z][a-z0-9_]*$");
+
+    /**
+     * Compact constructor that validates all data map keys (including nested) are snake_case.
+     */
+    public Message {
+        if (data != null) {
+            validateSnakeCaseKeys(data, "data");
+        }
+    }
+
+    private static void validateSnakeCaseKeys(Map<?, ?> map, String path) {
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            Object keyObj = entry.getKey();
+            if (!(keyObj instanceof String key)) {
+                throw new IllegalArgumentException("Map key must be a String at " + path + ": " + keyObj);
+            }
+            if (!SNAKE_CASE.matcher(key).matches()) {
+                throw new IllegalArgumentException(
+                        "Key must be snake_case (lowercase letters, digits, underscores, starting with letter) at "
+                                + path + ": " + key);
+            }
+            validateValue(entry.getValue(), path + "." + key);
+        }
+    }
+
+    private static void validateValue(Object value, String path) {
+        if (value instanceof Map<?, ?> nestedMap) {
+            validateSnakeCaseKeys(nestedMap, path);
+        } else if (value instanceof Collection<?> collection) {
+            int index = 0;
+            for (Object item : collection) {
+                validateValue(item, path + "[" + index + "]");
+                index++;
+            }
+        }
+    }
+
+    @JsonIgnore
     public String getId() {
         return txn.getId() + Constants.ID_SEPARATOR + uuid;
     }

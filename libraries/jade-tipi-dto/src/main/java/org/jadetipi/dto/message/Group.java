@@ -12,14 +12,28 @@
  */
 package org.jadetipi.dto.message;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.jadetipi.dto.util.Constants;
 
 import java.util.Objects;
 
+/**
+ * Organization and group identifiers.
+ *
+ * <p>JSON structure:
+ * <pre>
+ * {
+ *   "org": "jade-tipi-org",
+ *   "grp": "development"
+ * }
+ * </pre>
+ */
 public record Group(
-        String org,
-        String grp
+        @JsonProperty("org") String org,
+        @JsonProperty("grp") String grp
 ) {
+    @JsonIgnore
     public String getId() {
         return org + Constants.ID_SEPARATOR + grp;
     }

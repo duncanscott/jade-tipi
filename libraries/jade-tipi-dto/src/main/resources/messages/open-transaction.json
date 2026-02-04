@@ -3,7 +3,7 @@
     "uuid": "018fd849-2a40-7abc-8a45-111111111111",
     "group": {
       "org": "jade-tipi-org",
-      "grp": "development"
+      "grp": "dev"
     },
     "client": "jade-cli"
   },

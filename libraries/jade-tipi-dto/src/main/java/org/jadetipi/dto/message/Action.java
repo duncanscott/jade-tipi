@@ -12,6 +12,14 @@
  */
 package org.jadetipi.dto.message;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
+/**
+ * Action types for Kafka messages.
+ *
+ * <p>Serializes to lowercase JSON strings: "open", "commit", "create", "update", "delete".
+ */
 public enum Action {
     OPEN,
     COMMIT,
@@ -19,6 +27,17 @@ public enum Action {
     UPDATE,
     DELETE;
 
+    @JsonValue
+    public String toJson() {
+        return name().toLowerCase();
+    }
+
+    @JsonCreator
+    public static Action fromJson(String value) {
+        return valueOf(value.toUpperCase());
+    }
+
+    @Override
     public String toString() {
         return name().toLowerCase();
     }

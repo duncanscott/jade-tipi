@@ -111,108 +111,50 @@ The goal was to redesign for Kafka message streaming while maintaining security 
 
 ### 5. Message Structure
 
-**Decision:** Uniform structure with type/subtype discrimination
+**Decision:** Uniform structure with action-based discrimination
 
-#### Transaction Messages
+**Note:** The initial design used type/subtype/operation fields. The implemented structure uses a simpler action enum approach. See "DTO Implementation" section below for the final structure.
 
-```json
-// OPEN transaction
-{
-  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli",
-  "messageId": "018fd849-2a40-7def-8b56-222222222222",
-  "type": "txn",
-  "subtype": "open",
-  "payload": { "description": "Importing sample batch" }
-}
-
-// COMMIT transaction
-{
-  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli",
-  "messageId": "018fd849-2a43-7789-8e89-555555555555",
-  "type": "txn",
-  "subtype": "commit",
-  "payload": { "comment": "Batch import complete" }
-}
-```
-
-#### Entity Messages
+#### Implemented JSON Structure
 
 ```json
-// CREATE entity
 {
-  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli",
-  "messageId": "018fd849-2a41-7123-8c67-333333333333",
-  "type": "sample",
-  "subtype": "plate-384",
-  "operation": "create",
-  "payload": {
-    "data": { "name": "Sample A", "volume": 100 }
-  }
-}
-
-// UPDATE entity
-{
-  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli",
-  "messageId": "018fd849-2a42-7456-8d78-444444444444",
-  "type": "sample",
-  "subtype": "plate-384",
-  "operation": "update",
-  "payload": {
-    "entityId": "...full entity ID...",
-    "data": { "volume": 150 }
-  }
-}
-
-// DELETE entity
-{
-  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli",
-  "messageId": "018fd849-2a42-7789-8e90-666666666666",
-  "type": "sample",
-  "subtype": "plate-384",
-  "operation": "delete",
-  "payload": {
-    "entityId": "...full entity ID..."
+  "txn": {
+    "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+    "group": {
+      "org": "jade-tipi-org",
+      "grp": "development"
+    },
+    "client": "jade-cli"
+  },
+  "uuid": "018fd849-2a40-7def-8b56-222222222222",
+  "action": "open",
+  "data": {
+    "description": "importing sample batch"
   }
 }
 ```
 
 **Field definitions:**
-- **type**: Always present. Category of thing (`txn`, `sample`, `experiment`, etc.)
-- **subtype**: Always present. Refinement (`open`, `commit`, `plate-384`, etc.)
-- **operation**: Only for entity messages (`create`, `update`, `delete`)
-- **payload**: Message-specific data
+- **txn**: Transaction context (uuid, group, client)
+- **uuid**: Message UUIDv7 (unique to this message)
+- **action**: Enum value (`open`, `commit`, `create`, `update`, `delete`)
+- **data**: Message-specific payload (all keys must be snake_case)
 
 **Rationale:**
-- Type/subtype become part of entityId (self-describing IDs)
-- For transaction lifecycle, subtype IS the operation (`open`, `commit`)
-- For entities, operation is separate because type/subtype describe the entity, not the action
+- Simpler structure than type/subtype/operation
+- Action enum provides clear discrimination
+- Snake_case enforcement on data keys ensures consistency
 
-### 6. Entity Storage Model
+### 6. Kafka Message Key
 
-**Storage key:** entityId = `<transactionId>~<messageId>~<type>~<subtype>`
-
-**Transaction entities:**
-```
-// OPEN record
-018fd849-...~jade-org~my-group~jade-cli~018fd849-...-222222~txn~open
-
-// COMMIT record
-018fd849-...~jade-org~my-group~jade-cli~018fd849-...-555555~txn~commit
-```
-
-**Finding transaction records:**
-- Query by transactionId + type="txn" + subtype="open" or "commit"
-- The messageId varies, so lookup is by indexed fields, not exact entityId match
-- Given any transactionId (from CREATE/UPDATE/DELETE messages), you can find both records
-
-### 7. Kafka Message Key
-
-**Decision:** Use `transactionId` as the Kafka message key
+**Decision:** Use transaction ID as the Kafka message key
 
 **Rationale:**
 - Ensures all messages for a transaction go to the same partition
 - Guarantees ordering within a transaction
 - Natural partitioning strategy
+- Transaction ID composed as: `txn.uuid~txn.group.org~txn.group.grp~txn.client`
 
 ---
 
@@ -246,89 +188,77 @@ The goal was to redesign for Kafka message streaming while maintaining security 
 
 ---
 
-## Library Consolidation Needed
+## DTO Implementation (2026-02-03)
 
-The existing DTO libraries have overlapping and now-obsolete designs:
+New DTOs have been created in `libraries/jade-tipi-dto/src/main/java/org/jadetipi/dto/message/`:
 
-### jade-tipi-id (`JadeTipiIdDto`)
-- Contains: prefix, timestamp, sequence, organization, group, uuid, type, subtype
-- **Obsolete:** prefix, timestamp, sequence fields
-- **Keep:** organization, group, type, subtype concepts
+### Message.java
+Main Kafka message record:
+```java
+public record Message(
+    Transaction txn,           // transaction context
+    String uuid,               // message UUIDv7
+    Action action,             // OPEN, COMMIT, CREATE, UPDATE, DELETE
+    Map<String, Object> data   // payload with snake_case keys
+)
+```
 
-### jade-tipi-dto (transaction DTOs)
-- `TransactionToken`: id, secret, grp — obsolete (secret-based)
-- `TransactionOpen`: transactionId, hash — obsolete (hash-based)
-- `TransactionAction`: transactionId, messageId, hash, message — obsolete (hash-based)
-- `TransactionCommit`: transactionId, messageId, hash, secret — obsolete (secret+hash)
-- `Group`: organization, group — still useful
+### Transaction.java
+Transaction identifier:
+```java
+public record Transaction(
+    String uuid,    // transaction UUIDv7
+    Group group,    // organization + group
+    String client   // client ID
+)
+```
 
-**Recommendation:** Consolidate into new DTOs matching the Kafka message structure.
+### Group.java
+Organization and group:
+```java
+public record Group(
+    String org,   // organization
+    String grp    // group
+)
+```
+
+### Action.java
+Enum for message actions:
+- `OPEN`, `COMMIT`, `CREATE`, `UPDATE`, `DELETE`
+- Serializes to lowercase JSON via `@JsonValue`
+
+### Features
+- **Jackson annotations** for explicit JSON contract (`@JsonProperty`, `@JsonIgnore`)
+- **Snake_case validation** on `data` keys (recursive, including nested objects/arrays)
+- **MessageMapper utility** for JSON serialization/deserialization
 
 ---
 
-## Example Complete Transaction
+## Example JSON Message
 
 ```json
-// Kafka topic: jdtp-txn-jade-cli
-// All messages keyed by transactionId
-
-// Message 1: OPEN
 {
-  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli",
-  "messageId": "018fd849-2a40-7def-8b56-222222222222",
-  "type": "txn",
-  "subtype": "open",
-  "payload": { "description": "Importing sample batch" }
-}
-
-// Message 2: CREATE sample
-{
-  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli",
-  "messageId": "018fd849-2a41-7123-8c67-333333333333",
-  "type": "sample",
-  "subtype": "plate-384",
-  "operation": "create",
-  "payload": {
-    "data": { "name": "Sample A", "volume": 100 }
+  "txn": {
+    "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+    "group": {
+      "org": "jade-tipi-org",
+      "grp": "development"
+    },
+    "client": "jade-cli"
+  },
+  "uuid": "018fd849-2a40-7def-8b56-222222222222",
+  "action": "open",
+  "data": {
+    "description": "importing sample batch"
   }
 }
-
-// Message 3: CREATE sample
-{
-  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli",
-  "messageId": "018fd849-2a42-7456-8d78-444444444444",
-  "type": "sample",
-  "subtype": "plate-384",
-  "operation": "create",
-  "payload": {
-    "data": { "name": "Sample B", "volume": 200 }
-  }
-}
-
-// Message 4: COMMIT
-{
-  "transactionId": "018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli",
-  "messageId": "018fd849-2a43-7789-8e89-555555555555",
-  "type": "txn",
-  "subtype": "commit",
-  "payload": { "comment": "Batch import complete" }
-}
 ```
 
-**Resulting entity IDs:**
-```
-// OPEN entity
-018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli~018fd849-2a40-7def-8b56-222222222222~txn~open
-
-// Sample A entity
-018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli~018fd849-2a41-7123-8c67-333333333333~sample~plate-384
-
-// Sample B entity
-018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli~018fd849-2a42-7456-8d78-444444444444~sample~plate-384
-
-// COMMIT entity
-018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli~018fd849-2a43-7789-8e89-555555555555~txn~commit
-```
+### ID Composition
+- **Transaction ID:** `txn.uuid~txn.group.org~txn.group.grp~txn.client`
+  - Example: `018fd849-2a40-7abc-8a45-111111111111~jade-tipi-org~development~jade-cli`
+- **Message ID:** `<transaction-id>~<message-uuid>`
+  - Example: `018fd849-...~jade-tipi-org~development~jade-cli~018fd849-2a40-7def-8b56-222222222222`
 
 ---
 
@@ -341,14 +271,25 @@ The existing DTO libraries have overlapping and now-obsolete designs:
 
 ---
 
+## Keycloak Clients
+
+The `jade-tipi` realm includes five pre-configured clients:
+
+1. **jade-tipi** - Backend service account
+2. **jade-tipi-frontend** - Frontend with PKCE
+3. **tipi-cli** - CLI with `kafka-audience` mapper
+4. **jade-cli** - CLI with `kafka-audience` mapper
+5. **kafka-broker** - Kafka broker service account
+
+---
+
 ## Next Steps
 
-1. **Consolidate DTO libraries** — create new DTOs matching Kafka message structure
-2. **Add Kafka dependencies** to Spring Boot project
-3. **Create Kafka consumer** with pattern subscription `jdtp-txn-.*`
-4. **Implement topic registration endpoint**
-5. **MongoDB persistence** — store entities with entityId as key
-6. **TTL cleanup** for uncommitted transactions
+1. **Add Kafka dependencies** to Spring Boot project
+2. **Create Kafka consumer** with pattern subscription `jdtp-txn-.*`
+3. **Implement topic registration endpoint**
+4. **MongoDB persistence** — store entities with entityId as key
+5. **TTL cleanup** for uncommitted transactions
 
 ---
 

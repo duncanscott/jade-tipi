@@ -12,15 +12,32 @@
  */
 package org.jadetipi.dto.message;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.jadetipi.dto.util.Constants;
 
 import java.util.Objects;
 
+/**
+ * Transaction identifier containing UUIDv7, group, and client.
+ *
+ * <p>JSON structure:
+ * <pre>
+ * {
+ *   "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+ *   "group": { "org": "...", "grp": "..." },
+ *   "client": "jade-cli"
+ * }
+ * </pre>
+ *
+ * <p>Transaction ID string format: {@code <uuid>~<org>~<grp>~<client>}
+ */
 public record Transaction(
-        String uuid,
-        Group group,
-        String client
+        @JsonProperty("uuid") String uuid,
+        @JsonProperty("group") Group group,
+        @JsonProperty("client") String client
 ) {
+    @JsonIgnore
     public String getId() {
         return uuid + Constants.ID_SEPARATOR + group.getId() + Constants.ID_SEPARATOR + client;
     }

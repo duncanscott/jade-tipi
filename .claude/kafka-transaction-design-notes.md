@@ -1,12 +1,13 @@
 # Kafka Transaction Design Notes
 
-Last updated: 2026-02-02
+Last updated: 2026-02-03
 
 ## Current State
 
 Transitioning from HTTP-based to Kafka-based transaction processing.
+New DTO library created in `libraries/jade-tipi-dto/src/main/java/org/jadetipi/dto/message/`.
 
-## Key Decisions (2026-02-02)
+## Key Decisions
 
 ### Architecture
 - Topic per client: `jdtp-txn-<client-id>`
@@ -15,79 +16,100 @@ Transitioning from HTTP-based to Kafka-based transaction processing.
 - Trust Keycloak authentication; no per-message secrets
 
 ### ID Formats
-- **transactionId**: `<UUIDv7>~<org>~<group>~<client-id>`
-- **messageId**: `<UUIDv7>` (simple)
-- **entityId**: `<transactionId>~<messageId>~<type>~<subtype>`
+- **Transaction ID**: `<UUIDv7>~<org>~<grp>~<client>` (composed from Transaction record)
+- **Message ID**: `<txn.getId()>~<uuid>` (composed from Message record)
 - UUIDv7 for timestamp + sortability; `uuid-creator` library for Java
-- No random prefix needed (UUIDv7 provides sufficient key distribution)
+- Separator: `~` (defined in Constants.ID_SEPARATOR)
 
-### Message Structure
+### DTO Structure (libraries/jade-tipi-dto)
+
+**Message.java** - Main Kafka message DTO:
+```java
+public record Message(
+    Transaction txn,    // transaction context
+    String uuid,        // message UUIDv7
+    Action action,      // OPEN, COMMIT, CREATE, UPDATE, DELETE
+    Map<String, Object> data  // payload (snake_case keys enforced)
+)
+```
+
+**Transaction.java** - Transaction identifier:
+```java
+public record Transaction(
+    String uuid,    // transaction UUIDv7
+    Group group,    // org + grp
+    String client   // client ID
+)
+```
+
+**Group.java** - Organization and group:
+```java
+public record Group(
+    String org,  // organization
+    String grp   // group
+)
+```
+
+**Action.java** - Enum for message actions:
+- OPEN, COMMIT, CREATE, UPDATE, DELETE
+- Serializes to lowercase JSON: "open", "commit", etc.
+
+### JSON Message Structure
 ```json
-// Transaction OPEN
 {
-  "transactionId": "<UUIDv7>~<org>~<group>~<client>",
-  "messageId": "<UUIDv7>",
-  "type": "txn",
-  "subtype": "open",
-  "payload": { ... }
-}
-
-// Transaction COMMIT
-{
-  "transactionId": "<UUIDv7>~<org>~<group>~<client>",
-  "messageId": "<UUIDv7>",
-  "type": "txn",
-  "subtype": "commit",
-  "payload": { ... }
-}
-
-// Entity operation (CREATE, UPDATE, DELETE)
-{
-  "transactionId": "<UUIDv7>~<org>~<group>~<client>",
-  "messageId": "<UUIDv7>",
-  "type": "sample",
-  "subtype": "plate-384",
-  "operation": "create",
-  "payload": { ... }
+  "txn": {
+    "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+    "group": {
+      "org": "jade-tipi-org",
+      "grp": "development"
+    },
+    "client": "jade-cli"
+  },
+  "uuid": "018fd849-2a40-7def-8b56-222222222222",
+  "action": "open",
+  "data": {
+    "description": "importing sample batch"
+  }
 }
 ```
-- **type**: Always present, category of thing (`txn`, `sample`, etc.)
-- **subtype**: Always present, refinement (`open`, `commit`, `plate-384`, etc.)
-- **operation**: Only for entity messages (`create`, `update`, `delete`)
-- Kafka message key = transactionId (partition ordering)
 
-### Entity Storage
-- All entities stored with entityId: `<transactionId>~<messageId>~<type>~<subtype>`
-- Transaction entities: `<transactionId>~<msgId>~txn~open`, `<transactionId>~<msgId>~txn~commit`
-- Query by transactionId + type + subtype to find transaction records
-- Self-describing IDs (type/subtype visible in ID)
+### Data Field Validation
+- All keys in `data` map must be snake_case
+- Validation is recursive (nested objects and arrays)
+- Pattern: `^[a-z][a-z0-9_]*$`
+- Throws IllegalArgumentException with path on violation
+
+### Jackson Annotations
+- All DTOs have `@JsonProperty` annotations for explicit JSON contract
+- `@JsonIgnore` on `getId()` methods (computed, not serialized)
+- `@JsonValue`/`@JsonCreator` on Action enum for lowercase serialization
+- Dependencies: jackson-annotations, jackson-databind (2.18.2)
+
+### Utility Classes
+- **MessageMapper** - serialize/deserialize Message to/from JSON
+  - `toJson(Message)`, `fromJson(String)`
+  - `toBytes(Message)`, `fromBytes(byte[])`
+  - `toJsonPretty(Message)`
 
 ### Infrastructure
-- Docker files moved to `docker/` directory
+- Docker files in `docker/` directory
 - Kafka 4.1.1 with KRaft (no ZooKeeper), port 9092
 - Keycloak healthcheck on port 9000 (management interface)
 - MongoDB requires `--profile mongodb` flag
 
-## Dropped Concepts
-- Per-message secret/hash validation (trust authenticated topic)
-- Backend-generated transaction IDs (client generates with UUIDv7)
-- Complex ID format with backend sequence numbers
-- Random prefix for key distribution (UUIDv7 sufficient)
-- "action" field (replaced by type/subtype + operation)
-
-## Library Consolidation Needed
-- `jade-tipi-id` and `jade-tipi-dto` have overlapping/muddled designs
-- `JadeTipiIdDto` has prefix, timestamp, sequence fields (obsolete)
-- `TransactionToken`, `TransactionOpen`, etc. have secret/hash fields (obsolete)
-- Need to consolidate around new message structure
+## Keycloak Clients
+1. **jade-tipi** - Backend service account
+2. **jade-tipi-frontend** - Frontend (PKCE)
+3. **tipi-cli** - CLI with kafka-audience mapper
+4. **jade-cli** - CLI with kafka-audience mapper
+5. **kafka-broker** - Kafka broker service account
 
 ## TODO
-1. Consolidate/simplify DTO libraries
-2. Add Kafka dependencies to Spring Boot
-3. Create Kafka consumer with pattern subscription
-4. Implement topic registration endpoint
-5. MongoDB persistence for entities
-6. TTL cleanup for uncommitted transactions
+1. Add Kafka dependencies to Spring Boot
+2. Create Kafka consumer with pattern subscription
+3. Implement topic registration endpoint
+4. MongoDB persistence for entities
+5. TTL cleanup for uncommitted transactions
 
 ## Files Changed (2026-02-02)
 - `docker/docker-compose.yml` - Added Kafka, fixed Keycloak healthcheck

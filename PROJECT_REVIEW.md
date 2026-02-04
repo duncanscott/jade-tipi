@@ -1022,7 +1022,7 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 
 Add to docker-compose.yml:
 ```yaml
-jade-tipi-backend:
+jade-tipi:
   build: ./jade-tipi
   ports:
     - "127.0.0.1:8765:8765"

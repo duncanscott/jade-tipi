@@ -7,7 +7,7 @@
   "resetPasswordAllowed": true,
   "clients": [
     {
-      "clientId": "jade-tipi-backend",
+      "clientId": "jade-tipi",
       "name": "Jade Tipi Backend",
       "enabled": true,
       "protocol": "openid-connect",
@@ -33,9 +33,37 @@
           "protocolMapper": "oidc-audience-mapper",
           "consentRequired": false,
           "config": {
-            "included.client.audience": "jade-tipi-backend",
+            "included.client.audience": "jade-tipi",
             "id.token.claim": "false",
             "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "tipi-organization",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "tipi_org",
+            "jsonType.label": "String",
+            "claim.value": "jade-tipi-org",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        },
+        {
+          "name": "tipi-group",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "tipi_group",
+            "jsonType.label": "String",
+            "claim.value": "dev",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "false"
           }
         }
       ]
@@ -67,7 +95,7 @@
           "config": {
             "claim.name": "tipi_org",
             "jsonType.label": "String",
-            "claim.value": "jade-tipi_org",
+            "claim.value": "jade-tipi-org",
             "access.token.claim": "true",
             "id.token.claim": "true",
             "userinfo.token.claim": "false"
@@ -81,7 +109,7 @@
           "config": {
             "claim.name": "tipi_group",
             "jsonType.label": "String",
-            "claim.value": "tipi-cli",
+            "claim.value": "dev",
             "access.token.claim": "true",
             "id.token.claim": "true",
             "userinfo.token.claim": "false"
@@ -127,7 +155,7 @@
           "config": {
             "claim.name": "tipi_org",
             "jsonType.label": "String",
-            "claim.value": "jade-tipi_org",
+            "claim.value": "jade-tipi-org",
             "access.token.claim": "true",
             "id.token.claim": "true",
             "userinfo.token.claim": "false"
@@ -141,7 +169,7 @@
           "config": {
             "claim.name": "tipi_group",
             "jsonType.label": "String",
-            "claim.value": "jade-cli",
+            "claim.value": "dev",
             "access.token.claim": "true",
             "id.token.claim": "true",
             "userinfo.token.claim": "false"
@@ -184,7 +212,7 @@
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
           "config": {
-            "included.client.audience": "jade-tipi-backend",
+            "included.client.audience": "jade-tipi",
             "access.token.claim": "true",
             "id.token.claim": "true",
             "userinfo.token.claim": "false"
