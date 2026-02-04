@@ -14,6 +14,7 @@ package org.jadetipi.dto.message;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.github.f4b6a3.uuid.UuidCreator;
 import org.jadetipi.dto.util.Constants;
 
 import java.util.Collection;
@@ -52,12 +53,13 @@ public record Message(
     /**
      * Compact constructor that validates all data map keys (including nested) are snake_case.
      */
+    /*
     public Message {
         if (data != null) {
             validateSnakeCaseKeys(data, "data");
         }
     }
-
+     */
     private static void validateSnakeCaseKeys(Map<?, ?> map, String path) {
         for (Map.Entry<?, ?> entry : map.entrySet()) {
             Object keyObj = entry.getKey();
@@ -83,6 +85,10 @@ public record Message(
                 index++;
             }
         }
+    }
+
+    public static Message newInstance(Transaction txn, Action action, Map<String, Object> data) {
+        return new Message(txn, UuidCreator.getTimeOrderedEpoch().toString(), action, data);
     }
 
     @JsonIgnore

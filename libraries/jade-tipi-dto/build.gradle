@@ -17,6 +17,8 @@ dependencies {
     api libs.jackson.annotations
     api libs.jackson.databind
     api libs.jakarta.validation.api
+    api libs.json.schema.validator
+    api libs.uuid.creator
 
     testImplementation libs.groovy
     testImplementation libs.spock.core

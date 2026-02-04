@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jade-tipi.org/schema/message.schema.json",
+  "title": "Message",
+  "description": "Kafka message DTO for Jade-Tipi transaction and entity operations",
+  "type": "object",
+  "required": ["txn", "uuid", "action"],
+  "additionalProperties": false,
+  "properties": {
+    "txn": {
+      "$ref": "#/$defs/Transaction"
+    },
+    "uuid": {
+      "$ref": "#/$defs/UUIDv7",
+      "description": "UUIDv7 unique to this message"
+    },
+    "action": {
+      "$ref": "#/$defs/Action"
+    },
+    "data": {
+      "$ref": "#/$defs/SnakeCaseObject",
+      "description": "Message-specific payload data. All property names must be snake_case."
+    }
+  },
+  "$defs": {
+    "UUIDv7": {
+      "title": "UUIDv7",
+      "description": "UUID version 7 (RFC 9562) with embedded timestamp. Version nibble is 7, variant is 1 (8/9/a/b).",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "examples": ["018fd849-2a40-7abc-8a45-111111111111"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Transaction identifier containing UUIDv7, group, and client. ID format: <uuid>~<org>~<grp>~<client>",
+      "type": "object",
+      "required": ["uuid", "group", "client"],
+      "additionalProperties": false,
+      "properties": {
+        "uuid": {
+          "$ref": "#/$defs/UUIDv7",
+          "description": "UUIDv7 for the transaction"
+        },
+        "group": {
+          "$ref": "#/$defs/Group"
+        },
+        "client": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Keycloak client identifier",
+          "examples": ["jade-cli", "tipi-cli"]
+        }
+      }
+    },
+    "Group": {
+      "title": "Group",
+      "description": "Organization and group identifiers. ID format: <org>~<grp>",
+      "type": "object",
+      "required": ["org", "grp"],
+      "additionalProperties": false,
+      "properties": {
+        "org": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Organization identifier",
+          "examples": ["jade-tipi-org"]
+        },
+        "grp": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Group identifier",
+          "examples": ["dev", "production"]
+        }
+      }
+    },
+    "Action": {
+      "title": "Action",
+      "description": "Action type for the message",
+      "type": "string",
+      "enum": ["open", "commit", "create", "update", "delete"]
+    },
+    "SnakeCaseObject": {
+      "title": "SnakeCaseObject",
+      "description": "Object with snake_case property names (lowercase letters, digits, underscores, starting with a letter)",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/SnakeCaseValue"
+      }
+    },
+    "SnakeCaseValue": {
+      "title": "SnakeCaseValue",
+      "description": "Value that may contain nested snake_case objects or arrays",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "integer" },
+        { "type": "boolean" },
+        { "type": "null" },
+        { "$ref": "#/$defs/SnakeCaseObject" },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SnakeCaseValue"
+          }
+        }
+      ]
+    }
+  },
+  "examples": [
+    {
+      "txn": {
+        "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+        "group": {
+          "org": "jade-tipi-org",
+          "grp": "dev"
+        },
+        "client": "jade-cli"
+      },
+      "uuid": "018fd849-2a40-7def-8b56-222222222222",
+      "action": "open",
+      "data": {
+        "description": "importing sample batch"
+      }
+    },
+    {
+      "txn": {
+        "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+        "group": {
+          "org": "jade-tipi-org",
+          "grp": "dev"
+        },
+        "client": "jade-cli"
+      },
+      "uuid": "018fd849-2a41-7123-8c67-333333333333",
+      "action": "create",
+      "data": {
+        "entity_type": "sample",
+        "sample_name": "Sample A",
+        "volume_ml": 100
+      }
+    },
+    {
+      "txn": {
+        "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+        "group": {
+          "org": "jade-tipi-org",
+          "grp": "dev"
+        },
+        "client": "jade-cli"
+      },
+      "uuid": "018fd849-2a43-7789-8e89-555555555555",
+      "action": "commit",
+      "data": {
+        "comment": "batch import complete"
+      }
+    }
+  ]
+}

@@ -6,6 +6,8 @@ groovy = "4.0.29"
 hibernate-validator = "9.0.1.Final"
 jackson = "2.18.2"
 jakarta-validation = "3.1.1"
+json-schema-validator = "1.5.4"
+uuid-creator = "6.0.0"
 junit = "4.13.2"
 junit-jupiter = "6.0.0"
 spock-core = "2.4-M6-groovy-4.0"
@@ -24,6 +26,7 @@ hibernate-validator = { module = "org.hibernate.validator:hibernate-validator", 
 jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations", version.ref = "jackson" }
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
 jakarta-validation-api = { module = "jakarta.validation:jakarta.validation-api", version.ref = "jakarta-validation" }
+json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "json-schema-validator" }
 junit = { module = "junit:junit", version.ref = "junit" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
 spock-core = { module = "org.spockframework:spock-core", version.ref = "spock-core" }
@@ -32,3 +35,4 @@ logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "lo
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit-platform" }
 expressly = { module = "org.glassfish.expressly:expressly", version.ref = "expressly" }
 springdoc-webflux-ui = { module = "org.springdoc:springdoc-openapi-starter-webflux-ui", version.ref = "springdoc" }
+uuid-creator = { module = "com.github.f4b6a3:uuid-creator", version.ref = "uuid-creator" }
