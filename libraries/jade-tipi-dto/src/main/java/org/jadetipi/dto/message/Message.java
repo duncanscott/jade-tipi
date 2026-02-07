@@ -14,8 +14,12 @@ package org.jadetipi.dto.message;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.github.f4b6a3.uuid.UuidCreator;
 import org.jadetipi.dto.util.Constants;
+import org.jadetipi.dto.util.MessageMapper;
+import org.jadetipi.dto.util.MessageSchemaValidator;
+import org.jadetipi.dto.util.ValidationException;
 
 import java.util.Collection;
 import java.util.Map;
@@ -48,6 +52,7 @@ public record Message(
         @JsonProperty("action") Action action,
         @JsonProperty("data") Map<String, Object> data
 ) {
+
     private static final Pattern SNAKE_CASE = Pattern.compile("^[a-z][a-z0-9_]*$");
 
     /**
@@ -89,6 +94,13 @@ public record Message(
 
     public static Message newInstance(Transaction txn, Action action, Map<String, Object> data) {
         return new Message(txn, UuidCreator.getTimeOrderedEpoch().toString(), action, data);
+    }
+
+    public void validate() throws ValidationException, JsonProcessingException {
+        MessageSchemaValidator.ValidationResult result = MessageSchemaValidator.validate(MessageMapper.toJson(this));
+        if (!result.isValid()) {
+            throw new ValidationException(result);
+        }
     }
 
     @JsonIgnore

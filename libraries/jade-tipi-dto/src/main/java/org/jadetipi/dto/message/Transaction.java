@@ -20,30 +20,36 @@ import org.jadetipi.dto.util.Constants;
 import java.util.Objects;
 
 /**
- * Transaction identifier containing UUIDv7, group, and client.
+ * Transaction identifier containing UUIDv7, group, client, and user.
  *
  * <p>JSON structure:
  * <pre>
  * {
  *   "uuid": "018fd849-2a40-7abc-8a45-111111111111",
  *   "group": { "org": "...", "grp": "..." },
- *   "client": "jade-cli"
+ *   "client": "jade-cli",
+ *   "user": "jdoe"
  * }
  * </pre>
  *
  * <p>Transaction ID string format: {@code <uuid>~<org>~<grp>~<client>}
+ *
+ * <p>Note: {@code user} is not included in {@link #equals} or {@link #hashCode}
+ * because transaction identity is determined solely by uuid, group, and client.
+ * The user field is metadata for auditing purposes.
  */
 public record Transaction(
         @JsonProperty("uuid") String uuid,
         @JsonProperty("group") Group group,
-        @JsonProperty("client") String client
+        @JsonProperty("client") String client,
+        @JsonProperty("user") String user
 ) {
-    public static Transaction newInstance(String org, String grp, String client) {
-        return newInstance(new Group(org, grp), client);
+    public static Transaction newInstance(String org, String grp, String client, String user) {
+        return newInstance(new Group(org, grp), client, user);
     }
 
-    public static Transaction newInstance(Group group, String client) {
-        return new Transaction(UuidCreator.getTimeOrderedEpoch().toString(), group, client);
+    public static Transaction newInstance(Group group, String client, String user) {
+        return new Transaction(UuidCreator.getTimeOrderedEpoch().toString(), group, client, user);
     }
 
     @JsonIgnore
@@ -53,7 +59,7 @@ public record Transaction(
 
     @Override
     public boolean equals(Object o) {
-        if (!(o instanceof Transaction(String uuid1, Group group1, String client1))) return false;
+        if (!(o instanceof Transaction(String uuid1, Group group1, String client1, String user1))) return false;
         return Objects.equals(uuid, uuid1) && Objects.equals(group, group1) && Objects.equals(client, client1);
     }
 

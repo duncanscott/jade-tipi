@@ -49,6 +49,11 @@
           "minLength": 1,
           "description": "Keycloak client identifier",
           "examples": ["jade-cli", "tipi-cli"]
+        },
+        "user": {
+          "type": "string",
+          "minLength": 1,
+          "description": "User identifier"
         }
       }
     },
