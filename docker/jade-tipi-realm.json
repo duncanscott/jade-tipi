@@ -191,21 +191,19 @@
     {
       "clientId": "kli",
       "name": "Kli - Kafka CLI",
-      "description": "Service account for the Kafka CLI message publisher",
+      "description": "Public client for the Kafka CLI with device authorization grant",
       "enabled": true,
       "protocol": "openid-connect",
-      "publicClient": false,
-      "secret": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "publicClient": true,
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": true,
-      "serviceAccountsEnabled": true,
-      "redirectUris": [
-        "urn:ietf:wg:oauth:2.0:oob"
-      ],
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [],
       "webOrigins": [],
       "attributes": {
-        "access.token.lifespan": "300"
+        "access.token.lifespan": "300",
+        "oauth2.device.authorization.grant.enabled": "true"
       },
       "protocolMappers": [
         {
@@ -245,6 +243,20 @@
             "included.client.audience": "kafka-broker",
             "id.token.claim": "false",
             "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "kli-orcid",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "orcid",
+            "jsonType.label": "String",
+            "claim.value": "0000-0002-1825-0097",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
           }
         }
       ]
