@@ -122,7 +122,7 @@ class KafkaCli {
                 name: 'kli login',
                 usage: 'kli login [options]',
                 header: 'Authenticate via device authorization grant.',
-                footer: "\nUsage: eval \$(kli login)\n\nEnvironment overrides: ${ENV_PREFIX}_KEYCLOAK_URL, ${ENV_PREFIX}_REALM, ${ENV_PREFIX}_CLIENT_ID"
+                footer: "\nEnvironment overrides: ${ENV_PREFIX}_KEYCLOAK_URL, ${ENV_PREFIX}_REALM, ${ENV_PREFIX}_CLIENT_ID"
         )
         cli.with {
             h(longOpt: 'help', 'Show this help message')
@@ -184,11 +184,13 @@ class KafkaCli {
 
         // Step 5: Create session
         String sessionId = UUID.randomUUID().toString()
+        String now = Instant.now().toString()
         Map sessionData = [
-                sessionId: sessionId,
-                orcid    : orcid,
-                claims   : claims,
-                createdAt: Instant.now().toString()
+                sessionId  : sessionId,
+                orcid      : orcid,
+                claims     : claims,
+                createdAt  : now,
+                refreshedAt: now
         ]
         persistSession(sessionId, sessionData)
 
@@ -306,7 +308,7 @@ class KafkaCli {
                 name: 'kli logout',
                 usage: 'kli logout',
                 header: 'End the current session.',
-                footer: "\nUsage: eval \$(kli logout)"
+                footer: ""
         )
         cli.with {
             h(longOpt: 'help', 'Show this help message')
@@ -375,6 +377,7 @@ class KafkaCli {
         }
 
         Map session = loadSession(sessionId)
+        refreshSession(sessionId, session)
 
         System.err.println("Session:  ${session.sessionId}")
         if (session.orcid) {
@@ -402,7 +405,6 @@ class KafkaCli {
             _(longOpt: 'topic', args: 1, argName: 'topic', 'Kafka topic to publish to',
                     defaultValue: defaultTopic)
             _(longOpt: 'file', args: 1, argName: 'path', 'Path to JSON file containing the message')
-            _(longOpt: 'key', args: 1, argName: 'key', 'Optional message key')
             v(longOpt: 'verbose', 'Enable verbose output')
         }
 
@@ -418,7 +420,6 @@ class KafkaCli {
         String bootstrapServers = options.'bootstrap-servers' ?: defaultBootstrapServers
         String topic = options.'topic' ?: defaultTopic
         String filePath = options.'file'
-        String key = options.'key'
         boolean verbose = options.'verbose' || globalVerbose
 
         if (!topic?.trim()) {
@@ -430,21 +431,18 @@ class KafkaCli {
             System.exit(1)
         }
 
-        // Load session if available
+        // Require active session
         String sessionId = System.getenv(SESSION_ENV_VAR)
-        String orcid = null
-        if (sessionId?.trim()) {
-            Map session = loadSession(sessionId)
-            orcid = session?.orcid as String
-            log.info("Publishing with authenticated user ORCID={}", orcid ?: 'unknown')
-            if (verbose) {
-                System.err.println("ORCID iD: ${orcid ?: 'unknown'}")
-            }
-        } else {
-            log.warn("No active session (${SESSION_ENV_VAR} not set). Publishing without user identity.")
-            if (verbose) {
-                System.err.println("Warning: No active session. Run: eval \$(kli login)")
-            }
+        if (!sessionId?.trim()) {
+            printError("No active session. Run: kli login")
+            System.exit(1)
+        }
+        Map session = loadSession(sessionId)
+        refreshSession(sessionId, session)
+        String orcid = session?.orcid as String
+        log.info("Publishing with authenticated user ORCID={}", orcid ?: 'unknown')
+        if (verbose) {
+            System.err.println("ORCID iD: ${orcid ?: 'unknown'}")
         }
 
         Path messageFile = Paths.get(filePath)
@@ -466,14 +464,14 @@ class KafkaCli {
             System.exit(1)
         }
 
+        String key = message.txn().getId()
+
         if (verbose) {
             println "Bootstrap servers: ${bootstrapServers}"
             println "Topic:            ${topic}"
             println "Message ID:       ${message.getId()}"
             println "Action:           ${message.action()}"
-            if (key) {
-                println "Key:              ${key}"
-            }
+            println "Key:              ${key}"
             println ''
             println JsonOutput.prettyPrint(json)
             println ''
@@ -497,19 +495,20 @@ class KafkaCli {
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.name)
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.name)
         props.put(ProducerConfig.ACKS_CONFIG, 'all')
+        props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, 10000L)
+        props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, 10000)
+        props.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, 15000)
 
         KafkaProducer<String, byte[]> producer = null
         try {
             producer = new KafkaProducer<>(props)
 
-            ProducerRecord<String, byte[]> record = key
-                    ? new ProducerRecord<>(topic, key, messageBytes)
-                    : new ProducerRecord<>(topic, messageBytes)
+            ProducerRecord<String, byte[]> record = new ProducerRecord<>(topic, key, messageBytes)
 
             log.info("Publishing message {} to topic {}", message.getId(), topic)
 
             Future<RecordMetadata> future = producer.send(record)
-            RecordMetadata metadata = future.get()
+            RecordMetadata metadata = future.get(15, java.util.concurrent.TimeUnit.SECONDS)
 
             println message.getId()
             log.info("Published message {} to {}:partition={}:offset={}",
@@ -542,6 +541,11 @@ class KafkaCli {
             printError("Failed to store session at ${destination}: ${e.message}")
             System.exit(1)
         }
+    }
+
+    private void refreshSession(String sessionId, Map sessionData) {
+        sessionData.refreshedAt = Instant.now().toString()
+        persistSession(sessionId, sessionData)
     }
 
     private Map loadSession(String sessionId) {
@@ -643,22 +647,14 @@ class KafkaCli {
     }
 
     private void printGlobalUsage(CliBuilder cli) {
-        println """Kli - Jade Tipi Kafka message publisher
-
-Usage:
-  eval \$(kli login [options])
-  eval \$(kli logout)
-  kli status
-  kli publish --topic <topic> --file <message.json> [options]
-  kli help
-
+        println 'Kli - Jade Tipi Kafka message publisher\n'
+        cli.usage()
+        println """
 Commands:
   login     Authenticate via device authorization grant.
   logout    End the current session.
   status    Show current session information.
-  publish   Publish a message to a Kafka topic.
-"""
-        cli.usage()
+  publish   Publish a message to a Kafka topic."""
     }
 
     private void printError(Object message) {

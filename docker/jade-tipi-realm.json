@@ -325,6 +325,41 @@
       ]
     }
   ],
+  "identityProviders": [
+    {
+      "alias": "orcid",
+      "displayName": "ORCID",
+      "providerId": "oidc",
+      "enabled": true,
+      "trustEmail": true,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "clientId": "CHANGE_ME",
+        "clientSecret": "CHANGE_ME",
+        "authorizationUrl": "https://sandbox.orcid.org/oauth/authorize",
+        "tokenUrl": "https://sandbox.orcid.org/oauth/token",
+        "userInfoUrl": "https://sandbox.orcid.org/oauth/userinfo",
+        "jwksUrl": "https://sandbox.orcid.org/oauth/jwks",
+        "issuer": "https://sandbox.orcid.org",
+        "defaultScope": "openid",
+        "validateSignature": "true",
+        "useJwksUrl": "true",
+        "syncMode": "INHERIT"
+      }
+    }
+  ],
+  "identityProviderMappers": [
+    {
+      "name": "orcid-id-mapper",
+      "identityProviderAlias": "orcid",
+      "identityProviderMapper": "oidc-user-attribute-idp-mapper",
+      "config": {
+        "claim": "sub",
+        "user.attribute": "orcid",
+        "syncMode": "INHERIT"
+      }
+    }
+  ],
   "users": [
     {
       "username": "testuser",

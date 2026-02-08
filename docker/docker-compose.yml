@@ -15,7 +15,7 @@ services:
     container_name: jade-tipi-keycloak
     command: start-dev --import-realm
     environment:
-      KC_DB: dev-mem
+      KC_DB: dev-file
       KC_HOSTNAME: localhost
       KC_HEALTH_ENABLED: "true"
       KC_METRICS_ENABLED: "true"
@@ -46,11 +46,12 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
 
       # Listener configuration
-      # PLAINTEXT: for external clients (authentication handled at application level via Keycloak)
+      # PLAINTEXT: for host clients via localhost:9092
+      # INTERNAL: for container-to-container via kafka:9093
       # CONTROLLER: for KRaft controller
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://localhost:9094
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,INTERNAL://0.0.0.0:9093,CONTROLLER://localhost:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,INTERNAL://kafka:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
 
       # Cluster settings
@@ -70,6 +71,29 @@ services:
       keycloak:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  kafka-init:
+    image: apache/kafka:4.1.1
+    container_name: jade-tipi-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9093 \
+          --create --if-not-exists \
+          --topic jdtp.dev \
+          --partitions 1 \
+          --replication-factor 1
+        echo "Topic jdtp.dev ready"
+    restart: "no"
 
 volumes:
   mongodb_data:
