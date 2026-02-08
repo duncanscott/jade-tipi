@@ -49,6 +49,8 @@ import java.util.regex.Pattern;
 public record Message(
         @JsonProperty("txn") Transaction txn,
         @JsonProperty("uuid") String uuid,
+        @JsonProperty("type") String type,
+        @JsonProperty("subtype") String subtype,
         @JsonProperty("action") Action action,
         @JsonProperty("data") Map<String, Object> data
 ) {
@@ -92,8 +94,8 @@ public record Message(
         }
     }
 
-    public static Message newInstance(Transaction txn, Action action, Map<String, Object> data) {
-        return new Message(txn, UuidCreator.getTimeOrderedEpoch().toString(), action, data);
+    public static Message newInstance(Transaction txn, String type, String subtype, Action action, Map<String, Object> data) {
+        return new Message(txn, UuidCreator.getTimeOrderedEpoch().toString(), type, subtype, action, data);
     }
 
     public void validate() throws ValidationException, JsonProcessingException {
@@ -103,9 +105,8 @@ public record Message(
         }
     }
 
-    @JsonIgnore
     public String getId() {
-        return txn.getId() + Constants.ID_SEPARATOR + uuid;
+        return txn.getId() + Constants.ID_SEPARATOR + uuid + Constants.ID_SEPARATOR + type + Constants.ID_SEPARATOR + subtype;
     }
 
     @Override

@@ -84,7 +84,7 @@ kli status
 Publish a test message:
 
 ```bash
-kli publish --topic jdtp_cli_kli --file clients/kafka-cli/src/test/resources/sample-message.json --verbose
+kli publish --file clients/kafka-cli/src/test/resources/sample-message.json --verbose
 ```
 
 To consume messages (useful for verifying publishes):

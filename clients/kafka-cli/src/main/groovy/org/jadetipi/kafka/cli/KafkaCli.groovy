@@ -25,7 +25,9 @@ import org.apache.kafka.clients.producer.RecordMetadata
 import org.apache.kafka.common.serialization.StringSerializer
 import org.apache.kafka.common.serialization.ByteArraySerializer
 
+import org.jadetipi.dto.message.Action
 import org.jadetipi.dto.message.Message
+import org.jadetipi.dto.message.Transaction
 import org.jadetipi.dto.util.MessageMapper
 
 import java.net.http.HttpClient
@@ -49,6 +51,7 @@ class KafkaCli {
     private static final String DEFAULT_KEYCLOAK_URL = 'http://localhost:8484'
     private static final String DEFAULT_REALM = 'jade-tipi'
     private static final String DEFAULT_BOOTSTRAP_SERVERS = 'localhost:9092'
+    private static final String DEFAULT_TOPIC = 'jdtp_cli_kli'
     private static final String ENV_PREFIX = 'KLI'
     private static final String SESSION_ENV_VAR = 'KLI_SESSION'
 
@@ -98,6 +101,18 @@ class KafkaCli {
             case 'status':
                 handleStatus(commandArgs, globalVerbose)
                 break
+            case 'config':
+                handleConfig(commandArgs, globalVerbose)
+                break
+            case 'open':
+                handleOpen(commandArgs, globalVerbose)
+                break
+            case 'rollback':
+                handleRollback(commandArgs, globalVerbose)
+                break
+            case 'commit':
+                handleCommit(commandArgs, globalVerbose)
+                break
             case 'publish':
                 handlePublish(commandArgs, globalVerbose)
                 break
@@ -117,18 +132,24 @@ class KafkaCli {
         String defaultKeycloakUrl = resolveEnv('KEYCLOAK_URL', DEFAULT_KEYCLOAK_URL)
         String defaultRealm = resolveEnv('REALM', DEFAULT_REALM)
         String defaultClientId = resolveEnv('CLIENT_ID', DEFAULT_CLIENT_ID)
+        String defaultBootstrapServer = resolveEnv('BOOTSTRAP_SERVERS', DEFAULT_BOOTSTRAP_SERVERS)
+        String defaultTopic = resolveEnv('TOPIC', DEFAULT_TOPIC)
 
         def cli = new CliBuilder(
                 name: 'kli login',
                 usage: 'kli login [options]',
                 header: 'Authenticate via device authorization grant.',
-                footer: "\nEnvironment overrides: ${ENV_PREFIX}_KEYCLOAK_URL, ${ENV_PREFIX}_REALM, ${ENV_PREFIX}_CLIENT_ID"
+                footer: "\nEnvironment overrides: ${ENV_PREFIX}_KEYCLOAK_URL, ${ENV_PREFIX}_REALM, ${ENV_PREFIX}_CLIENT_ID, ${ENV_PREFIX}_BOOTSTRAP_SERVERS, ${ENV_PREFIX}_TOPIC"
         )
         cli.with {
             h(longOpt: 'help', 'Show this help message')
             _(longOpt: 'url', args: 1, argName: 'keycloak-url', 'Keycloak base URL', defaultValue: defaultKeycloakUrl)
             _(longOpt: 'realm', args: 1, argName: 'realm', 'Keycloak realm', defaultValue: defaultRealm)
             _(longOpt: 'client-id', args: 1, argName: 'client-id', 'OAuth client identifier', defaultValue: defaultClientId)
+            _(longOpt: 'bootstrap-server', args: 1, argName: 'server',
+                    'Kafka bootstrap server', defaultValue: defaultBootstrapServer)
+            _(longOpt: 'topic', args: 1, argName: 'topic', 'Kafka topic',
+                    defaultValue: defaultTopic)
             v(longOpt: 'verbose', 'Enable verbose output')
         }
 
@@ -144,6 +165,8 @@ class KafkaCli {
         String keycloakUrl = options.'url' ?: defaultKeycloakUrl
         String realm = options.'realm' ?: defaultRealm
         String clientId = options.'client-id' ?: defaultClientId
+        String bootstrapServer = options.'bootstrap-server' ?: defaultBootstrapServer
+        String topic = options.'topic' ?: defaultTopic
         boolean verbose = options.'verbose' || globalVerbose
 
         // Step 1: Device authorization request
@@ -189,6 +212,10 @@ class KafkaCli {
                 sessionId  : sessionId,
                 orcid      : orcid,
                 claims     : claims,
+                config     : [
+                        topic             : topic,
+                        'bootstrap-server': bootstrapServer
+                ],
                 createdAt  : now,
                 refreshedAt: now
         ]
@@ -384,26 +411,341 @@ class KafkaCli {
             System.err.println("ORCID iD: ${session.orcid}")
         }
         System.err.println("Created:  ${session.createdAt}")
+        if (session.txn) {
+            Map txn = session.txn as Map
+            Map grp = txn.group as Map
+            System.err.println("Transaction: ${txn.uuid}~${grp.org}~${grp.grp}~${txn.client}")
+        }
+        if (session.config) {
+            Map config = session.config as Map
+            System.err.println("Kafka:")
+            System.err.println("  Bootstrap server: ${config.'bootstrap-server'}")
+            System.err.println("  Topic:            ${config.topic}")
+        }
+    }
+
+    // ---- config command ----
+
+    private void handleConfig(String[] args, boolean globalVerbose) {
+        String defaultBootstrapServer = resolveEnv('BOOTSTRAP_SERVERS', DEFAULT_BOOTSTRAP_SERVERS)
+        String defaultTopic = resolveEnv('TOPIC', DEFAULT_TOPIC)
+
+        def cli = new CliBuilder(
+                name: 'kli config',
+                usage: 'kli config [options]',
+                header: 'Set Kafka configuration for the current session.',
+                footer: "\nEnvironment overrides: ${ENV_PREFIX}_BOOTSTRAP_SERVERS, ${ENV_PREFIX}_TOPIC"
+        )
+        cli.with {
+            h(longOpt: 'help', 'Show this help message')
+            _(longOpt: 'bootstrap-server', args: 1, argName: 'server',
+                    'Kafka bootstrap server', defaultValue: defaultBootstrapServer)
+            _(longOpt: 'topic', args: 1, argName: 'topic', 'Kafka topic',
+                    defaultValue: defaultTopic)
+            v(longOpt: 'verbose', 'Enable verbose output')
+        }
+
+        OptionAccessor options = cli.parse(args)
+        if (!options) {
+            System.exit(1)
+        }
+        if (options.h) {
+            cli.usage()
+            return
+        }
+
+        String bootstrapServer = options.'bootstrap-server' ?: defaultBootstrapServer
+        String topic = options.'topic' ?: defaultTopic
+        boolean verbose = options.'verbose' || globalVerbose
+
+        // Require active session
+        String sessionId = System.getenv(SESSION_ENV_VAR)
+        if (!sessionId?.trim()) {
+            printError("No active session. Run: kli login")
+            System.exit(1)
+        }
+        Map session = loadSession(sessionId)
+
+        // Store config in session
+        session.config = [
+                topic             : topic,
+                'bootstrap-server': bootstrapServer
+        ]
+        refreshSession(sessionId, session)
+
+        System.err.println("Kafka configuration saved:")
+        System.err.println("  Bootstrap server: ${bootstrapServer}")
+        System.err.println("  Topic:            ${topic}")
+    }
+
+    // ---- open command ----
+
+    private void handleOpen(String[] args, boolean globalVerbose) {
+        def cli = new CliBuilder(
+                name: 'kli open',
+                usage: 'kli open [options]',
+                header: 'Open a new transaction.'
+        )
+        cli.with {
+            h(longOpt: 'help', 'Show this help message')
+            v(longOpt: 'verbose', 'Enable verbose output')
+        }
+
+        OptionAccessor options = cli.parse(args)
+        if (!options) {
+            System.exit(1)
+        }
+        if (options.h) {
+            cli.usage()
+            return
+        }
+
+        boolean verbose = options.'verbose' || globalVerbose
+
+        // Require active session
+        String sessionId = System.getenv(SESSION_ENV_VAR)
+        if (!sessionId?.trim()) {
+            printError("No active session. Run: kli login")
+            System.exit(1)
+        }
+        Map session = loadSession(sessionId)
+
+        // Require config
+        if (!session.config) {
+            printError("No Kafka configuration. Run: kli config")
+            System.exit(1)
+        }
+        Map config = session.config as Map
+        String bootstrapServer = config.'bootstrap-server' as String
+        String topic = config.topic as String
+
+        // Fail if transaction already open
+        if (session.txn) {
+            printError("Transaction already open: ${session.txn.uuid}")
+            System.exit(1)
+        }
+
+        // Extract org/group from claims, orcid for user
+        Map claims = session.claims as Map ?: [:]
+        String org = claims.tipi_org as String
+        String grp = claims.tipi_group as String
+        String orcid = session.orcid as String
+
+        if (!org?.trim() || !grp?.trim()) {
+            printError("Session claims missing tipi_org or tipi_group.")
+            System.exit(1)
+        }
+
+        // Create transaction and OPEN message
+        Transaction txn = Transaction.newInstance(org, grp, DEFAULT_CLIENT_ID, orcid ?: 'unknown')
+        Message message = Message.newInstance(txn, 'txn', 'open', Action.OPEN, [:])
+        String key = txn.getId()
+
+        if (verbose) {
+            System.err.println("Bootstrap server: ${bootstrapServer}")
+            System.err.println("Topic:           ${topic}")
+            System.err.println("Transaction ID:  ${txn.getId()}")
+            System.err.println("Message ID:      ${message.getId()}")
+            System.err.println("ORCID iD:        ${orcid ?: 'unknown'}")
+            System.err.println('')
+        }
+
+        byte[] messageBytes
+        try {
+            messageBytes = MessageMapper.toBytes(message)
+        } catch (Exception e) {
+            printError("Failed to serialize message: ${e.message}")
+            System.exit(1)
+        }
+
+        publishMessage(bootstrapServer, topic, key, messageBytes, message, verbose)
+
+        // Store transaction in session
+        session.txn = [
+                uuid  : txn.uuid(),
+                group : [org: txn.group().org(), grp: txn.group().grp()],
+                client: txn.client(),
+                user  : txn.user()
+        ]
+        refreshSession(sessionId, session)
+
+        System.err.println("Transaction opened: ${txn.getId()}")
+    }
+
+    // ---- rollback command ----
+
+    private void handleRollback(String[] args, boolean globalVerbose) {
+        def cli = new CliBuilder(
+                name: 'kli rollback',
+                usage: 'kli rollback [options]',
+                header: 'Roll back the current transaction.'
+        )
+        cli.with {
+            h(longOpt: 'help', 'Show this help message')
+            v(longOpt: 'verbose', 'Enable verbose output')
+        }
+
+        OptionAccessor options = cli.parse(args)
+        if (!options) {
+            System.exit(1)
+        }
+        if (options.h) {
+            cli.usage()
+            return
+        }
+
+        boolean verbose = options.'verbose' || globalVerbose
+
+        // Require active session
+        String sessionId = System.getenv(SESSION_ENV_VAR)
+        if (!sessionId?.trim()) {
+            printError("No active session. Run: kli login")
+            System.exit(1)
+        }
+        Map session = loadSession(sessionId)
+
+        // Require open transaction
+        if (!session.txn) {
+            printError("No open transaction. Run: kli open")
+            System.exit(1)
+        }
+
+        // Reconstruct transaction from session
+        Map txnMap = session.txn as Map
+        Map grpMap = txnMap.group as Map
+        Transaction txn = new Transaction(
+                txnMap.uuid as String,
+                new org.jadetipi.dto.message.Group(grpMap.org as String, grpMap.grp as String),
+                txnMap.client as String,
+                txnMap.user as String
+        )
+
+        // Get config from session
+        Map config = session.config as Map
+        String bootstrapServer = config?.'bootstrap-server' as String ?: DEFAULT_BOOTSTRAP_SERVERS
+        String topic = config?.topic as String ?: DEFAULT_TOPIC
+
+        // Create ROLLBACK message
+        Message message = Message.newInstance(txn, 'txn', 'rollback', Action.ROLLBACK, [:])
+        String key = txn.getId()
+
+        if (verbose) {
+            System.err.println("Bootstrap server: ${bootstrapServer}")
+            System.err.println("Topic:           ${topic}")
+            System.err.println("Transaction ID:  ${txn.getId()}")
+            System.err.println("Message ID:      ${message.getId()}")
+            System.err.println('')
+        }
+
+        byte[] messageBytes
+        try {
+            messageBytes = MessageMapper.toBytes(message)
+        } catch (Exception e) {
+            printError("Failed to serialize message: ${e.message}")
+            System.exit(1)
+        }
+
+        publishMessage(bootstrapServer, topic, key, messageBytes, message, verbose)
+
+        // Remove transaction from session
+        session.remove('txn')
+        refreshSession(sessionId, session)
+
+        System.err.println("Transaction rolled back: ${txn.getId()}")
+    }
+
+    // ---- commit command ----
+
+    private void handleCommit(String[] args, boolean globalVerbose) {
+        def cli = new CliBuilder(
+                name: 'kli commit',
+                usage: 'kli commit [options]',
+                header: 'Commit the current transaction.'
+        )
+        cli.with {
+            h(longOpt: 'help', 'Show this help message')
+            v(longOpt: 'verbose', 'Enable verbose output')
+        }
+
+        OptionAccessor options = cli.parse(args)
+        if (!options) {
+            System.exit(1)
+        }
+        if (options.h) {
+            cli.usage()
+            return
+        }
+
+        boolean verbose = options.'verbose' || globalVerbose
+
+        // Require active session
+        String sessionId = System.getenv(SESSION_ENV_VAR)
+        if (!sessionId?.trim()) {
+            printError("No active session. Run: kli login")
+            System.exit(1)
+        }
+        Map session = loadSession(sessionId)
+
+        // Require open transaction
+        if (!session.txn) {
+            printError("No open transaction. Run: kli open")
+            System.exit(1)
+        }
+
+        // Reconstruct transaction from session
+        Map txnMap = session.txn as Map
+        Map grpMap = txnMap.group as Map
+        Transaction txn = new Transaction(
+                txnMap.uuid as String,
+                new org.jadetipi.dto.message.Group(grpMap.org as String, grpMap.grp as String),
+                txnMap.client as String,
+                txnMap.user as String
+        )
+
+        // Get config from session
+        Map config = session.config as Map
+        String bootstrapServer = config?.'bootstrap-server' as String ?: DEFAULT_BOOTSTRAP_SERVERS
+        String topic = config?.topic as String ?: DEFAULT_TOPIC
+
+        // Create COMMIT message
+        Message message = Message.newInstance(txn, 'txn', 'commit', Action.COMMIT, [:])
+        String key = txn.getId()
+
+        if (verbose) {
+            System.err.println("Bootstrap server: ${bootstrapServer}")
+            System.err.println("Topic:           ${topic}")
+            System.err.println("Transaction ID:  ${txn.getId()}")
+            System.err.println("Message ID:      ${message.getId()}")
+            System.err.println('')
+        }
+
+        byte[] messageBytes
+        try {
+            messageBytes = MessageMapper.toBytes(message)
+        } catch (Exception e) {
+            printError("Failed to serialize message: ${e.message}")
+            System.exit(1)
+        }
+
+        publishMessage(bootstrapServer, topic, key, messageBytes, message, verbose)
+
+        // Remove transaction from session
+        session.remove('txn')
+        refreshSession(sessionId, session)
+
+        System.err.println("Transaction committed: ${txn.getId()}")
     }
 
     // ---- publish command ----
 
     private void handlePublish(String[] args, boolean globalVerbose) {
-        String defaultBootstrapServers = resolveEnv('BOOTSTRAP_SERVERS', DEFAULT_BOOTSTRAP_SERVERS)
-        String defaultTopic = resolveEnv('TOPIC', '')
-
         def cli = new CliBuilder(
                 name: 'kli publish',
-                usage: 'kli publish --topic <topic> --file <message.json> [options]',
-                header: 'Publish a message to a Kafka topic.',
-                footer: "\nEnvironment overrides: ${ENV_PREFIX}_BOOTSTRAP_SERVERS, ${ENV_PREFIX}_TOPIC"
+                usage: 'kli publish --file <message.json> [options]',
+                header: 'Publish a message to a Kafka topic (testing).'
         )
         cli.with {
             h(longOpt: 'help', 'Show this help message')
-            _(longOpt: 'bootstrap-servers', args: 1, argName: 'servers',
-                    'Kafka bootstrap servers', defaultValue: defaultBootstrapServers)
-            _(longOpt: 'topic', args: 1, argName: 'topic', 'Kafka topic to publish to',
-                    defaultValue: defaultTopic)
             _(longOpt: 'file', args: 1, argName: 'path', 'Path to JSON file containing the message')
             v(longOpt: 'verbose', 'Enable verbose output')
         }
@@ -417,15 +759,9 @@ class KafkaCli {
             return
         }
 
-        String bootstrapServers = options.'bootstrap-servers' ?: defaultBootstrapServers
-        String topic = options.'topic' ?: defaultTopic
         String filePath = options.'file'
         boolean verbose = options.'verbose' || globalVerbose
 
-        if (!topic?.trim()) {
-            printError('A topic is required. Use --topic or set KLI_TOPIC.')
-            System.exit(1)
-        }
         if (!filePath?.trim()) {
             printError('A message file is required. Use --file <path>.')
             System.exit(1)
@@ -439,6 +775,16 @@ class KafkaCli {
         }
         Map session = loadSession(sessionId)
         refreshSession(sessionId, session)
+
+        // Require config
+        if (!session.config) {
+            printError("No Kafka configuration. Run: kli config")
+            System.exit(1)
+        }
+        Map config = session.config as Map
+        String bootstrapServer = config.'bootstrap-server' as String
+        String topic = config.topic as String
+
         String orcid = session?.orcid as String
         log.info("Publishing with authenticated user ORCID={}", orcid ?: 'unknown')
         if (verbose) {
@@ -467,7 +813,7 @@ class KafkaCli {
         String key = message.txn().getId()
 
         if (verbose) {
-            println "Bootstrap servers: ${bootstrapServers}"
+            println "Bootstrap server: ${bootstrapServer}"
             println "Topic:            ${topic}"
             println "Message ID:       ${message.getId()}"
             println "Action:           ${message.action()}"
@@ -485,13 +831,13 @@ class KafkaCli {
             System.exit(1)
         }
 
-        publishMessage(bootstrapServers, topic, key, messageBytes, message, verbose)
+        publishMessage(bootstrapServer, topic, key, messageBytes, message, verbose)
     }
 
-    private void publishMessage(String bootstrapServers, String topic, String key,
+    private void publishMessage(String bootstrapServer, String topic, String key,
                                 byte[] messageBytes, Message message, boolean verbose) {
         Properties props = new Properties()
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers)
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServer)
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.name)
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.name)
         props.put(ProducerConfig.ACKS_CONFIG, 'all')
@@ -654,7 +1000,11 @@ Commands:
   login     Authenticate via device authorization grant.
   logout    End the current session.
   status    Show current session information.
-  publish   Publish a message to a Kafka topic."""
+  config    Set Kafka configuration for the current session.
+  open      Open a new transaction.
+  rollback  Roll back the current transaction.
+  commit    Commit the current transaction.
+  publish   Publish a message to a Kafka topic (testing)."""
     }
 
     private void printError(Object message) {

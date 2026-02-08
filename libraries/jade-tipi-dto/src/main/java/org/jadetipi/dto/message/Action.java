@@ -22,6 +22,7 @@ import com.fasterxml.jackson.annotation.JsonValue;
  */
 public enum Action {
     OPEN,
+    ROLLBACK,
     COMMIT,
     CREATE,
     UPDATE,
