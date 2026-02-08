@@ -14,6 +14,7 @@ package org.jadetipi.jadetipi.mongo.config
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import groovy.util.logging.Slf4j
+import org.jadetipi.dto.message.Collection
 import org.springframework.boot.CommandLineRunner
 import org.springframework.core.io.Resource
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver
@@ -83,24 +84,20 @@ class MongoDbInitializer implements CommandLineRunner {
 
                 // If this is the collections document, create collections for each entry
                 if (key == "collections") {
-                    log.info "Creating collections from 'collections' document"
-                    jsonContent.each { collectionKey, collectionData ->
-                        if (collectionKey != "_id" && collectionData instanceof Map) {
-                            def collectionName = collectionData.get("abbreviation")
-                            if (collectionName) {
-                                mongoTemplate.collectionExists(collectionName)
-                                        .flatMap { exists ->
-                                            if (!exists) {
-                                                log.info "Creating collection '{}'", collectionName
-                                                mongoTemplate.createCollection(collectionName)
-                                            } else {
-                                                log.info "Collection '{}' already exists", collectionName
-                                                return mongoTemplate.getCollection(collectionName)
-                                            }
-                                        }
-                                        .block()
-                            }
-                        }
+                    log.info "Creating collections from Collection enum"
+                    Collection.values().each { collection ->
+                        def collectionName = collection.abbreviation
+                        mongoTemplate.collectionExists(collectionName)
+                                .flatMap { exists ->
+                                    if (!exists) {
+                                        log.info "Creating collection '{}'", collectionName
+                                        mongoTemplate.createCollection(collectionName)
+                                    } else {
+                                        log.info "Collection '{}' already exists", collectionName
+                                        return mongoTemplate.getCollection(collectionName)
+                                    }
+                                }
+                                .block()
                     }
                 }
 
