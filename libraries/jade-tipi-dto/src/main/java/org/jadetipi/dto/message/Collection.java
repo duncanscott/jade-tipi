@@ -40,10 +40,9 @@ public enum Collection {
     Collection(String name, String abbreviation) {
         this.name = name;
         this.abbreviation = abbreviation;
-        this.actions = switch (this.name) {
-            case "transaction" -> List.of(Action.OPEN, Action.ROLLBACK, Action.COMMIT);
-            default -> List.of(Action.CREATE, Action.UPDATE, Action.DELETE);
-        };
+        this.actions = "transaction".equals(name)
+                ? List.of(Action.OPEN, Action.ROLLBACK, Action.COMMIT)
+                : List.of(Action.CREATE, Action.UPDATE, Action.DELETE);
     }
 
     public String getName() {
