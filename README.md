@@ -53,7 +53,7 @@ Kli is a command-line client that authenticates users via ORCID (through Keycloa
    docker compose -f docker/docker-compose.yml up
    ```
 
-   This starts MongoDB, Keycloak, Kafka, and creates the `jdtp_in_kli` topic automatically.
+   This starts MongoDB, Keycloak, Kafka, and creates the `jdtp_cli_kli` topic automatically.
 
 2. Build and install kli:
 
@@ -84,13 +84,13 @@ kli status
 Publish a test message:
 
 ```bash
-kli publish --topic jdtp_in_kli --file clients/kafka-cli/src/test/resources/sample-message.json --verbose
+kli publish --topic jdtp_cli_kli --file clients/kafka-cli/src/test/resources/sample-message.json --verbose
 ```
 
 To consume messages (useful for verifying publishes):
 
 ```bash
-docker exec jade-tipi-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic jdtp_in_kli --from-beginning
+docker exec jade-tipi-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic jdtp_cli_kli --from-beginning
 ```
 
 Log out:

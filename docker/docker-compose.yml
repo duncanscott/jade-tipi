@@ -89,10 +89,10 @@ services:
       - |
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9093 \
           --create --if-not-exists \
-          --topic jdtp_in_kli \
+          --topic jdtp_cli_kli \
           --partitions 1 \
           --replication-factor 1
-        echo "Topic jdtp_in_kli ready"
+        echo "Topic jdtp_cli_kli ready"
     restart: "no"
 
 volumes:
