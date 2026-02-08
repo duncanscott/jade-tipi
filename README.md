@@ -58,7 +58,7 @@ Kli is a command-line client that authenticates users via ORCID (through Keycloa
 2. Build and install kli:
 
    ```bash
-   ./gradlew :clients:kafka-cli:installDist
+   ./gradlew :clients:kafka-kli:installDist
    ```
 
 3. Source the shell function (add this to your `.bashrc` or `.zshrc`):
@@ -84,7 +84,7 @@ kli status
 Publish a test message:
 
 ```bash
-kli publish --file clients/kafka-cli/src/test/resources/sample-message.json --verbose
+kli publish --file clients/kafka-kli/src/test/resources/sample-message.json --verbose
 ```
 
 To consume messages (useful for verifying publishes):

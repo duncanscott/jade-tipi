@@ -11,13 +11,13 @@
 #   kli logout
 
 _KLI_SOURCE="${BASH_SOURCE[0]:-${(%):-%x}}"
-_KLI_BIN="$(cd "$(dirname "$_KLI_SOURCE")/.." && pwd)/clients/kafka-cli/build/install/kli/bin/kli"
+_KLI_BIN="$(cd "$(dirname "$_KLI_SOURCE")/.." && pwd)/clients/kafka-kli/build/install/kli/bin/kli"
 unset _KLI_SOURCE
 
 kli() {
     if [ ! -x "$_KLI_BIN" ]; then
         echo "ERROR kli not found at $_KLI_BIN" >&2
-        echo "Run: ./gradlew :clients:kafka-cli:installDist" >&2
+        echo "Run: ./gradlew :clients:kafka-kli:installDist" >&2
         return 1
     fi
 

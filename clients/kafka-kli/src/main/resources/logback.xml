@@ -2,9 +2,9 @@
     <property name="LOG_HOME" value="${user.home}/logs"/>
 
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOG_HOME}/kafka-cli.log</file>
+        <file>${LOG_HOME}/kafka-kli.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.FixedWindowRollingPolicy">
-            <fileNamePattern>${LOG_HOME}/kafka-cli.%i.log</fileNamePattern>
+            <fileNamePattern>${LOG_HOME}/kafka-kli.%i.log</fileNamePattern>
             <minIndex>1</minIndex>
             <maxIndex>3</maxIndex>
         </rollingPolicy>

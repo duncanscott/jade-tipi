@@ -11,6 +11,10 @@
     "name": "link",
     "abbreviation": "lnk"
   },
+  "uni": {
+    "name": "unit",
+    "abbreviation": "uni"
+  },
   "ppy": {
     "name": "property",
     "abbreviation": "ppy"

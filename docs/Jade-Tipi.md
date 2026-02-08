@@ -77,11 +77,12 @@ Entities, properties, and links comprise the core metadata of the institution.  
 Following is a brief introduction to the Jade-Tipi specification.  Many technical details are glossed over.  In addition to entities, properties, and links, Jade-Tipi defines additional classes: “group”, “type”, “validation” and “transaction”.  The basic set of Jade-Tipi classes is:
 
 * entity       (ent)  
+* unit         (uni)
 * property     (ppy)  
 * link         (lnk)  
 * group        (grp)  
-* type         (typ)  
-* validation   (val)  
+* type         (typ)
+* validation   (vdn)
 * transaction  (txn)
 
 All objects in a Jade-Tipi belong to a **group**.  Groups are used to define ownership of metadata and to assign read and write permissions on objects owned by the group.  Members of one group may add properties to objects owned by another group.  For example, a QC group may analyze a DNA assembly owned by the assembly group and assign a quality score.  Properties are owned by the group that added them.

@@ -921,7 +921,7 @@ class KafkaCli {
             System.exit(1)
         }
 
-        Path directory = Paths.get(home, '.jade-tipi', 'clients', 'kafka-cli', 'sessions')
+        Path directory = Paths.get(home, '.jade-tipi', 'clients', 'kafka-kli', 'sessions')
         try {
             Files.createDirectories(directory)
             applyOwnerOnlyPermissions(directory, 'rwx------')
