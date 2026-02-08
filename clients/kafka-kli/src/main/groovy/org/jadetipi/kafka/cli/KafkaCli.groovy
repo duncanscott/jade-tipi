@@ -538,7 +538,7 @@ class KafkaCli {
 
         // Create transaction and OPEN message
         Transaction txn = Transaction.newInstance(org, grp, DEFAULT_CLIENT_ID, orcid ?: 'unknown')
-        Message message = Message.newInstance(txn, 'txn', 'open', Action.OPEN, [:])
+        Message message = Message.newInstance(txn, Action.OPEN, [:])
         String key = txn.getId()
 
         if (verbose) {
@@ -626,7 +626,7 @@ class KafkaCli {
         String topic = config?.topic as String ?: DEFAULT_TOPIC
 
         // Create ROLLBACK message
-        Message message = Message.newInstance(txn, 'txn', 'rollback', Action.ROLLBACK, [:])
+        Message message = Message.newInstance(txn, Action.ROLLBACK, [:])
         String key = txn.getId()
 
         if (verbose) {
@@ -708,7 +708,7 @@ class KafkaCli {
         String topic = config?.topic as String ?: DEFAULT_TOPIC
 
         // Create COMMIT message
-        Message message = Message.newInstance(txn, 'txn', 'commit', Action.COMMIT, [:])
+        Message message = Message.newInstance(txn, Action.COMMIT, [:])
         String key = txn.getId()
 
         if (verbose) {

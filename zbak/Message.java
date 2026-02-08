@@ -21,6 +21,7 @@ import org.jadetipi.dto.util.MessageMapper;
 import org.jadetipi.dto.util.MessageSchemaValidator;
 import org.jadetipi.dto.util.ValidationException;
 
+import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Pattern;
@@ -48,12 +49,53 @@ import java.util.regex.Pattern;
 public record Message(
         @JsonProperty("txn") Transaction txn,
         @JsonProperty("uuid") String uuid,
+        @JsonProperty("type") String type,
+        @JsonProperty("subtype") String subtype,
         @JsonProperty("action") Action action,
         @JsonProperty("data") Map<String, Object> data
 ) {
 
-    public static Message newInstance(Transaction txn, Action action, Map<String, Object> data) {
-        return new Message(txn, UuidCreator.getTimeOrderedEpoch().toString(), action, data);
+    private static final Pattern SNAKE_CASE = Pattern.compile("^[a-z][a-z0-9_]*$");
+
+    /**
+     * Compact constructor that validates all data map keys (including nested) are snake_case.
+     */
+    /*
+    public Message {
+        if (data != null) {
+            validateSnakeCaseKeys(data, "data");
+        }
+    }
+     */
+    private static void validateSnakeCaseKeys(Map<?, ?> map, String path) {
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            Object keyObj = entry.getKey();
+            if (!(keyObj instanceof String key)) {
+                throw new IllegalArgumentException("Map key must be a String at " + path + ": " + keyObj);
+            }
+            if (!SNAKE_CASE.matcher(key).matches()) {
+                throw new IllegalArgumentException(
+                        "Key must be snake_case (lowercase letters, digits, underscores, starting with letter) at "
+                                + path + ": " + key);
+            }
+            validateValue(entry.getValue(), path + "." + key);
+        }
+    }
+
+    private static void validateValue(Object value, String path) {
+        if (value instanceof Map<?, ?> nestedMap) {
+            validateSnakeCaseKeys(nestedMap, path);
+        } else if (value instanceof Collection<?> collection) {
+            int index = 0;
+            for (Object item : collection) {
+                validateValue(item, path + "[" + index + "]");
+                index++;
+            }
+        }
+    }
+
+    public static Message newInstance(Transaction txn, String type, String subtype, Action action, Map<String, Object> data) {
+        return new Message(txn, UuidCreator.getTimeOrderedEpoch().toString(), type, subtype, action, data);
     }
 
     public void validate() throws ValidationException, JsonProcessingException {
@@ -64,7 +106,7 @@ public record Message(
     }
 
     public String getId() {
-        return txn.getId() + Constants.ID_SEPARATOR + uuid + Constants.ID_SEPARATOR + action;
+        return txn.getId() + Constants.ID_SEPARATOR + uuid + Constants.ID_SEPARATOR + type + Constants.ID_SEPARATOR + subtype;
     }
 
     @Override

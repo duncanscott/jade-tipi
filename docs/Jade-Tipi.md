@@ -74,12 +74,16 @@ Entities, properties, and links comprise the core metadata of the institution.  
 
 # **Jade-Tipi Specification**
 
-Following is a brief introduction to the Jade-Tipi specification.  Many technical details are glossed over.  In addition to entities, properties, and links, Jade-Tipi defines additional classes: “group”, “type”, “validation” and “transaction”.  The basic set of Jade-Tipi classes is:
+Following is a brief introduction to the Jade-Tipi specification.
+Many technical details are glossed over.
+In addition to entities, properties, and links, Jade-Tipi defines additional
+collections: "unit", “group”, “type”, “validation” and “transaction”.
+The basic set of Jade-Tipi collections is:
 
-* entity       (ent)  
-* unit         (uni)
+* entity       (ent)
 * property     (ppy)  
-* link         (lnk)  
+* link         (lnk)
+* unit         (uni)
 * group        (grp)  
 * type         (typ)
 * validation   (vdn)

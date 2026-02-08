@@ -4,7 +4,7 @@
   "title": "Message",
   "description": "Kafka message DTO for Jade-Tipi transaction and entity operations",
   "type": "object",
-  "required": ["txn", "uuid", "type", "subtype", "action"],
+  "required": ["txn", "uuid", "action"],
   "additionalProperties": false,
   "properties": {
     "txn": {
@@ -14,24 +14,12 @@
       "$ref": "#/$defs/UUIDv7",
       "description": "UUIDv7 unique to this message"
     },
-    "type": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Message type (e.g. 'txn' for transaction lifecycle messages)",
-      "examples": ["txn"]
-    },
-    "subtype": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Message subtype (e.g. 'open' for opening a transaction)",
-      "examples": ["open"]
-    },
     "action": {
       "$ref": "#/$defs/Action"
     },
     "id": {
       "type": "string",
-      "description": "Composite message ID: <txn.getId()>~<uuid>~<type>~<subtype>",
+      "description": "Composite message ID: <txn.getId()>~<uuid>~<action>",
       "readOnly": true
     },
     "data": {
@@ -142,8 +130,6 @@
         "client": "jade-cli"
       },
       "uuid": "018fd849-2a40-7def-8b56-222222222222",
-      "type": "txn",
-      "subtype": "open",
       "action": "open",
       "data": {
         "description": "importing sample batch"
@@ -159,8 +145,6 @@
         "client": "jade-cli"
       },
       "uuid": "018fd849-2a41-7123-8c67-333333333333",
-      "type": "entity",
-      "subtype": "sample",
       "action": "create",
       "data": {
         "entity_type": "sample",
@@ -178,8 +162,6 @@
         "client": "jade-cli"
       },
       "uuid": "018fd849-2a43-7789-8e89-555555555555",
-      "type": "txn",
-      "subtype": "commit",
       "action": "commit",
       "data": {
         "comment": "batch import complete"

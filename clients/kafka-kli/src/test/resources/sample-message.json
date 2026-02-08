@@ -9,8 +9,6 @@
     "user": "0000-0002-1825-0097"
   },
   "uuid": "018fd849-2a40-7def-8b56-222222222222",
-  "type": "entity",
-  "subtype": "sample",
   "action": "create",
   "data": {
     "entity_type": "sample",
