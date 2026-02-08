@@ -15,8 +15,6 @@ package org.jadetipi.dto.message;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -42,18 +40,10 @@ public enum Collection {
     Collection(String name, String abbreviation) {
         this.name = name;
         this.abbreviation = abbreviation;
-        this.actions = new ArrayList<>();
-        switch (this.name) {
-            case "transaction":
-                actions.add(Action.OPEN);
-                actions.add(Action.ROLLBACK);
-                actions.add(Action.COMMIT);
-                break;
-            default:
-                actions.add(Action.CREATE);
-                actions.add(Action.UPDATE);
-                actions.add(Action.DELETE);
-        }
+        this.actions = switch (this.name) {
+            case "transaction" -> List.of(Action.OPEN, Action.ROLLBACK, Action.COMMIT);
+            default -> List.of(Action.CREATE, Action.UPDATE, Action.DELETE);
+        };
     }
 
     public String getName() {
