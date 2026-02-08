@@ -1,0 +1,11 @@
+#!/bin/sh
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CLI_PATH="$SCRIPT_DIR/clients/kafka-cli/build/install/kli/bin/kli"
+
+if [ ! -x "$CLI_PATH" ]; then
+  echo "Tipi CLI not installed. Run: ./gradlew :clients:kafka-kli:installDist" >&2
+  exit 1
+fi
+
+exec "$CLI_PATH" "$@"

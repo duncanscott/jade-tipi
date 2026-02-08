@@ -9,8 +9,6 @@ services:
     volumes:
       - mongodb_data:/data/db
     restart: unless-stopped
-    profiles:
-      - mongodb
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
