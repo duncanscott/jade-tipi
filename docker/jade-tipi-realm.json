@@ -189,6 +189,67 @@
       ]
     },
     {
+      "clientId": "kli",
+      "name": "Kli - Kafka CLI",
+      "description": "Service account for the Kafka CLI message publisher",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
+      "redirectUris": [
+        "urn:ietf:wg:oauth:2.0:oob"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "access.token.lifespan": "300"
+      },
+      "protocolMappers": [
+        {
+          "name": "kli-organization",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "tipi_org",
+            "jsonType.label": "String",
+            "claim.value": "jade-tipi-org",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        },
+        {
+          "name": "kli-group",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "tipi_group",
+            "jsonType.label": "String",
+            "claim.value": "dev",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        },
+        {
+          "name": "kafka-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "kafka-broker",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "jade-tipi-frontend",
       "name": "Jade Tipi Frontend",
       "enabled": true,

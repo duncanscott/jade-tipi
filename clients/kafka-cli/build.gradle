@@ -1,0 +1,30 @@
+plugins {
+    id 'application'
+    id 'groovy'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation project(':libraries:jade-tipi-dto')
+    implementation libs.groovy.core
+    implementation libs.groovy.json
+    implementation libs.groovy.cli.picocli
+    implementation libs.kafka.clients
+    implementation libs.slf4j.api
+    implementation libs.logback.classic
+}
+
+application {
+    mainClass = 'org.jadetipi.kafka.cli.KafkaCli'
+    applicationName = 'kli'
+}
+
+def compilerConfig = file("${rootProject.projectDir}/gradle/groovyCompilerConfig.groovy")
+if (compilerConfig.exists()) {
+    tasks.withType(GroovyCompile).configureEach {
+        groovyOptions.configurationScript = compilerConfig
+    }
+}

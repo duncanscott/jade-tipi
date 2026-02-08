@@ -16,6 +16,7 @@ logback = "1.5.6"
 junit-platform = "1.11.0"
 expressly = "5.0.0"
 springdoc = "2.6.0"
+kafka = "3.8.0"
 
 [libraries]
 groovy = { module = "org.apache.groovy:groovy-all", version.ref = "groovy" }
@@ -36,3 +37,4 @@ junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher
 expressly = { module = "org.glassfish.expressly:expressly", version.ref = "expressly" }
 springdoc-webflux-ui = { module = "org.springdoc:springdoc-openapi-starter-webflux-ui", version.ref = "springdoc" }
 uuid-creator = { module = "com.github.f4b6a3:uuid-creator", version.ref = "uuid-creator" }
+kafka-clients = { module = "org.apache.kafka:kafka-clients", version.ref = "kafka" }
