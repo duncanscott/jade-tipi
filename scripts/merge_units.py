@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
 Merge jade_tipi_si_units.jsonl and jade_tipi_units.jsonl into units_of_measurement.jsonl.
+
+Unit data partially derived from the uom crate (https://github.com/iliekturtles/uom)
+Copyright (c) 2019 Mike Boutin, licensed under MIT / Apache-2.0.
+See THIRD-PARTY-LICENSES in the project root for the full license text.
 """
 
 import json

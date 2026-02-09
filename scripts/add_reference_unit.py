@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
 Add a 'reference_unit' field to every entry in the jade_tipi_units.jsonl file.
+Operates on data derived from the uom crate (https://github.com/iliekturtles/uom)
+Copyright (c) 2019 Mike Boutin, licensed under MIT / Apache-2.0.
+See THIRD-PARTY-LICENSES in the project root for the full license text.
 
 The reference unit for each property is the SI coherent base/derived unit —
 the unit whose conversion_factor is 1.0 (or closest to 1.0) and has NO

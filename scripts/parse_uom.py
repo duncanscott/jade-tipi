@@ -2,6 +2,10 @@
 """
 Parse Rust UOM (Units of Measurement) .rs files and output a JSONL file
 with unit definitions including conversion factors and system classification.
+
+Unit data derived from the uom crate (https://github.com/iliekturtles/uom)
+Copyright (c) 2019 Mike Boutin, licensed under MIT / Apache-2.0.
+See THIRD-PARTY-LICENSES in the project root for the full license text.
 """
 
 import json
