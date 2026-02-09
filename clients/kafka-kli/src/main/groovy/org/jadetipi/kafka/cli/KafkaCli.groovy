@@ -113,6 +113,15 @@ class KafkaCli {
             case 'commit':
                 handleCommit(commandArgs, globalVerbose)
                 break
+            case 'create':
+                handleCreate(commandArgs, globalVerbose)
+                break
+            case 'update':
+                handleUpdate(commandArgs, globalVerbose)
+                break
+            case 'delete':
+                handleDelete(commandArgs, globalVerbose)
+                break
             case 'publish':
                 handlePublish(commandArgs, globalVerbose)
                 break
@@ -488,6 +497,7 @@ class KafkaCli {
         )
         cli.with {
             h(longOpt: 'help', 'Show this help message')
+            d(longOpt: 'data', args: 1, argName: 'json|@file', 'JSON data or @filepath')
             v(longOpt: 'verbose', 'Enable verbose output')
         }
 
@@ -501,6 +511,7 @@ class KafkaCli {
         }
 
         boolean verbose = options.'verbose' || globalVerbose
+        Map<String, Object> data = parseDataOption(options.'data')
 
         // Require active session
         String sessionId = System.getenv(SESSION_ENV_VAR)
@@ -538,7 +549,7 @@ class KafkaCli {
 
         // Create transaction and OPEN message
         Transaction txn = Transaction.newInstance(org, grp, DEFAULT_CLIENT_ID, orcid ?: 'unknown')
-        Message message = Message.newInstance(txn, Action.OPEN, [:])
+        Message message = Message.newInstance(txn, Action.OPEN, data)
         String key = txn.getId()
 
         if (verbose) {
@@ -582,6 +593,7 @@ class KafkaCli {
         )
         cli.with {
             h(longOpt: 'help', 'Show this help message')
+            d(longOpt: 'data', args: 1, argName: 'json|@file', 'JSON data or @filepath')
             v(longOpt: 'verbose', 'Enable verbose output')
         }
 
@@ -595,6 +607,7 @@ class KafkaCli {
         }
 
         boolean verbose = options.'verbose' || globalVerbose
+        Map<String, Object> data = parseDataOption(options.'data')
 
         // Require active session
         String sessionId = System.getenv(SESSION_ENV_VAR)
@@ -610,15 +623,7 @@ class KafkaCli {
             System.exit(1)
         }
 
-        // Reconstruct transaction from session
-        Map txnMap = session.txn as Map
-        Map grpMap = txnMap.group as Map
-        Transaction txn = new Transaction(
-                txnMap.uuid as String,
-                new org.jadetipi.dto.message.Group(grpMap.org as String, grpMap.grp as String),
-                txnMap.client as String,
-                txnMap.user as String
-        )
+        Transaction txn = reconstructTransaction(session)
 
         // Get config from session
         Map config = session.config as Map
@@ -626,7 +631,7 @@ class KafkaCli {
         String topic = config?.topic as String ?: DEFAULT_TOPIC
 
         // Create ROLLBACK message
-        Message message = Message.newInstance(txn, Action.ROLLBACK, [:])
+        Message message = Message.newInstance(txn, Action.ROLLBACK, data)
         String key = txn.getId()
 
         if (verbose) {
@@ -664,6 +669,7 @@ class KafkaCli {
         )
         cli.with {
             h(longOpt: 'help', 'Show this help message')
+            d(longOpt: 'data', args: 1, argName: 'json|@file', 'JSON data or @filepath')
             v(longOpt: 'verbose', 'Enable verbose output')
         }
 
@@ -677,6 +683,7 @@ class KafkaCli {
         }
 
         boolean verbose = options.'verbose' || globalVerbose
+        Map<String, Object> data = parseDataOption(options.'data')
 
         // Require active session
         String sessionId = System.getenv(SESSION_ENV_VAR)
@@ -692,15 +699,7 @@ class KafkaCli {
             System.exit(1)
         }
 
-        // Reconstruct transaction from session
-        Map txnMap = session.txn as Map
-        Map grpMap = txnMap.group as Map
-        Transaction txn = new Transaction(
-                txnMap.uuid as String,
-                new org.jadetipi.dto.message.Group(grpMap.org as String, grpMap.grp as String),
-                txnMap.client as String,
-                txnMap.user as String
-        )
+        Transaction txn = reconstructTransaction(session)
 
         // Get config from session
         Map config = session.config as Map
@@ -708,7 +707,7 @@ class KafkaCli {
         String topic = config?.topic as String ?: DEFAULT_TOPIC
 
         // Create COMMIT message
-        Message message = Message.newInstance(txn, Action.COMMIT, [:])
+        Message message = Message.newInstance(txn, Action.COMMIT, data)
         String key = txn.getId()
 
         if (verbose) {
@@ -734,6 +733,95 @@ class KafkaCli {
         refreshSession(sessionId, session)
 
         System.err.println("Transaction committed: ${txn.getId()}")
+    }
+
+    // ---- create command ----
+
+    private void handleCreate(String[] args, boolean globalVerbose) {
+        handleEntityAction(args, globalVerbose, 'create', Action.CREATE)
+    }
+
+    // ---- update command ----
+
+    private void handleUpdate(String[] args, boolean globalVerbose) {
+        handleEntityAction(args, globalVerbose, 'update', Action.UPDATE)
+    }
+
+    // ---- delete command ----
+
+    private void handleDelete(String[] args, boolean globalVerbose) {
+        handleEntityAction(args, globalVerbose, 'delete', Action.DELETE)
+    }
+
+    private void handleEntityAction(String[] args, boolean globalVerbose, String commandName, Action action) {
+        def cli = new CliBuilder(
+                name: "kli ${commandName}",
+                usage: "kli ${commandName} [options]",
+                header: "${commandName.capitalize()} an object within the current transaction."
+        )
+        cli.with {
+            h(longOpt: 'help', 'Show this help message')
+            d(longOpt: 'data', args: 1, argName: 'json|@file', 'JSON data or @filepath')
+            v(longOpt: 'verbose', 'Enable verbose output')
+        }
+
+        OptionAccessor options = cli.parse(args)
+        if (!options) {
+            System.exit(1)
+        }
+        if (options.h) {
+            cli.usage()
+            return
+        }
+
+        boolean verbose = options.'verbose' || globalVerbose
+        Map<String, Object> data = parseDataOption(options.'data')
+
+        // Require active session
+        String sessionId = System.getenv(SESSION_ENV_VAR)
+        if (!sessionId?.trim()) {
+            printError("No active session. Run: kli login")
+            System.exit(1)
+        }
+        Map session = loadSession(sessionId)
+
+        // Require config
+        if (!session.config) {
+            printError("No Kafka configuration. Run: kli config")
+            System.exit(1)
+        }
+        Map config = session.config as Map
+        String bootstrapServer = config.'bootstrap-server' as String
+        String topic = config.topic as String
+
+        // Require open transaction
+        if (!session.txn) {
+            printError("No open transaction. Run: kli open")
+            System.exit(1)
+        }
+
+        Transaction txn = reconstructTransaction(session)
+        Message message = Message.newInstance(txn, action, data)
+        String key = txn.getId()
+
+        if (verbose) {
+            System.err.println("Bootstrap server: ${bootstrapServer}")
+            System.err.println("Topic:           ${topic}")
+            System.err.println("Transaction ID:  ${txn.getId()}")
+            System.err.println("Message ID:      ${message.getId()}")
+            System.err.println('')
+        }
+
+        byte[] messageBytes
+        try {
+            messageBytes = MessageMapper.toBytes(message)
+        } catch (Exception e) {
+            printError("Failed to serialize message: ${e.message}")
+            System.exit(1)
+        }
+
+        publishMessage(bootstrapServer, topic, key, messageBytes, message, verbose)
+        refreshSession(sessionId, session)
     }
 
     // ---- publish command ----
@@ -938,6 +1026,52 @@ class KafkaCli {
         return directory
     }
 
+    // ---- data and transaction helpers ----
+
+    private Map<String, Object> parseDataOption(Object value) {
+        if (!(value instanceof String) || !value?.trim()) {
+            return [:]
+        }
+        String json
+        if (value.startsWith('@')) {
+            String filePath = value.substring(1)
+            Path dataFile = Paths.get(filePath)
+            if (!Files.exists(dataFile)) {
+                printError("Data file not found: ${filePath}")
+                System.exit(1)
+            }
+            if (!Files.isReadable(dataFile)) {
+                printError("Data file is not readable: ${filePath}")
+                System.exit(1)
+            }
+            try {
+                json = Files.readString(dataFile)
+            } catch (IOException e) {
+                printError("Failed to read data file: ${e.message}")
+                System.exit(1)
+            }
+        } else {
+            json = value
+        }
+        try {
+            return (Map<String, Object>) new JsonSlurper().parseText(json)
+        } catch (Exception e) {
+            printError("Failed to parse JSON data: ${e.message}")
+            System.exit(1)
+        }
+    }
+
+    private Transaction reconstructTransaction(Map session) {
+        Map txnMap = session.txn as Map
+        Map grpMap = txnMap.group as Map
+        return new Transaction(
+                txnMap.uuid as String,
+                new org.jadetipi.dto.message.Group(grpMap.org as String, grpMap.grp as String),
+                txnMap.client as String,
+                txnMap.user as String
+        )
+    }
+
     // ---- utility methods ----
 
     private Map decodeJwtPayload(String token) {
@@ -1002,6 +1136,9 @@ Commands:
   status    Show current session information.
   config    Set Kafka configuration for the current session.
   open      Open a new transaction.
+  create    Create an object within the current transaction.
+  update    Update an object within the current transaction.
+  delete    Delete an object within the current transaction.
   rollback  Roll back the current transaction.
   commit    Commit the current transaction.
   publish   Publish a message to a Kafka topic (testing)."""
