@@ -4,7 +4,11 @@
   "title": "Message",
   "description": "Kafka message DTO for Jade-Tipi transaction and entity operations",
   "type": "object",
-  "required": ["txn", "uuid", "action"],
+  "required": [
+    "txn",
+    "uuid",
+    "action"
+  ],
   "additionalProperties": false,
   "properties": {
     "txn": {
@@ -33,13 +37,19 @@
       "description": "UUID version 7 (RFC 9562) with embedded timestamp. Version nibble is 7, variant is 1 (8/9/a/b).",
       "type": "string",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
-      "examples": ["018fd849-2a40-7abc-8a45-111111111111"]
+      "examples": [
+        "018fd849-2a40-7abc-8a45-111111111111"
+      ]
     },
     "Transaction": {
       "title": "Transaction",
       "description": "Transaction identifier containing UUIDv7, group, and client. ID format: <uuid>~<org>~<grp>~<client>",
       "type": "object",
-      "required": ["uuid", "group", "client"],
+      "required": [
+        "uuid",
+        "group",
+        "client"
+      ],
       "additionalProperties": false,
       "properties": {
         "uuid": {
@@ -53,7 +63,10 @@
           "type": "string",
           "minLength": 1,
           "description": "Keycloak client identifier",
-          "examples": ["jade-cli", "tipi-cli"]
+          "examples": [
+            "jade-cli",
+            "tipi-cli"
+          ]
         },
         "user": {
           "type": "string",
@@ -66,20 +79,28 @@
       "title": "Group",
       "description": "Organization and group identifiers. ID format: <org>~<grp>",
       "type": "object",
-      "required": ["org", "grp"],
+      "required": [
+        "org",
+        "grp"
+      ],
       "additionalProperties": false,
       "properties": {
         "org": {
           "type": "string",
           "minLength": 1,
           "description": "Organization identifier",
-          "examples": ["jade-tipi-org"]
+          "examples": [
+            "jade-tipi-org"
+          ]
         },
         "grp": {
           "type": "string",
           "minLength": 1,
           "description": "Group identifier",
-          "examples": ["dev", "production"]
+          "examples": [
+            "dev",
+            "production"
+          ]
         }
       }
     },
@@ -87,7 +108,14 @@
       "title": "Action",
       "description": "Action type for the message",
       "type": "string",
-      "enum": ["open", "rollback", "commit", "create", "update", "delete"]
+      "enum": [
+        "open",
+        "rollback",
+        "commit",
+        "create",
+        "update",
+        "delete"
+      ]
     },
     "SnakeCaseObject": {
       "title": "SnakeCaseObject",
@@ -104,12 +132,24 @@
       "title": "SnakeCaseValue",
       "description": "Value that may contain nested snake_case objects or arrays",
       "oneOf": [
-        { "type": "string" },
-        { "type": "number" },
-        { "type": "integer" },
-        { "type": "boolean" },
-        { "type": "null" },
-        { "$ref": "#/$defs/SnakeCaseObject" },
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/SnakeCaseObject"
+        },
         {
           "type": "array",
           "items": {

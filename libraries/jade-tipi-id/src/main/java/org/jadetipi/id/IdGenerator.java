@@ -1,13 +1,13 @@
 /**
  * Part of Jade-Tipi — an open scientific metadata framework.
- *
+ * <p>
  * Copyright (c) 2025 Duncan Scott and Jade-Tipi contributors
  * SPDX-License-Identifier: AGPL-3.0-only OR Commercial
- *
+ * <p>
  * This file is part of a dual-licensed distribution:
  * - Under AGPL-3.0 for open-source use (see LICENSE)
  * - Under Commercial License for proprietary use (see DUAL-LICENSE.txt or contact licensing@jade-tipi.org)
- *
+ * <p>
  * https://jade-tipi.org/license
  */
 package org.jadetipi.id;
@@ -32,11 +32,46 @@ public class IdGenerator {
     // Packs [timestamp(ms) << SEQ_BITS | seq]
     private final AtomicLong state = new AtomicLong(0L);
 
+    private static SecureRandom createSecureRandom() {
+        try {
+            return SecureRandom.getInstanceStrong();
+        } catch (NoSuchAlgorithmException ignored) {
+            return new SecureRandom();
+        }
+    }
+
+    private static String randomLetters(int len) {
+        var r = ThreadLocalRandom.current();
+        char[] c = new char[len];
+        for (int i = 0; i < len; i++) c[i] = (char) ('a' + r.nextInt(26));
+        return new String(c);
+    }
+
+    // Reverse decimal digits of epoch ms (no fixed padding needed)
+    private static String reverseDigits(long ms) {
+        char[] p = Long.toString(ms).toCharArray();
+        for (int i = 0, j = p.length - 1; i < j; i++, j--) {
+            char t = p[i];
+            p[i] = p[j];
+            p[j] = t;
+        }
+        return new String(p);
+    }
+
+    private static String toLetters(int n, int width) {
+        char[] c = new char[width];
+        for (int i = width - 1; i >= 0; i--) {
+            c[i] = (char) ('a' + (n % 26));
+            n /= 26;
+        }
+        return new String(c);
+    }
+
     /** Generate the stem (no trailing '~'). */
     public String nextId() {
         long packed = nextTimestampAndSeq();
         long ts = packed >>> SEQ_BITS;
-        int  seq = (int) (packed & SEQ_MASK);
+        int seq = (int) (packed & SEQ_MASK);
 
         //return randomLetters(PREFIX_LEN) + reverseDigits(ts) + toLetters(seq, SEQ_LEN);
         return randomLetters(PREFIX_LEN) + "~" + ts + "~" + toLetters(seq, SEQ_LEN);
@@ -48,53 +83,25 @@ public class IdGenerator {
         return URL_ENCODER.encodeToString(bytes);
     }
 
-    private static SecureRandom createSecureRandom() {
-        try {
-            return SecureRandom.getInstanceStrong();
-        } catch (NoSuchAlgorithmException ignored) {
-            return new SecureRandom();
-        }
-    }
-
     private long nextTimestampAndSeq() {
-        for (;;) {
+        for (; ; ) {
             long now = System.currentTimeMillis();
             long prev = state.get();
             long lastTs = prev >>> SEQ_BITS;
-            int  lastSeq = (int) (prev & SEQ_MASK);
+            int lastSeq = (int) (prev & SEQ_MASK);
 
-            long ts  = Math.max(now, lastTs);          // clamp minor clock regressions
-            int  seq = (ts == lastTs) ? (lastSeq + 1) : 0;
+            long ts = Math.max(now, lastTs);          // clamp minor clock regressions
+            int seq = (ts == lastTs) ? (lastSeq + 1) : 0;
 
             if (seq >= SEQ_MASK) {                     // extreme case: wait for next ms
-                do { now = System.currentTimeMillis(); } while (now <= ts);
+                do {
+                    now = System.currentTimeMillis();
+                } while (now <= ts);
                 continue;
             }
 
             long next = (ts << SEQ_BITS) | seq;
             if (state.compareAndSet(prev, next)) return next;
         }
-    }
-
-    private static String randomLetters(int len) {
-        var r = ThreadLocalRandom.current();
-        char[] c = new char[len];
-        for (int i = 0; i < len; i++) c[i] = (char)('a' + r.nextInt(26));
-        return new String(c);
-    }
-
-    // Reverse decimal digits of epoch ms (no fixed padding needed)
-    private static String reverseDigits(long ms) {
-        char[] p = Long.toString(ms).toCharArray();
-        for (int i = 0, j = p.length - 1; i < j; i++, j--) {
-            char t = p[i]; p[i] = p[j]; p[j] = t;
-        }
-        return new String(p);
-    }
-
-    private static String toLetters(int n, int width) {
-        char[] c = new char[width];
-        for (int i = width - 1; i >= 0; i--) { c[i] = (char)('a' + (n % 26)); n /= 26; }
-        return new String(c);
     }
 }

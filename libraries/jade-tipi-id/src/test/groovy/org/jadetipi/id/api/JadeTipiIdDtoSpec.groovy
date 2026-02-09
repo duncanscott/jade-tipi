@@ -19,7 +19,8 @@ import spock.lang.Specification
 
 class JadeTipiIdDtoSpec extends Specification {
 
-    @Shared Validator validator = Validation.buildDefaultValidatorFactory().validator
+    @Shared
+    Validator validator = Validation.buildDefaultValidatorFactory().validator
 
     private static String PREFIX = "jkipguyzobiinnau";
     private static String TIMESTAMP = "1760345162888"
@@ -67,7 +68,7 @@ class JadeTipiIdDtoSpec extends Specification {
     def "org and group rules: start letter, end letter/digit, no doubles, only - and _ as seps, max 48"() {
         expect:
         !validator.validate(new JadeTipiIdDto(
-                PREFIX,TIMESTAMP,"a", bad, "good", "123e4567-e89b-12d3-a456-426614174000", "a", "a"
+                PREFIX, TIMESTAMP, "a", bad, "good", "123e4567-e89b-12d3-a456-426614174000", "a", "a"
         )).empty
 
         where:
@@ -81,30 +82,30 @@ class JadeTipiIdDtoSpec extends Specification {
 
         expect:
         validator.validate(new JadeTipiIdDto(
-                PREFIX,TIMESTAMP,"0ab","org","grp","123e4567-e89b-12d3-a456-426614174000","type","a-slug-1"
+                PREFIX, TIMESTAMP, "0ab", "org", "grp", "123e4567-e89b-12d3-a456-426614174000", "type", "a-slug-1"
         )).empty
 
         !validator.validate(new JadeTipiIdDto(
-                PREFIX,TIMESTAMP,"0ab","org","grp","123e4567-e89b-12d3-a456-426614174000","type","bad__slug"
+                PREFIX, TIMESTAMP, "0ab", "org", "grp", "123e4567-e89b-12d3-a456-426614174000", "type", "bad__slug"
         )).empty
 
         !validator.validate(new JadeTipiIdDto(
-                PREFIX,TIMESTAMP,"0ab","org","grp","123e4567-e89b-12d3-a456-426614174000","type",over30
+                PREFIX, TIMESTAMP, "0ab", "org", "grp", "123e4567-e89b-12d3-a456-426614174000", "type", over30
         )).empty
     }
 
     def "uuid must be RFC form"() {
         expect:
         validator.validate(new JadeTipiIdDto(
-                PREFIX,TIMESTAMP,"a1b","org","grp","123e4567-e89b-12d3-a456-426614174000","type","sub"
+                PREFIX, TIMESTAMP, "a1b", "org", "grp", "123e4567-e89b-12d3-a456-426614174000", "type", "sub"
         )).empty
 
         !validator.validate(new JadeTipiIdDto(
-                PREFIX,TIMESTAMP,"a1b","org","grp","123e4567e89b12d3a456426614174000","type","sub"
+                PREFIX, TIMESTAMP, "a1b", "org", "grp", "123e4567e89b12d3a456426614174000", "type", "sub"
         )).empty
 
         !validator.validate(new JadeTipiIdDto(
-                PREFIX,TIMESTAMP,"a1b","org","grp","g23e4567-e89b-12d3-a456-426614174000","type","sub"
+                PREFIX, TIMESTAMP, "a1b", "org", "grp", "g23e4567-e89b-12d3-a456-426614174000", "type", "sub"
         )).empty
     }
 }

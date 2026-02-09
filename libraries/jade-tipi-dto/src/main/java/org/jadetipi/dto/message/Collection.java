@@ -45,16 +45,6 @@ public enum Collection {
                 : List.of(Action.CREATE, Action.UPDATE, Action.DELETE);
     }
 
-    public String getName() {
-        return name;
-    }
-
-    public String getAbbreviation() {
-        return abbreviation;
-    }
-
-    public List<Action> getActions() { return this.actions; }
-
     @JsonCreator
     public static Collection fromJson(String value) {
         for (Collection c : values()) {
@@ -63,6 +53,18 @@ public enum Collection {
             }
         }
         throw new IllegalArgumentException("Unknown collection: " + value);
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public String getAbbreviation() {
+        return abbreviation;
+    }
+
+    public List<Action> getActions() {
+        return this.actions;
     }
 
     @JsonValue

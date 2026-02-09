@@ -12,7 +12,6 @@
  */
 package org.jadetipi.dto.message;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.github.f4b6a3.uuid.UuidCreator;
@@ -23,7 +22,6 @@ import org.jadetipi.dto.util.ValidationException;
 
 import java.util.Map;
 import java.util.Objects;
-import java.util.regex.Pattern;
 
 /**
  * Kafka message DTO for transaction and entity operations.

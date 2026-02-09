@@ -1,13 +1,13 @@
 /**
  * Part of Jade-Tipi — an open scientific metadata framework.
- *
+ * <p>
  * Copyright (c) 2025 Duncan Scott and Jade-Tipi contributors
  * SPDX-License-Identifier: AGPL-3.0-only OR Commercial
- *
+ * <p>
  * This file is part of a dual-licensed distribution:
  * - Under AGPL-3.0 for open-source use (see LICENSE)
  * - Under Commercial License for proprietary use (see DUAL-LICENSE.txt or contact licensing@jade-tipi.org)
- *
+ * <p>
  * https://jade-tipi.org/license
  */
 // SlugValidator.java
@@ -16,12 +16,23 @@ package org.jadetipi.id.validation;
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
 
-import java.util.Set;
-
 public final class SlugValidator implements ConstraintValidator<Slug, String> {
     private int max;
     private String seps;
     private boolean forbidMixed;
+
+    private static boolean isLowerLetter(char c) {
+        return c >= 'a' && c <= 'z';
+    }
+
+    private static boolean isDigit(char c) {
+        return c >= '0' && c <= '9';
+    }
+
+    private static void fail(ConstraintValidatorContext ctx, String msg) {
+        ctx.disableDefaultConstraintViolation();
+        ctx.buildConstraintViolationWithTemplate(msg).addConstraintViolation();
+    }
 
     @Override
     public void initialize(Slug ann) {
@@ -78,13 +89,5 @@ public final class SlugValidator implements ConstraintValidator<Slug, String> {
             }
         }
         return true;
-    }
-
-    private static boolean isLowerLetter(char c) { return c >= 'a' && c <= 'z'; }
-    private static boolean isDigit(char c) { return c >= '0' && c <= '9'; }
-
-    private static void fail(ConstraintValidatorContext ctx, String msg) {
-        ctx.disableDefaultConstraintViolation();
-        ctx.buildConstraintViolationWithTemplate(msg).addConstraintViolation();
     }
 }

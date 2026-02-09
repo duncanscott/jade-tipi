@@ -18,16 +18,11 @@ import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import groovy.util.logging.Slf4j
 
-import java.io.IOException
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
-import java.nio.file.FileSystems
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.Paths
-import java.nio.file.StandardOpenOption
+import java.nio.file.*
 import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.attribute.PosixFilePermissions
 
@@ -44,6 +39,7 @@ class JadeTipiCli {
     private final String fallbackClientId
     private final String fallbackClientSecret
     private final String fallbackApiUrl
+
     JadeTipiCli(
             String programName,
             String envPrefix,
@@ -106,7 +102,7 @@ class JadeTipiCli {
                 printGlobalUsage(cli)
                 break
             default:
-        printError("Unknown command: ${command}\n")
+                printError("Unknown command: ${command}\n")
                 printGlobalUsage(cli)
                 System.exit(1)
         }
@@ -147,13 +143,13 @@ class JadeTipiCli {
         }
 
         Map<String, String> effective = [
-                url         : options.'url' ?: defaultUrl,
-                realm       : options.'realm' ?: defaultRealmValue,
-                clientId    : options.'client-id' ?: defaultClientIdValue,
-                clientSecret: options.'client-secret' ?: defaultClientSecretValue,
-                apiUrl      : options.'api-url' ?: defaultApiUrl,
+                url                 : options.'url' ?: defaultUrl,
+                realm               : options.'realm' ?: defaultRealmValue,
+                clientId            : options.'client-id' ?: defaultClientIdValue,
+                clientSecret        : options.'client-secret' ?: defaultClientSecretValue,
+                apiUrl              : options.'api-url' ?: defaultApiUrl,
                 organizationOverride: options.'organization',
-                groupOverride: options.'group'
+                groupOverride       : options.'group'
         ]
 
         boolean verbose = options.'verbose'
@@ -183,7 +179,7 @@ class JadeTipiCli {
         URI transactionUri = URI.create("${apiBase}/api/transactions/open")
         Map<String, String> transactionPayload = [
                 organization: organization,
-                group        : group
+                group       : group
         ]
         String transactionBody = JsonOutput.toJson(transactionPayload)
 
