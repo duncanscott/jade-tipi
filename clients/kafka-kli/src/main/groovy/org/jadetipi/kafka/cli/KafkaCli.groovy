@@ -28,7 +28,7 @@ import org.jadetipi.dto.collections.Group
 import org.jadetipi.dto.message.Action
 import org.jadetipi.dto.message.Message
 import org.jadetipi.dto.collections.Transaction
-import org.jadetipi.dto.util.MessageMapper
+import org.jadetipi.dto.util.JsonMapper
 
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -563,7 +563,7 @@ class KafkaCli {
 
         byte[] messageBytes
         try {
-            messageBytes = MessageMapper.toBytes(message)
+            messageBytes = JsonMapper.toBytes(message)
         } catch (Exception e) {
             printError("Failed to serialize message: ${e.message}")
             System.exit(1)
@@ -644,7 +644,7 @@ class KafkaCli {
 
         byte[] messageBytes
         try {
-            messageBytes = MessageMapper.toBytes(message)
+            messageBytes = JsonMapper.toBytes(message)
         } catch (Exception e) {
             printError("Failed to serialize message: ${e.message}")
             System.exit(1)
@@ -720,7 +720,7 @@ class KafkaCli {
 
         byte[] messageBytes
         try {
-            messageBytes = MessageMapper.toBytes(message)
+            messageBytes = JsonMapper.toBytes(message)
         } catch (Exception e) {
             printError("Failed to serialize message: ${e.message}")
             System.exit(1)
@@ -814,7 +814,7 @@ class KafkaCli {
 
         byte[] messageBytes
         try {
-            messageBytes = MessageMapper.toBytes(message)
+            messageBytes = JsonMapper.toBytes(message)
         } catch (Exception e) {
             printError("Failed to serialize message: ${e.message}")
             System.exit(1)
@@ -892,7 +892,7 @@ class KafkaCli {
         String json = Files.readString(messageFile)
         Message message
         try {
-            message = MessageMapper.fromJson(json)
+            message = JsonMapper.fromJson(json, Message.class)
         } catch (Exception e) {
             printError("Failed to parse message JSON: ${e.message}")
             System.exit(1)
@@ -913,7 +913,7 @@ class KafkaCli {
 
         byte[] messageBytes
         try {
-            messageBytes = MessageMapper.toBytes(message)
+            messageBytes = JsonMapper.toBytes(message)
         } catch (Exception e) {
             printError("Failed to serialize message: ${e.message}")
             System.exit(1)

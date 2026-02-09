@@ -17,8 +17,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.github.f4b6a3.uuid.UuidCreator;
 import org.jadetipi.dto.collections.Transaction;
 import org.jadetipi.dto.util.Constants;
-import org.jadetipi.dto.util.MessageMapper;
-import org.jadetipi.dto.util.MessageSchemaValidator;
+import org.jadetipi.dto.util.JsonMapper;
+import org.jadetipi.dto.util.SchemaValidator;
 import org.jadetipi.dto.util.ValidationException;
 
 import java.util.Map;
@@ -55,8 +55,10 @@ public record Message(
         return new Message(txn, UuidCreator.getTimeOrderedEpoch().toString(), action, data);
     }
 
+    private static final String SCHEMA_PATH = "/schema/message.schema.json";
+
     public void validate() throws ValidationException, JsonProcessingException {
-        MessageSchemaValidator.ValidationResult result = MessageSchemaValidator.validate(MessageMapper.toJson(this));
+        SchemaValidator.ValidationResult result = SchemaValidator.validate(JsonMapper.toJson(this), SCHEMA_PATH);
         if (!result.isValid()) {
             throw new ValidationException(result);
         }

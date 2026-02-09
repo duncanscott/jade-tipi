@@ -19,14 +19,14 @@ public class ValidationException extends Exception {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    private final transient MessageSchemaValidator.ValidationResult validationResult;
+    private final transient SchemaValidator.ValidationResult validationResult;
 
-    public ValidationException(MessageSchemaValidator.ValidationResult validationResult) {
+    public ValidationException(SchemaValidator.ValidationResult validationResult) {
         super(validationResult.getErrorsAsString());
         this.validationResult = validationResult;
     }
 
-    public MessageSchemaValidator.ValidationResult getValidationResult() {
+    public SchemaValidator.ValidationResult getValidationResult() {
         return validationResult;
     }
 }

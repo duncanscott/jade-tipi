@@ -15,18 +15,20 @@ package org.jadetipi.dto.util;
 import com.networknt.schema.*;
 
 import java.io.InputStream;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * Validates JSON strings against the Message JSON Schema.
+ * Validates JSON strings against JSON Schemas.
  *
- * <p>Uses the schema defined in {@code schema/message.schema.json} which follows
+ * <p>Loads and caches schemas by classpath resource path. All schemas use
  * JSON Schema draft-2020-12.
  *
  * <p>Example usage:
  * <pre>
- * ValidationResult result = MessageSchemaValidator.validate(jsonString);
+ * ValidationResult result = SchemaValidator.validate(jsonString, "/schema/message.schema.json");
  * if (result.isValid()) {
  *     // proceed with valid JSON
  * } else {
@@ -34,35 +36,38 @@ import java.util.stream.Collectors;
  * }
  * </pre>
  */
-public final class MessageSchemaValidator {
+public final class SchemaValidator {
 
-    private static final String SCHEMA_PATH = "/schema/message.schema.json";
-    private static final JsonSchema SCHEMA;
+    private static final Map<String, JsonSchema> SCHEMAS = new ConcurrentHashMap<>();
 
-    static {
-        JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012);
-        SchemaValidatorsConfig config = SchemaValidatorsConfig.builder().build();
-
-        InputStream schemaStream = MessageSchemaValidator.class.getResourceAsStream(SCHEMA_PATH);
-        if (schemaStream == null) {
-            throw new IllegalStateException("Message schema not found at: " + SCHEMA_PATH);
-        }
-        SCHEMA = factory.getSchema(schemaStream, config);
-    }
-
-    private MessageSchemaValidator() {
+    private SchemaValidator() {
         // Utility class - prevent instantiation
     }
 
+    private static JsonSchema getSchema(String schemaPath) {
+        return SCHEMAS.computeIfAbsent(schemaPath, path -> {
+            JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012);
+            SchemaValidatorsConfig config = SchemaValidatorsConfig.builder().build();
+
+            InputStream schemaStream = SchemaValidator.class.getResourceAsStream(path);
+            if (schemaStream == null) {
+                throw new IllegalStateException("Schema not found at: " + path);
+            }
+            return factory.getSchema(schemaStream, config);
+        });
+    }
+
     /**
-     * Validates a JSON string against the Message schema.
+     * Validates a JSON string against the schema at the given classpath resource path.
      *
      * @param json the JSON string to validate
+     * @param schemaPath classpath resource path (e.g. "/schema/message.schema.json")
      * @return a ValidationResult containing the validation outcome
      */
-    public static ValidationResult validate(String json) {
+    public static ValidationResult validate(String json, String schemaPath) {
         try {
-            Set<ValidationMessage> errors = SCHEMA.validate(json, com.networknt.schema.InputFormat.JSON);
+            JsonSchema schema = getSchema(schemaPath);
+            Set<ValidationMessage> errors = schema.validate(json, InputFormat.JSON);
             return new ValidationResult(errors);
         } catch (Exception e) {
             return new ValidationResult(e);
@@ -70,13 +75,14 @@ public final class MessageSchemaValidator {
     }
 
     /**
-     * Checks if a JSON string is valid against the Message schema.
+     * Checks if a JSON string is valid against the schema at the given classpath resource path.
      *
      * @param json the JSON string to validate
+     * @param schemaPath classpath resource path (e.g. "/schema/message.schema.json")
      * @return true if valid, false otherwise
      */
-    public static boolean isValid(String json) {
-        return validate(json).isValid();
+    public static boolean isValid(String json, String schemaPath) {
+        return validate(json, schemaPath).isValid();
     }
 
     /**

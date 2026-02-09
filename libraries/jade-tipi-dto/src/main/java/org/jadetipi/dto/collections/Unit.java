@@ -14,7 +14,11 @@ package org.jadetipi.dto.collections;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import org.jadetipi.dto.util.Constants;
+import org.jadetipi.dto.util.JsonMapper;
+import org.jadetipi.dto.util.SchemaValidator;
+import org.jadetipi.dto.util.ValidationException;
 
 import java.util.Objects;
 
@@ -37,6 +41,15 @@ public record Unit(
         @JsonProperty("symbol") String symbol,
         @JsonProperty("system") String system
 ) {
+
+    private static final String SCHEMA_PATH = "/schema/unit.schema.json";
+
+    public void validate() throws ValidationException, JsonProcessingException {
+        SchemaValidator.ValidationResult result = SchemaValidator.validate(JsonMapper.toJson(this), SCHEMA_PATH);
+        if (!result.isValid()) {
+            throw new ValidationException(result);
+        }
+    }
 
     @JsonIgnore
     public String getId() {
