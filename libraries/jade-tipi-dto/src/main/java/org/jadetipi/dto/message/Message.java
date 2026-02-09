@@ -15,6 +15,7 @@ package org.jadetipi.dto.message;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.github.f4b6a3.uuid.UuidCreator;
+import org.jadetipi.dto.collections.Transaction;
 import org.jadetipi.dto.util.Constants;
 import org.jadetipi.dto.util.MessageMapper;
 import org.jadetipi.dto.util.MessageSchemaValidator;

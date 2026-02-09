@@ -10,7 +10,7 @@
  * <p>
  * https://jade-tipi.org/license
  */
-package org.jadetipi.dto.message;
+package org.jadetipi.dto.collections;
 
 import org.jadetipi.dto.util.Constants;
 

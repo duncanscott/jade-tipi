@@ -15,7 +15,7 @@ package org.jadetipi.dto.transaction;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import org.jadetipi.dto.message.Group;
+import org.jadetipi.dto.collections.Group;
 
 /**
  * Public token returned when a transaction is created.

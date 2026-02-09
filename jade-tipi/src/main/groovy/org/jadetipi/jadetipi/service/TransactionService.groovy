@@ -13,7 +13,7 @@
 package org.jadetipi.jadetipi.service
 
 import groovy.util.logging.Slf4j
-import org.jadetipi.dto.message.Group
+import org.jadetipi.dto.collections.Group
 import org.jadetipi.dto.transaction.CommitToken
 import org.jadetipi.dto.transaction.TransactionToken
 import org.jadetipi.id.IdGenerator

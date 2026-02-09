@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jade-tipi.org/schema/unit.schema.json",
+  "title": "Unit",
+  "description": "A unit of measurement with optional SI prefix. ID format: <system>~<unit> or <system>~<unit>~<prefix>",
+  "type": "object",
+  "required": ["unit", "symbol", "system"],
+  "additionalProperties": false,
+  "properties": {
+    "unit": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unit name",
+      "examples": ["volt", "metre", "second"]
+    },
+    "prefix": {
+      "type": ["string", "null"],
+      "description": "SI prefix, or null for the base unit",
+      "examples": ["kilo", "milli", "micro", null]
+    },
+    "symbol": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unit symbol including prefix symbol",
+      "examples": ["V", "kV", "mV"]
+    },
+    "system": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unit system",
+      "examples": ["SI"]
+    },
+    "id": {
+      "type": "string",
+      "description": "Composite ID: <system>~<unit> or <system>~<unit>~<prefix>",
+      "readOnly": true
+    }
+  },
+  "examples": [
+    {
+      "unit": "volt",
+      "prefix": null,
+      "symbol": "V",
+      "system": "SI"
+    },
+    {
+      "unit": "volt",
+      "prefix": "kilo",
+      "symbol": "kV",
+      "system": "SI"
+    }
+  ]
+}

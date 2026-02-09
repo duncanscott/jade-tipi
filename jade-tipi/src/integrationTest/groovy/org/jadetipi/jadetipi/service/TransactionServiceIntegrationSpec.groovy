@@ -12,7 +12,7 @@
  */
 package org.jadetipi.jadetipi.service
 
-import org.jadetipi.dto.message.Group
+import org.jadetipi.dto.collections.Group
 import org.jadetipi.dto.transaction.TransactionToken
 import org.spockframework.spring.EnableSharedInjection
 import org.springframework.beans.factory.annotation.Autowired

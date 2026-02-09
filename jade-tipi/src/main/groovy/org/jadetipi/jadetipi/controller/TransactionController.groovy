@@ -14,7 +14,7 @@ package org.jadetipi.jadetipi.controller
 
 import groovy.util.logging.Slf4j
 import jakarta.validation.Valid
-import org.jadetipi.dto.message.Group
+import org.jadetipi.dto.collections.Group
 import org.jadetipi.dto.transaction.CommitToken
 import org.jadetipi.dto.transaction.TransactionToken
 import org.jadetipi.jadetipi.service.TransactionService

@@ -24,10 +24,10 @@ import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.clients.producer.RecordMetadata
 import org.apache.kafka.common.serialization.StringSerializer
 import org.apache.kafka.common.serialization.ByteArraySerializer
-
+import org.jadetipi.dto.collections.Group
 import org.jadetipi.dto.message.Action
 import org.jadetipi.dto.message.Message
-import org.jadetipi.dto.message.Transaction
+import org.jadetipi.dto.collections.Transaction
 import org.jadetipi.dto.util.MessageMapper
 
 import java.net.http.HttpClient
@@ -1066,7 +1066,7 @@ class KafkaCli {
         Map grpMap = txnMap.group as Map
         return new Transaction(
                 txnMap.uuid as String,
-                new org.jadetipi.dto.message.Group(grpMap.org as String, grpMap.grp as String),
+                new Group(grpMap.org as String, grpMap.grp as String),
                 txnMap.client as String,
                 txnMap.user as String
         )
