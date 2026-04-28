@@ -18,7 +18,7 @@ import spock.lang.Specification
 
 class UnitSpec extends Specification {
 
-    private static final String UNITS_JSONL = '/units/jade_tipi_si_units.jsonl'
+    private static final String UNITS_JSONL = '/units/jsonl/si_units.jsonl'
 
     def "base unit validates successfully"() {
         given:
@@ -46,14 +46,17 @@ class UnitSpec extends Specification {
         given:
         def lines = readJsonlLines()
 
+        when:
+        def units = lines.collect { JsonMapper.fromJson(it, Unit) }
+
         expect:
-        lines.size() == 701
+        lines.size() == 812
+        units.every { it.property() }
+        units.count { it.alternateUnit() != null } == 100
+        units.find { it.unit() == 'meter' && it.prefix() == null }.alternateUnit() == ['metre']
 
         and:
-        lines.each { line ->
-            def unit = JsonMapper.fromJson(line, Unit)
-            unit.validate()
-        }
+        units.each { it.validate() }
     }
 
     def "validation fails when required field #field is null"() {

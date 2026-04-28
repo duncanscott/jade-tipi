@@ -20,6 +20,7 @@ import org.jadetipi.dto.util.JsonMapper;
 import org.jadetipi.dto.util.SchemaValidator;
 import org.jadetipi.dto.util.ValidationException;
 
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -31,6 +32,7 @@ import java.util.Objects;
  *   "unit": "volt",
  *   "prefix": null,
  *   "symbol": "V",
+ *   "property": "electric potential difference",
  *   "system": "SI"
  * }
  * </pre>
@@ -39,10 +41,16 @@ public record Unit(
         @JsonProperty("unit") String unit,
         @JsonProperty("prefix") String prefix,
         @JsonProperty("symbol") String symbol,
+        @JsonProperty("property") String property,
+        @JsonProperty("alternate_unit") List<String> alternateUnit,
         @JsonProperty("system") String system
 ) {
 
     private static final String SCHEMA_PATH = "/schema/unit.schema.json";
+
+    public Unit(String unit, String prefix, String symbol, String system) {
+        this(unit, prefix, symbol, null, null, system);
+    }
 
     public void validate() throws ValidationException, JsonProcessingException {
         SchemaValidator.ValidationResult result = SchemaValidator.validate(JsonMapper.toJson(this), SCHEMA_PATH);

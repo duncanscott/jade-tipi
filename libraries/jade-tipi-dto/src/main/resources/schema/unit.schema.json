@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://jade-tipi.org/schema/unit.schema.json",
   "title": "Unit",
-  "description": "A unit of measurement with optional SI prefix. ID format: <system>~<unit> or <system>~<unit>~<prefix>",
+  "description": "A unit of measurement with optional SI prefix and imported quantity metadata. ID format: <system>~<unit> or <system>~<unit>~<prefix>",
   "type": "object",
   "required": ["unit", "symbol", "system"],
   "additionalProperties": false,
@@ -24,6 +24,20 @@
       "description": "Unit symbol including prefix symbol",
       "examples": ["V", "kV", "mV"]
     },
+    "property": {
+      "type": ["string", "null"],
+      "description": "Physical quantity measured by the unit",
+      "examples": ["electric potential difference", "length", null]
+    },
+    "alternate_unit": {
+      "type": ["array", "null"],
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Alternate names imported with the unit",
+      "examples": [["metre"], ["metric ton"], null]
+    },
     "system": {
       "type": "string",
       "minLength": 1,
@@ -41,12 +55,14 @@
       "unit": "volt",
       "prefix": null,
       "symbol": "V",
+      "property": "electric potential difference",
       "system": "SI"
     },
     {
       "unit": "volt",
       "prefix": "kilo",
       "symbol": "kV",
+      "property": "electric potential difference",
       "system": "SI"
     }
   ]
