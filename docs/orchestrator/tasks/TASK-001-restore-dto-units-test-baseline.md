@@ -29,6 +29,7 @@ OUT_OF_SCOPE:
 DEPENDENCIES:
 - Latest units import commit: `b6cce93 import jsonl directory from units-of-measure project`.
 - Current observed failure: `./gradlew :libraries:jade-tipi-dto:test` fails in `UnitSpec` because `/units/jade_tipi_si_units.jsonl` is missing.
+- Full Spring Boot app and integration-test work requires the Docker stack first: `docker compose -f docker/docker-compose.yml up` from the project checkout.
 - Full `./gradlew test` also depends on MongoDB for `JadetipiApplicationTests`; that environment issue is not the primary target of this task.
 
 LATEST_REPORT:

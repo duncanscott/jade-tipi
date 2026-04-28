@@ -26,5 +26,6 @@ The next routed action should implement the smallest change that restores `./gra
 ## Known Baseline
 
 - `./gradlew :libraries:jade-tipi-dto:test` currently fails because `UnitSpec` references removed resource path `/units/jade_tipi_si_units.jsonl`.
-- `./gradlew test` also fails without MongoDB because `JadetipiApplicationTests.contextLoads` attempts a Mongo connection; that environment issue is not part of `TASK-001`.
+- The project has a `docker/` directory. Run `docker compose -f docker/docker-compose.yml up` from the project checkout before starting the Spring Boot application or running Spring Boot integration tests.
+- `./gradlew test` also fails without MongoDB because `JadetipiApplicationTests.contextLoads` attempts a Mongo connection; start the Docker stack first for Spring Boot app/integration-test work. This environment issue is not part of `TASK-001`.
 - `./gradlew :clients:kafka-kli:build` currently passes.
