@@ -11,8 +11,10 @@ Report file: docs/agents/codex-1-changes.md
 
 ## Current Assignment
 
-- No active assignment yet. The director should create a task under
-  docs/orchestrator/tasks/ before routing implementation work.
+- Active task: `TASK-001 - Restore DTO units test baseline`.
+- Current phase: pre-work only. Write the investigation plan to
+  `docs/agents/codex-1-next-step.md`, commit it, push `codex-1`, and stop.
+- Do not implement until `TASK-001` is moved to `READY_FOR_IMPLEMENTATION`.
 
 ## Owned Paths
 
