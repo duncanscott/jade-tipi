@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
@@ -10,7 +10,7 @@ Restore the Jade Tipi DTO units test baseline before resuming larger Kafka trans
 
 - `TASK-001`: Restore DTO units test baseline
 - Owner: `codex-1`
-- Current status: `READY_FOR_PREWORK`
+- Current status: `READY_FOR_IMPLEMENTATION`
 
 ## Scope Expansion
 
@@ -21,7 +21,7 @@ For `TASK-001`, `codex-1` may inspect and propose changes within:
 - `libraries/jade-tipi-dto/src/main/resources/units/`
 - `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/collections/`
 
-The first routed action should produce pre-work only in `docs/agents/codex-1-next-step.md`. Do not begin implementation until the task status is advanced to `READY_FOR_IMPLEMENTATION`.
+The next routed action should implement the smallest change that restores `./gradlew :libraries:jade-tipi-dto:test` for the DTO units baseline. Record the implementation outcome in `docs/agents/codex-1-changes.md`.
 
 ## Known Baseline
 

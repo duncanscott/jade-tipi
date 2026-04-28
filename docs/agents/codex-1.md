@@ -12,9 +12,12 @@ Report file: docs/agents/codex-1-changes.md
 ## Current Assignment
 
 - Active task: `TASK-001 - Restore DTO units test baseline`.
-- Current phase: pre-work only. Write the investigation plan to
-  `docs/agents/codex-1-next-step.md`, commit it, push `codex-1`, and stop.
-- Do not implement until `TASK-001` is moved to `READY_FOR_IMPLEMENTATION`.
+- Current phase: implementation authorized. Implement the smallest change that
+  restores the DTO units test baseline for `TASK-001`, commit it, push
+  `codex-1`, and stop.
+- Use `docs/orchestrator/tasks/TASK-001-restore-dto-units-test-baseline.md` as
+  the task-specific source of truth for implementation paths and acceptance
+  criteria.
 
 ## Owned Paths
 
