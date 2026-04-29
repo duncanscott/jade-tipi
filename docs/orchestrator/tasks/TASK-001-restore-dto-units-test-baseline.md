@@ -2,7 +2,7 @@
 
 ID: TASK-001
 TYPE: investigation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: ACCEPTED
 OWNER: codex-1
 OWNED_PATHS:
   - libraries/jade-tipi-dto/src/main/java/org/jadetipi/dto/collections/
@@ -33,6 +33,15 @@ DEPENDENCIES:
 - Full `./gradlew test` also depends on MongoDB for `JadetipiApplicationTests`; that environment issue is not the primary target of this task.
 
 LATEST_REPORT:
+Director implementation review on 2026-04-29:
+- Accepted codex-1 implementation commit `c925138` and merge head `d89cfc3`.
+- Findings: no blocking bugs, regressions, or missing assertions found.
+- Scope check passed for codex-1 implementation: changed `docs/agents/codex-1-changes.md` and task-authorized DTO paths only: `Unit.java`, `unit.schema.json`, and `UnitSpec.groovy`. The director-side Docker prerequisite notes in `DIRECTIVES.md` and this task file came from the existing director update, not the codex-1 implementation commit.
+- Implementation matches the imported units data: `UnitSpec` reads `/units/jsonl/si_units.jsonl`, asserts the 812-row SI corpus, checks `property` on every row, checks 100 rows with `alternate_unit`, and validates rows through `Unit.validate()`.
+- `Unit` and `unit.schema.json` now allow optional imported metadata fields `property` and `alternate_unit`; this matches the current SI JSONL row shape while preserving the existing 4-argument constructor for current callers.
+- Verification passed: `git diff --check ee17589..HEAD`, `jq empty libraries/jade-tipi-dto/src/main/resources/schema/unit.schema.json`, and `jq empty libraries/jade-tipi-dto/src/main/resources/units/jsonl/si_units.jsonl`.
+- DTO Gradle verification could not start in this sandbox: `GRADLE_USER_HOME=/tmp/codex-gradle ./gradlew :libraries:jade-tipi-dto:test --no-daemon` failed before build configuration with `java.net.SocketException: Operation not permitted` from Gradle `FileLockContentionHandler`. In a normal developer shell, run the project-documented target command: `./gradlew :libraries:jade-tipi-dto:test`.
+
 Director pre-work review on 2026-04-28:
 - Reviewed `docs/agents/codex-1-next-step.md` at `9e42af4` and accepted the plan for implementation.
 - Scope check passed: the pre-work commit changed only `docs/agents/codex-1-next-step.md`, which is inside codex-1's assigned pre-work ownership boundary.

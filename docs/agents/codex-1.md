@@ -12,9 +12,8 @@ Report file: docs/agents/codex-1-changes.md
 ## Current Assignment
 
 - Active task: `TASK-001 - Restore DTO units test baseline`.
-- Current phase: implementation authorized. Implement the smallest change that
-  restores the DTO units test baseline for `TASK-001`, commit it, push
-  `codex-1`, and stop.
+- Current phase: accepted. Do not continue implementation for `TASK-001`;
+  wait for new director instructions before taking another task.
 - Use `docs/orchestrator/tasks/TASK-001-restore-dto-units-test-baseline.md` as
   the task-specific source of truth for implementation paths and acceptance
   criteria.
