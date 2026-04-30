@@ -4,6 +4,154 @@ The developer writes completed work reports here.
 
 STATUS: COMPLETED
 
+## TASK-004 — Add Kafka transaction ingest integration coverage
+
+Goal completed. The backend Kafka ingestion path now has an end-to-end
+integration spec that publishes canonical `Message` records (open + data
++ commit) to a per-spec Kafka topic and asserts the resulting `txn`
+header and message documents in MongoDB. The spec is opt-in: it skips
+unless `JADETIPI_IT_KAFKA=1` is set and a 2-second `AdminClient` broker
+probe to `KAFKA_BOOTSTRAP_SERVERS` (default `localhost:9092`) succeeds.
+
+### As-built decisions (per pre-work)
+
+- **Topic strategy.** Per-test topic `jdtp-txn-itest-${shortUuid}`
+  created via Kafka `AdminClient.createTopics` in a static
+  `@DynamicPropertySource` method (so the topic exists before the
+  Spring listener container starts). Deleted in `cleanupSpec` via
+  `AdminClient.deleteTopics`. Failed delete is logged but tolerated —
+  each run picks a fresh `shortUuid` so leftovers do not interfere.
+- **Listener subscription.** The spec sets
+  `jadetipi.kafka.txn-topic-pattern` to a regex matching only its
+  per-run topic, so the listener does not pick up records from
+  `jdtp_cli_kli` or other developers' topics. The default production
+  pattern is unchanged.
+- **Test gating.** Spock `@IgnoreIf` runs before the Spring context
+  loads. Without the env flag or with no broker reachable, the spec
+  cleanly reports `skipped=2` and does not start the Spring context.
+- **Consumer-group strategy.** A per-run unique
+  `spring.kafka.consumer.group-id` (`jadetipi-itest-${shortUuid}`)
+  combined with `auto-offset-reset=earliest` (already the production
+  default) gives every run a deterministic offset-0 start.
+- **Topic discovery latency.**
+  `spring.kafka.consumer.properties.metadata.max.age.ms` is shortened
+  to `2000` for this spec, so the pattern subscription notices the
+  pre-created test topic within ~2s instead of the 5-minute Kafka
+  default.
+- **Producer wiring.** Plain `KafkaProducer<String, byte[]>` (acks=all)
+  serializing each `Message` with the project's
+  `org.jadetipi.dto.util.JsonMapper.toBytes(...)`. No new dependency.
+  Records are keyed by `txnId` so they hash to the single test-topic
+  partition, preserving open → data → commit order.
+- **Wait strategy.** Inline reactive polling helpers
+  (`awaitMongo` / `awaitConditionTrue`) with a 30s ceiling and 250ms
+  cadence. No `org.awaitility:awaitility` dependency added.
+- **Cleanup scope.** Per-feature: `mongoTemplate.remove(...)` keyed by
+  `txn_id` so the spec coexists with `TransactionServiceIntegrationSpec`,
+  which writes its own (different-shape) documents to `txn`. Per-spec:
+  delete the test topic.
+- **Number of features.** Two:
+  1. **Happy path.** Publish open + data + commit, assert the header
+     reaches `state=committed` with a backend `commit_id`, and assert
+     the data message document has `_id = txnId~msgUuid`,
+     `record_type=message`, `collection=ppy`, `kafka.topic`,
+     `kafka.partition`, `kafka.offset`, and `kafka.timestamp_ms`.
+     Verify `count(txn_id=...) == 2` (one header + one message).
+  2. **Idempotency sanity check.** Re-publish the same data message
+     after the commit lands; assert the per-`txn_id` document count
+     stays at 2 (the persistence service treats matching duplicates as
+     `APPEND_DUPLICATE`).
+- **Profile vs `@TestPropertySource`.** Used `@DynamicPropertySource`
+  inline; no new `application-integration-test.yml` profile was added.
+  `@DynamicPropertySource` also runs the `AdminClient` topic creation
+  *before* Spring context startup, which is the ordering hook the
+  pre-work flagged as needed for pattern subscription.
+- **No production-code change.** `TransactionMessageListener`,
+  `TransactionMessagePersistenceService`, `KafkaIngestProperties`,
+  `KafkaIngestConfig`, and `application.yml` are unchanged. The
+  integration test exposed no bug in the accepted ingestion path.
+- **No logback-test.xml.** Kafka-client logs are verbose but readable;
+  not enough noise to justify a new test logging config.
+
+### Files added
+
+- `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/TransactionMessageKafkaIngestIntegrationSpec.groovy`
+  (new) — the spec described above. Includes a static gate method,
+  `@DynamicPropertySource` overrides + topic creation, scoped Mongo
+  cleanup, and inline polling helpers.
+
+### Files unchanged
+
+- All `jade-tipi/src/main/...` files. Production behavior is preserved.
+- `jade-tipi/src/test/resources/application-test.yml`. The test profile
+  still sets `jadetipi.kafka.enabled: false` so unit-test
+  `@SpringBootTest` contexts (e.g. `JadetipiApplicationTests.contextLoads`)
+  do not start a Kafka listener. The new integration spec re-enables
+  the listener via `@DynamicPropertySource` for its own context only.
+- `jade-tipi/build.gradle`. No new dependencies; `kafka-clients` and
+  `spring-kafka` were already on the integration-test classpath via
+  `spring-kafka` (added in TASK-003), and the integration-test source
+  set already inherits both.
+
+### Verification
+
+Setup (project-documented):
+
+- `docker compose -f docker/docker-compose.yml up -d` brings up
+  `mongodb`, `keycloak`, `kafka`, and `kafka-init`.
+  Verified containers: `jade-tipi-mongo` healthy, `jade-tipi-keycloak`
+  healthy, `jade-tipi-kafka` healthy.
+
+Compilation:
+
+- `./gradlew :jade-tipi:compileGroovy` — BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:compileTestGroovy` — BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:compileIntegrationTestGroovy` — BUILD SUCCESSFUL.
+
+Targeted integration run (env flag set, brokers up):
+
+- `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*TransactionMessageKafkaIngestIntegrationSpec*'`
+  — BUILD SUCCESSFUL. Test report:
+  `tests=2, skipped=0, failures=0, errors=0, time=5.347s` on the
+  first run, `4.917s` on a `--rerun-tasks` re-run (stable).
+
+Skip behavior (env flag NOT set, brokers up):
+
+- `./gradlew :jade-tipi:integrationTest --tests '*TransactionMessageKafkaIngestIntegrationSpec*'`
+  — BUILD SUCCESSFUL. Test report:
+  `tests=2, skipped=2, failures=0, errors=0, time=0.0s`
+  (Spring context never loaded, both features ignored).
+
+Regression check on unit tests:
+
+- `./gradlew :jade-tipi:test --rerun-tasks` — BUILD SUCCESSFUL.
+  37 tests pass:
+  - `JadetipiApplicationTests` (1)
+  - `TransactionMessageListenerSpec` (4)
+  - `DocumentServiceMongoDbImplSpec` (9)
+  - `TransactionMessagePersistenceServiceSpec` (11)
+  - `TransactionServiceSpec` (12)
+
+### How to run locally
+
+```
+docker compose -f docker/docker-compose.yml up -d
+JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest \
+    --tests '*TransactionMessageKafkaIngestIntegrationSpec*'
+```
+
+To run the full integration suite (existing Mongo/Keycloak-backed
+specs plus this new Kafka spec), drop the `--tests` filter and keep
+the env flag set.
+
+### Out-of-scope items not implemented (per directive)
+
+- Materialization of committed records into `ent`/`ppy`/`typ`/`lnk`.
+- HTTP submission wrapper.
+- Kafka ACLs / OAuth-SASL / Kafka Streams / exactly-once.
+- Redesign of the message envelope or persistence record shape.
+- No production code changes; the integration test exposed no bug.
+
 ## TASK-003 — Persist Kafka transaction messages to txn
 
 Goal completed. The Spring Boot backend now consumes canonical

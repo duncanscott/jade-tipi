@@ -2,7 +2,7 @@
 
 ID: TASK-004
 TYPE: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: IMPLEMENTATION_COMPLETE
 OWNER: claude-1
 OWNED_PATHS:
   - jade-tipi/build.gradle
@@ -46,28 +46,25 @@ DEPENDENCIES:
 - Local Docker-backed verification should use the documented project command: `docker compose -f docker/docker-compose.yml up -d` or a narrower documented service subset if pre-work confirms it is sufficient.
 
 LATEST_REPORT:
-Director reviewed claude-1 pre-work on 2026-04-30 and approved implementation. Ownership check passed: the latest claude-1 pre-work commit changed only `docs/agents/claude-1-next-step.md`, which is inside the developer assignment's owned paths.
+Implementation complete on 2026-04-30 by `claude-1`. The accepted Kafka transaction ingestion path now has end-to-end integration coverage that exercises `TransactionMessageListener` and `TransactionMessagePersistenceService` against the documented Docker Kafka/Mongo stack.
 
-Implementation should follow the defaults proposed in the pre-work:
-- Add the Kafka ingest integration spec under `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/`.
-- Use the documented Docker Kafka/Mongo stack, not Testcontainers.
-- Create a unique per-test topic with Kafka `AdminClient` using a name matched by the existing `jdtp-txn-.*|jdtp_cli_kli` pattern. Do not reuse `jdtp_cli_kli` for the test unless AdminClient topic creation proves unavailable.
-- Gate the spec with `JADETIPI_IT_KAFKA=1` plus a fast broker probe against `KAFKA_BOOTSTRAP_SERVERS` or `localhost:9092`; skipped conditions must be explicit in the test/report.
-- Use a per-run unique `spring.kafka.consumer.group-id`.
-- Use a raw `KafkaProducer<String, byte[]>` and the project `JsonMapper` to publish canonical open, one data message, and commit records.
-- Poll MongoDB with a small bounded helper; do not add Awaitility unless inline polling becomes materially worse.
-- Clean up only the topic and the `txn` documents created by this spec.
-- Keep production Kafka ingestion behavior unchanged unless the integration test exposes a real bug.
+As-built (matches pre-work defaults; no production code changed):
+- New file: `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/TransactionMessageKafkaIngestIntegrationSpec.groovy`. Two features:
+  1. Happy path — produce open + data + commit canonical `Message` records to a per-spec topic; assert the `txn` header reaches `state=committed` with backend `commit_id`, the data message document has `_id=txnId~msgUuid`, `record_type=message`, `collection=ppy`, and `kafka.{topic,partition,offset,timestamp_ms}` populated; assert exactly one header + one message document for the txn.
+  2. Idempotency sanity check — re-publish the same data message after commit; assert per-`txn_id` document count stays at 2 (`APPEND_DUPLICATE` path).
+- Per-spec topic `jdtp-txn-itest-${shortUuid}` created via `AdminClient.createTopics` from a static `@DynamicPropertySource` method (so the topic exists before the Spring listener container starts) and deleted in `cleanupSpec`.
+- Listener subscribes only to the per-run topic (regex override of `jadetipi.kafka.txn-topic-pattern`), uses a per-run unique `spring.kafka.consumer.group-id`, and runs with `metadata.max.age.ms=2000` so pattern subscription discovers the test topic in ~2s.
+- Producer is a plain `KafkaProducer<String, byte[]>` (acks=all) serializing each `Message` with `org.jadetipi.dto.util.JsonMapper.toBytes(...)`. No new dependency.
+- Spock `@IgnoreIf` gate: spec runs only when `JADETIPI_IT_KAFKA in {1, true, TRUE, yes}` AND a 2s `AdminClient.describeCluster` probe to `KAFKA_BOOTSTRAP_SERVERS` (default `localhost:9092`) succeeds. Otherwise both features report `skipped` and the Spring context is never loaded.
+- Mongo cleanup is targeted: `mongoTemplate.remove({txn_id: ...}, 'txn')` per feature so the spec coexists with `TransactionServiceIntegrationSpec`.
+- Production Kafka ingestion behavior, `application.yml`, and existing test profile are unchanged. `application-test.yml` still sets `jadetipi.kafka.enabled: false` for the unit-test context loads; the integration spec re-enables it via `@DynamicPropertySource` for its own context only.
 
-Two features are acceptable: the required happy path and a narrow idempotency sanity check. The implementation should use inline `@TestPropertySource`/dynamic properties rather than a new integration profile unless a profile file is necessary. A logback test file is optional only if Kafka logs make verification output unreadable.
+Verification (2026-04-30, full Docker stack up):
+- `docker compose -f docker/docker-compose.yml up -d` — `mongodb`, `keycloak`, `kafka` all healthy.
+- `./gradlew :jade-tipi:compileGroovy` — BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:compileIntegrationTestGroovy` — BUILD SUCCESSFUL.
+- `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*TransactionMessageKafkaIngestIntegrationSpec*'` — BUILD SUCCESSFUL. Test report: `tests=2, skipped=0, failures=0, errors=0, time=5.347s` (initial run); `4.917s` on a `--rerun-tasks` re-run (stable).
+- `./gradlew :jade-tipi:integrationTest --tests '*TransactionMessageKafkaIngestIntegrationSpec*'` (env flag NOT set) — BUILD SUCCESSFUL. Test report: `tests=2, skipped=2, failures=0, errors=0, time=0.0s`.
+- `./gradlew :jade-tipi:test --rerun-tasks` — BUILD SUCCESSFUL. 37 unit tests pass (no regression).
 
-Topic/listener startup guidance: create the test topic before the Spring listener subscribes when possible, and also shorten `spring.kafka.consumer.properties.metadata.max.age.ms` for this spec so topic-pattern discovery is not dependent on the default long metadata refresh. If Spock/Spring lifecycle makes the exact hook awkward, document the chosen ordering in the report and keep the test bounded and deterministic.
-
-Expected setup and verification:
-- `docker compose -f docker/docker-compose.yml up -d`
-- `./gradlew :jade-tipi:compileGroovy`
-- `./gradlew :jade-tipi:compileIntegrationTestGroovy`
-- `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*TransactionMessageKafkaIngestIntegrationSpec*'`
-- `./gradlew :jade-tipi:test`
-
-If local verification fails because Docker, Gradle wrapper state, or other local tooling is missing/stale, report the documented setup command that should be run rather than treating that as a product blocker.
+Out-of-scope items confirmed not implemented: materialization to `ent`/`ppy`/`typ`/`lnk`, HTTP submission wrapper, Kafka ACLs / SASL / Streams / exactly-once, message envelope or persistence record shape redesign. The integration test exposed no bug, so production code remains as accepted in `TASK-003`.
