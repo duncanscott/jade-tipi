@@ -4,337 +4,391 @@ The developer writes pre-work plans here before implementation begins.
 
 STATUS: PRESENT
 
-## TASK-005 — Add committed transaction snapshot read layer (pre-work)
+## TASK-006 — Add committed transaction snapshot HTTP read adapter (pre-work)
 
 ### Directive summary
 
-Per `DIRECTIVES.md` (signal `REQUEST_NEXT_STEP`) and
-`docs/orchestrator/tasks/TASK-005-committed-transaction-snapshot-read-layer.md`
-(status `READY_FOR_PREWORK`), add the smallest backend read-side layer
-over the accepted Kafka-to-`txn` write-ahead log so callers can fetch a
-single committed transaction snapshot (header + staged messages)
-without materializing into long-term collections.
+Per `DIRECTIVES.md` (signal `REQUEST_NEXT_STEP`, active task
+`TASK-006`, status `READY_FOR_PREWORK`) and
+`docs/orchestrator/tasks/TASK-006-committed-transaction-snapshot-http-read-adapter.md`,
+add the smallest WebFlux/HTTP read adapter over the accepted
+`CommittedTransactionReadService` (TASK-005) so callers can fetch one
+committed transaction snapshot from the `txn` write-ahead log without
+changing write-side ingestion or materializing into long-term
+collections.
 
 Director constraints to respect:
 
-- Start Kafka-free **and** HTTP-free: the read service is the core; add
-  or adjust a controller only if pre-work shows a minimal API surface
-  is needed for useful verification.
-- Committed visibility is governed by the header alone — the header
-  must have `state == 'committed'` *and* a backend-generated
-  `commit_id`. Child message stamping is still not required.
-- Do not change the `txn` write-ahead log shape from `TASK-003`.
-- Do not materialize into `ent`, `ppy`, `typ`, `lnk`, or other
-  long-term collections.
-- Preserve enough message-record fields for a later materializer or
-  HTTP layer to know `collection`, `action`, `data`, `msg_uuid`, and
-  Kafka provenance.
+- Start from a thin WebFlux adapter; do not change the Kafka write
+  path, the `txn` record shape, or the committed-snapshot service
+  semantics accepted in TASK-005.
+- Delegate committed visibility entirely to
+  `CommittedTransactionReadService` — do not duplicate the
+  `record_type`/`state`/`commit_id` gate in the controller.
+- A committed snapshot returns HTTP 200 with header data, staged
+  messages, `collection`, `action`, `data`, `msg_uuid`, and Kafka
+  provenance.
+- Missing / open / older-shape / otherwise non-committed transactions
+  return a clear not-found response without exposing uncommitted
+  message rows.
+- Mirror existing controller / security patterns; do not introduce new
+  authentication, authorization, or redaction policy.
+- Keep materialization into `ent`/`ppy`/`typ`/`lnk` out of scope.
 - If Docker / Gradle is unavailable during verification, report the
   documented setup command rather than treating it as a product
   blocker.
 
-This is pre-work only. No backend, build, test, or doc edits beyond
-this file until the director moves `TASK-005` to
-`READY_FOR_IMPLEMENTATION` (or sets the global signal to
-`PROCEED_TO_IMPLEMENTATION`).
+This is pre-work only. No production source, build, config, test,
+DTO-package, or non-doc edits beyond this file until the director
+moves `TASK-006` to `READY_FOR_IMPLEMENTATION` (or sets the global
+signal to `PROCEED_TO_IMPLEMENTATION`).
 
 ### Current baseline (read, not yet changed)
 
-- `service/TransactionMessagePersistenceService` (TASK-003) is the
-  authoritative writer into `txn` and exposes the field-name and
-  state constants the read layer must reuse:
-  - Header: `_id = txn_id`, `record_type = "transaction"`,
-    `state ∈ {open, committed}`, `opened_at`, `committed_at`,
-    `open_data`, `commit_data`, `commit_id` (set only on commit).
-  - Message: `_id = txn_id + "~" + msg_uuid`,
-    `record_type = "message"`, `txn_id`, `msg_uuid`, `collection`
-    (abbreviation, e.g. `ppy`), `action` (lower-case enum string),
-    `data`, `received_at`, optional `kafka` sub-doc with
-    `topic`/`partition`/`offset`/`timestamp_ms`.
-- The collection name constant lives in
-  `util/Constants.COLLECTION_TRANSACTIONS` (= `"txn"`); the txn-id
-  separator constant is `Constants.TRANSACTION_ID_SEPARATOR` (= `"~"`).
-- The `txn` collection is **shared** with the older
-  `service/TransactionService` (`TransactionService.openTransaction` /
-  `commitTransaction`), which writes a different document shape
-  (`_id = transactionId`, top-level `txn` sub-document with
-  `secret`, `commit`, `commit_seq`, `committed`, etc.) and does
-  *not* set `record_type` at all. Both shapes must coexist; the new
-  read service must filter by `record_type` so it never confuses the
-  older HTTP-style header for a WAL header. (Directly relevant: a
-  future caller could otherwise read garbage when both services have
-  written rows for unrelated `txn_id`s.)
-- `controller/TransactionController` exposes only `/api/transactions/open`
-  and `/api/transactions/commit` over the older `TransactionService`.
-  No read endpoint exists today over the WAL. (Adding one would be a
-  net-new HTTP surface.)
-- Existing tests:
-  - `service/TransactionMessagePersistenceServiceSpec` (Mockito-style
-    mocks for `ReactiveMongoTemplate` + `IdGenerator`) — proven
-    pattern for unit-level spec'ing this area.
-  - `kafka/TransactionMessageKafkaIngestIntegrationSpec` (TASK-004)
-    — opt-in (`JADETIPI_IT_KAFKA=1`) Kafka-to-Mongo round-trip that
-    leaves real `txn` header + message documents and cleans up by
-    `txn_id`. Useful as a structural reference but **not** a
-    dependency of TASK-005's tests.
-- `dto/ErrorResponse.groovy` is the only file currently in
-  `org/jadetipi/jadetipi/dto/`; if a snapshot DTO is introduced, it
-  fits naturally next to it.
+- `service/CommittedTransactionReadService.findCommitted(String txnId)
+  : Mono<CommittedTransactionSnapshot>` is the accepted boundary. It
+  already enforces every gate that TASK-006 needs:
+  - `Assert.hasText(txnId, ...)` → `IllegalArgumentException` on
+    null/blank/whitespace ids.
+  - `Mono.empty()` when the header is missing, has no
+    `record_type='transaction'` (older `TransactionService` shape),
+    has `state != 'committed'`, or has a null/blank `commit_id`.
+  - On a committed WAL header, returns the populated snapshot with
+    `_id`-ASC-ordered messages and Kafka provenance.
+  - Coerces raw Mongo `Date`/`Instant`/`null` timestamps via the
+    `toInstant(...)` helper added in the TASK-005 review fix.
+- Snapshot return classes live in `service/`:
+  - `service/CommittedTransactionSnapshot` (`txnId`, `state`,
+    `commitId`, `openedAt`, `committedAt`, `openData`, `commitData`,
+    `messages`).
+  - `service/CommittedTransactionMessage` (`msgUuid`, `collection`,
+    `action`, `data`, `receivedAt`, `kafka`).
+  - `service/KafkaProvenance` (`topic`, `partition`, `offset`,
+    `timestampMs`).
+  - All three are Groovy `@Immutable` value objects with default
+    public-field accessors. Jackson on the WebFlux serializer can
+    serialize them without further annotations; field names will be
+    emitted in camelCase by default (see Q2 about snake_case).
+- `controller/TransactionController` exposes only
+  `POST /api/transactions/open` and `POST /api/transactions/commit`
+  over the older `TransactionService`. There is no GET on
+  `/api/transactions/...` today, so a new GET cannot collide with an
+  existing handler. (Path-collision note: `GET /api/transactions/open`
+  with a literal "open" segment would still resolve to the `/open`
+  POST mapping with a 405 rather than be misrouted to a `{id}` GET if
+  we used the bare-id path. See Q1 for the route choice.)
+- `controller/DocumentController.getDocument` is the project's
+  established not-found pattern:
+  `service.findById(...).map(ResponseEntity::ok).defaultIfEmpty(ResponseEntity.notFound().build())`.
+  We will mirror it.
+- `exception/GlobalExceptionHandler` is registered as
+  `@RestControllerAdvice` and already maps:
+  - `IllegalArgumentException` → 400 with
+    `dto/ErrorResponse` body (`message`, `status=400`, `error="Bad
+    Request"`, `timestamp`). This means the service's `Assert.hasText`
+    failure is already wrapped into a clean 400 — the controller does
+    not need to duplicate the check.
+  - `ResponseStatusException` → its declared status with a populated
+    `ErrorResponse` body.
+  - `IllegalStateException` → 409.
+  - `WebExchangeBindException` → 400 with field-level errors.
+  - `Exception` (catch-all) → 500.
+- `config/SecurityConfig` is `@EnableWebFluxSecurity`; every path not
+  in the small allow-list (`/`, `/hello`, `/version`, `/docs`,
+  `/swagger-ui/**`, `/swagger-ui.html`, `/webjars/**`,
+  `/v3/api-docs/**`, `/actuator/**`, `/error`, `/css/**`) requires
+  authentication via JWT. `/api/transactions/**` is therefore already
+  authenticated. No security change is required to put a new GET under
+  `/api/transactions/...`.
+- `test/groovy/.../config/TestSecurityConfig` provides a `@Primary
+  ReactiveJwtDecoder` that mints a valid JWT for the `test` profile —
+  the integration suite uses this via Keycloak, while `@WebFluxTest`
+  slices can simply not import the production `SecurityConfig` (slices
+  don't load arbitrary `@Configuration` beans by default).
+- Existing test patterns:
+  - Service-side: Spock `Specification` with `Mock(...)` boundaries
+    (`TransactionMessagePersistenceServiceSpec`,
+    `CommittedTransactionReadServiceSpec`). No Spring context.
+  - Integration: `@SpringBootTest(webEnvironment=RANDOM_PORT)` +
+    `@AutoConfigureWebTestClient` + `@ActiveProfiles("test")` +
+    Keycloak helper for `Authorization` header
+    (`document/DocumentListIntegrationTest`,
+    `document/DocumentCreationIntegrationTest`).
+  - There is no `controller/` test sub-tree under `src/test` today —
+    this task would create one, which is in scope per
+    `OWNED_PATHS`.
+- `JadetipiApplicationTests.contextLoads` opens a Mongo connection on
+  startup, so `./gradlew :jade-tipi:test` already requires Mongo
+  running. No new Spring context will be added by the controller spec
+  (per S3 below) so the unit-suite Mongo requirement stays the same.
 
 ### Smallest implementation plan (proposal)
 
-#### S1. New service: `CommittedTransactionReadService`
+#### S1. New controller: `CommittedTransactionReadController`
 
-A Kafka-free / HTTP-free `@Service` in
-`org/jadetipi/jadetipi/service/` with a single public method:
+A `@RestController` at
+`org/jadetipi/jadetipi/controller/CommittedTransactionReadController.groovy`
+with one public method:
 
 ```groovy
-Mono<CommittedTransactionSnapshot> findCommitted(String txnId)
+@RestController
+@RequestMapping('/api/transactions')
+class CommittedTransactionReadController {
+
+    private final CommittedTransactionReadService readService
+
+    CommittedTransactionReadController(CommittedTransactionReadService readService) {
+        this.readService = readService
+    }
+
+    @GetMapping('/{id}/snapshot')
+    Mono<ResponseEntity<CommittedTransactionSnapshot>> getSnapshot(
+            @PathVariable('id') String id, @AuthenticationPrincipal Jwt jwt) {
+
+        log.debug('Retrieving committed transaction snapshot: id={}', id)
+        return readService.findCommitted(id)
+                .doOnNext { snapshot -> log.info(
+                        'Committed snapshot returned: id={}, messages={}',
+                        id, snapshot.messages?.size() ?: 0) }
+                .map { snapshot -> ResponseEntity.ok(snapshot) }
+                .defaultIfEmpty(ResponseEntity.notFound().build())
+    }
+}
 ```
 
-Behavior:
+Behavior, per directive:
 
-- Validates `txnId` is non-blank (`Assert.hasText`); blank → `Mono.error(IllegalArgumentException)` to match
-  `TransactionService`'s existing convention. Already-handled by
-  `GlobalExceptionHandler` if a controller is later added.
-- Reads the header by `_id == txnId` from collection `txn`.
-- **Authoritative committed gate** — emit `Mono.empty()` (= "no
-  committed snapshot for that id") when any of:
-  - the header document is missing,
-  - `record_type != "transaction"` (defense against the older
-    `TransactionService` document shape coexisting in `txn`),
-  - `state != "committed"`,
-  - `commit_id` is null or blank.
-- On committed header, queries message records via:
-  `Criteria.where('record_type').is('message').and('txn_id').is(txnId)`,
-  ordered ascending by `_id` (= `txn_id~msg_uuid` lexicographic). See
-  S3 for ordering rationale.
-- Maps the raw Mongo `Map` rows into the snapshot DTO and returns it.
+- **Delegation only.** No duplicated WAL-shape gate; the controller
+  trusts `findCommitted` to return `Mono.empty()` for every flavor of
+  "not committed" (missing, open, partial-write without `commit_id`,
+  older `TransactionService` shape).
+- **Not-found shape.** `ResponseEntity.notFound().build()` (HTTP 404,
+  empty body) — same as `DocumentController.getDocument`. This avoids
+  echoing the uncommitted state into a body that could leak the
+  difference between "no such id" and "id exists but is not yet
+  committed".
+- **Blank/invalid id.** No inline check. The service's existing
+  `Assert.hasText` raises `IllegalArgumentException`, and
+  `GlobalExceptionHandler` already converts that into a 400 with the
+  standard `ErrorResponse` body. (Note: a Spring path variable that
+  matches `/{id}/snapshot` cannot be empty because the segment must
+  be non-empty for the route to match; whitespace-only ids would be
+  decoded literally and reach the service. The 400 path is the
+  defensive case.)
+- **Auth.** `@AuthenticationPrincipal Jwt jwt` to mirror
+  `TransactionController`. The principal is not used inside the
+  method (no per-id authorization is in scope for this task), but the
+  parameter ensures the JWT is materialized and stays consistent
+  with the existing controller signatures.
+- **Logging.** Log only the `id` and the message count, never the
+  snapshot body. Matches the existing `TransactionController` style.
+- **Slf4j.** `@Slf4j` for log access, mirroring both existing
+  controllers.
 
-Implementation uses `ReactiveMongoTemplate` (already injected
-elsewhere); no new dependency.
+The controller does **not** add a new auth filter, redaction layer,
+pagination, list endpoint, idempotency token, or cross-resource read.
+Those are all listed `OUT_OF_SCOPE`.
 
-The service does **not** validate references between properties /
-types / entities / assignments (explicit `OUT_OF_SCOPE`).
+#### S2. No service or DTO changes
 
-#### S2. New DTO: `CommittedTransactionSnapshot` (+ `CommittedTransactionMessage`)
+- `CommittedTransactionReadService` is unchanged.
+- `CommittedTransactionSnapshot`, `CommittedTransactionMessage`, and
+  `KafkaProvenance` remain `@Immutable` value objects in
+  `service/`. Per the TASK-005 director decision, snapshot return
+  classes stay in the `service` package; making this a serialization
+  boundary does not require a relocation. Default Jackson serialization
+  via field-level access is sufficient (see Q2 about snake_case
+  rendering).
+- No new exception types. `IllegalArgumentException` already routes
+  to a 400 via `GlobalExceptionHandler`.
+- No new auth or redaction policy.
+- No write-side change.
 
-Two read-only Groovy classes (Records or final classes with
-`@JsonInclude(NON_NULL)`), located at:
-
-- `service/CommittedTransactionSnapshot.groovy`
-- `service/CommittedTransactionMessage.groovy`
-
-Rationale for putting the snapshot DTOs in `service/` rather than
-`dto/`: today these are pure return shapes for an internal service
-boundary, not HTTP request/response DTOs. `dto/ErrorResponse` is the
-only thing currently in `dto/` and it is HTTP-shaped. Co-locating
-with the service keeps the HTTP-free boundary obvious. Open question
-for the director — see Q1.
-
-Fields on `CommittedTransactionSnapshot`:
-
-| Field          | Type                              | Source field on header                   |
-|----------------|-----------------------------------|------------------------------------------|
-| `txnId`        | `String`                          | `txn_id` (also `_id`)                    |
-| `state`        | `String`                          | `state` (always `"committed"` if returned) |
-| `commitId`     | `String`                          | `commit_id`                              |
-| `openedAt`     | `Instant` (nullable)              | `opened_at`                              |
-| `committedAt`  | `Instant` (nullable)              | `committed_at`                           |
-| `openData`     | `Map<String, Object>` (nullable)  | `open_data`                              |
-| `commitData`   | `Map<String, Object>` (nullable)  | `commit_data`                            |
-| `messages`     | `List<CommittedTransactionMessage>` | from message-record query              |
-
-Fields on `CommittedTransactionMessage`:
-
-| Field         | Type                              | Source field on message record |
-|---------------|-----------------------------------|--------------------------------|
-| `msgUuid`     | `String`                          | `msg_uuid`                     |
-| `collection`  | `String` (abbrev: `ppy`, `ent`, …) | `collection`                  |
-| `action`      | `String` (lower-case enum string) | `action`                       |
-| `data`        | `Map<String, Object>` (nullable)  | `data`                         |
-| `receivedAt`  | `Instant` (nullable)              | `received_at`                  |
-| `kafka`       | `KafkaProvenance` (nullable)      | `kafka` sub-doc                |
-
-`KafkaProvenance` (small Groovy `@Immutable` value object): `topic`,
-`partition (int)`, `offset (long)`, `timestampMs (long)`. Mirrors
-`KafkaSourceMetadata` shape so a later materializer or HTTP layer
-sees the same provenance vocabulary on read as on write, without
-dragging `org.apache.kafka.*` in.
-
-#### S3. Deterministic message ordering
-
-- Sort by `_id` ascending in the Mongo query
-  (`Sort.by(Sort.Direction.ASC, '_id')`).
-- `_id` is `txn_id + "~" + msg_uuid` and `txn_id` is constant within
-  the result set, so this collapses to "ordered by `msg_uuid`".
-- Rationale: `_id` is automatically indexed (no extra index needed),
-  is stable across re-deliveries (same `msg_uuid` → same `_id`), and
-  is independent of Kafka provenance (so HTTP-injected messages, if
-  ever added, sort the same way).
-- I considered ordering by `received_at` (insertion time on the
-  backend) and by `kafka.offset` (broker order). Both are useful but
-  not guaranteed to exist on every record once a non-Kafka caller is
-  added. `_id` ascending is the smallest deterministic choice that
-  works for every record kind we already store.
-- Open question Q3: confirm `_id` ascending is acceptable, or pick
-  `received_at` (then `_id` as tiebreak) as the canonical order.
-
-#### S4. Tests (unit-only, narrow `:jade-tipi:test` target)
+#### S3. Tests (narrow controller-level Spock spec, no Spring slice by default)
 
 New file:
-`jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionReadServiceSpec.groovy`
+`jade-tipi/src/test/groovy/org/jadetipi/jadetipi/controller/CommittedTransactionReadControllerSpec.groovy`
 
-Spock spec, mocking `ReactiveMongoTemplate` (same pattern as
-`TransactionMessagePersistenceServiceSpec`). Features:
+Pattern: pure Spock `Specification` (same approach as the service
+spec). Mock `CommittedTransactionReadService`, instantiate the
+controller directly, call methods, assert via `Mono.block()` and
+`StepVerifier`. No Spring context, no `@WebFluxTest` — keeping the
+unit suite cheap and matching the precedent already accepted in
+TASK-003 / TASK-005.
 
-1. **Committed transaction returns header + messages snapshot.**
-   Header doc returned with `record_type='transaction'`,
-   `state='committed'`, `commit_id='COMMIT-001'`, plus three message
-   rows. Assert all snapshot fields populated and provenance
-   round-tripped, and that `state == 'committed'`.
-2. **Open (uncommitted) header returns empty.**
-   Header has `state='open'`, no `commit_id`. Assert `Mono.empty()`
-   and `0 *` interactions on the message-find query (short-circuit).
-3. **Header with `state='committed'` but no `commit_id` returns
-   empty.** Belt-and-braces guard against partial-write states; even
-   though writers always set both atomically today, the read layer
-   must require both.
-4. **Missing header (Mongo returns `Mono.empty()`) returns empty.**
-   Clear "not found" signal without throwing.
-5. **Header with `record_type` other than `'transaction'`
-   (or absent) returns empty.** Guards against confusing the older
-   `TransactionService`-shape document for a WAL header.
-6. **Deterministic ordering.** Mock returns the three message docs in
-   `[c, a, b]` order; assert the returned snapshot lists them
-   alphabetically by `_id` regardless of mock order. (Verifies the
-   query uses `Sort.by(ASC, '_id')` rather than relying on insertion
-   order from the mock.)
-7. **Blank `txnId` rejected with `IllegalArgumentException`.**
-   Matches existing `TransactionService` convention.
-8. **Null payload fields tolerated.** `open_data`, `commit_data`,
-   `received_at`, and `kafka` may all be null on real records; the
-   snapshot returns them as null without NPE.
+Features:
 
-I am **not** proposing an integration spec under
-`src/integrationTest/groovy/...` for TASK-005:
+1. **Committed snapshot returns 200 with snapshot body and delegates
+   to the service.**
+   Mock returns a fully-populated `CommittedTransactionSnapshot`.
+   Assert:
+   - `1 * readService.findCommitted(TXN_ID) >> Mono.just(snapshot)`
+   - the controller returns `ResponseEntity` with status 200 and the
+     same snapshot instance as body
+   - the body's `txnId`, `commitId`, `messages*.msgUuid`,
+     `messages[0].collection`, `messages[0].action`,
+     `messages[0].data`, and `messages[0].kafka` round-trip the
+     mocked snapshot.
+2. **Missing / not-yet-committed snapshot returns 404 with no body.**
+   Mock returns `Mono.empty()`. Assert:
+   - `1 * readService.findCommitted(TXN_ID) >> Mono.empty()`
+   - status 404, body null.
+3. **Older `TransactionService`-shape (covered by service) returns
+   404 to the caller.** Same as feature 2 but framed as the
+   delegation contract: for any case the service treats as
+   "not committed", the controller emits 404 without a body.
+4. **Service-side `IllegalArgumentException` propagates so the global
+   handler can render 400.** Mock throws
+   `IllegalArgumentException('txnId must not be blank')` (matching
+   how `Assert.hasText` fails). Assert that `getSnapshot('   ', jwt)`
+   propagates the exception (i.e. is *not* swallowed into 200/404).
+   The 400 mapping itself is verified by `GlobalExceptionHandler`'s
+   pre-existing test surface (already exercised in production for
+   `DocumentController` payload validation); we do not need to spin
+   up a `@WebFluxTest` slice just to re-verify the advice.
+5. **Controller does not query Mongo directly.** No injected Mongo
+   template; the controller's only collaborator is
+   `CommittedTransactionReadService`. Verified by:
+   - constructor signature (single arg of type `CommittedTransactionReadService`)
+   - `0 * _._` on any other mock interactions in features 1–4.
+6. **Snapshot body preserves message order from the service.** If the
+   service emits messages in `[a, b, c]` order, the controller returns
+   them in `[a, b, c]` order. (Already covered by feature 1's
+   assertions on `messages*.msgUuid`; this is the explicit
+   delegation-of-ordering contract.)
 
-- The unit spec mocks at the same boundary
-  `TransactionMessagePersistenceServiceSpec` already mocks at, which
-  the director accepted in TASK-003.
-- The TASK-004 integration spec already proves the writer path
-  produces the documents the read service is reading; re-asserting
-  that round trip via the read service would not exercise new
-  production code beyond a pure projection of fields.
+I am **not** proposing a `@WebFluxTest` slice or a full
+`src/integrationTest` controller spec for TASK-006 by default. The
+service already has full mock-level coverage for committed visibility
+and ordering; the controller is a literal three-line delegation. A
+Spring slice would add boot-time cost and a second fixture to
+maintain without testing new behavior beyond JSON serialization. If
+the director wants HTTP-level coverage anyway, see Q3.
 
-If the director wants integration coverage, see Q2 — I can add a
-minimal Mongo-only integration spec (no Kafka) that seeds
-hand-written documents into `txn` and reads them back via the new
-service.
+#### S4. Verification commands (post-implementation)
 
-#### S5. No controller, no HTTP surface (default)
+Pre-req (project-documented):
 
-Per directive, a controller is added "only if pre-work shows a
-minimal API surface is needed for useful verification". My current
-read is **no**:
-
-- The unit spec verifies the service behavior fully.
-- The existing integration spec verifies writer → Mongo, which is
-  the only piece needing Kafka.
-- Adding a `GET /api/transactions/{id}` endpoint would also raise
-  policy questions (auth, redaction of `secret` from the older
-  `TransactionService` shape if a caller sends a non-WAL id) that
-  the directive explicitly defers.
-
-If the director wants a thin read endpoint anyway, see Q4 below.
-
-### Verification plan after implementation
-
-Pre-req setup (documented project commands):
-
-- `docker compose -f docker/docker-compose.yml up -d mongodb` — only
-  Mongo is needed for `:jade-tipi:test` because
-  `JadetipiApplicationTests.contextLoads` opens a Mongo connection
-  on context load. Kafka is not required for the planned unit tests.
+- `docker compose -f docker/docker-compose.yml up -d` — Mongo +
+  Kafka + Keycloak. Only Mongo is strictly required for
+  `:jade-tipi:test` because `JadetipiApplicationTests.contextLoads`
+  opens a Mongo connection. The new controller spec does not need
+  Mongo or Kafka because it pure-mocks the service.
 
 Targeted commands:
 
 - `./gradlew :jade-tipi:compileGroovy` — must pass.
 - `./gradlew :jade-tipi:compileTestGroovy` — must compile the new
   spec.
-- `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadServiceSpec*'`
-  — runs only the new spec.
+- `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadControllerSpec*'`
+  — runs only the new controller spec.
 - `./gradlew :jade-tipi:test` — full unit suite as a regression
-  check. Expected new total: existing 37 + 8 features = 45 (subject
-  to the final feature count after director Q1/Q3 decisions).
+  check. Expected new total: existing 49 + 6 features = ~55
+  (subject to final feature count after director Q1/Q3).
+- `./gradlew :jade-tipi:compileIntegrationTestGroovy` — sanity
+  check that no integration source-set was broken (no spec added
+  there by default).
 - `./gradlew :jade-tipi:integrationTest` is **not** required for
-  TASK-005 because no integration spec is planned (S4). I will
-  confirm it still compiles via
-  `./gradlew :jade-tipi:compileIntegrationTestGroovy` to catch any
-  cross-source-set fallout.
+  TASK-006 unless Q3 promotes the Spring slice into an integration
+  test.
 
-If any of these fail because `mongodb` is not running, the wrapper
-lock is held, or `node_modules` / browser binaries are stale, I will
-report the exact documented setup command (e.g.
-`docker compose -f docker/docker-compose.yml up -d mongodb`,
-`./gradlew --stop` to release the wrapper lock) rather than
-declaring a product blocker, per `DIRECTIVES.md`.
+If verification fails because Mongo is not running, the wrapper lock
+is held, or the toolchain is missing, I will report the documented
+setup command (`docker compose -f docker/docker-compose.yml up -d`,
+`./gradlew --stop`, etc.) instead of treating it as a product
+blocker, per directive.
 
-### Proposed file changes (all inside expanded TASK-005 scope)
+### Proposed file changes (all inside expanded TASK-006 scope)
 
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionReadService.groovy`
-  (new) — the service in S1.
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionSnapshot.groovy`
-  (new) — DTO in S2 (subject to Q1 about `dto/` vs `service/`).
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMessage.groovy`
-  (new) — DTO in S2.
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/KafkaProvenance.groovy`
-  (new, optional — could reuse `kafka/KafkaSourceMetadata` directly
-  if the director prefers, but that lives in the `kafka` package and
-  was conceived as a write-time provenance carrier; see Q5).
-- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionReadServiceSpec.groovy`
-  (new) — Spock spec from S4.
-- `docs/orchestrator/tasks/TASK-005-committed-transaction-snapshot-read-layer.md`
-  — `STATUS` flipped to `IMPLEMENTATION_COMPLETE` and `LATEST_REPORT`
-  updated only at the end of the implementation turn.
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/controller/CommittedTransactionReadController.groovy`
+  (new) — the WebFlux adapter in S1.
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/controller/CommittedTransactionReadControllerSpec.groovy`
+  (new) — Spock spec from S3.
+- `docs/orchestrator/tasks/TASK-006-committed-transaction-snapshot-http-read-adapter.md`
+  — `STATUS` flipped to `READY_FOR_REVIEW` and `LATEST_REPORT`
+  rewritten only at the end of the implementation turn.
+- `docs/agents/claude-1-changes.md` — append the implementation
+  report after the work lands.
 
 No production code is changed in:
+`CommittedTransactionReadService`, `CommittedTransactionSnapshot`,
+`CommittedTransactionMessage`, `KafkaProvenance`,
 `TransactionMessagePersistenceService`, `TransactionMessageListener`,
-`TransactionService`, `TransactionController`, any controller,
-`application.yml`, or `build.gradle`.
+`TransactionService`, `TransactionController`, `DocumentController`,
+`GlobalExceptionHandler`, `ErrorResponse`, `SecurityConfig`,
+`application.yml`, `build.gradle`, or any resource. The `txn`
+write-ahead log shape from TASK-003 is preserved.
 
 ### Blockers / open questions for the director
 
-1. **Q1 — Snapshot DTO location.** Place
-   `CommittedTransactionSnapshot` / `CommittedTransactionMessage` in
-   `service/` (proposed: keeps the HTTP-free boundary obvious) or in
-   `dto/` (closer to the existing `ErrorResponse`)? Either is in
-   scope.
-2. **Q2 — Integration spec.** Default plan is unit-only (S4
-   rationale). Confirm, or ask for a minimal Mongo-seeded integration
-   spec under `src/integrationTest/groovy/...` that hand-writes
-   header + message documents and reads them back.
-3. **Q3 — Message ordering.** Default is `_id` ascending (=
-   `msg_uuid` ascending within a single `txn_id`). Alternative:
-   `received_at` ascending with `_id` as tiebreak. I prefer `_id` for
-   index-friendliness and source-independence; please confirm.
-4. **Q4 — Controller.** Default is **no** controller for TASK-005.
-   If a thin `GET /api/transactions/{id}/snapshot` (or similar) is
-   useful for verification, confirm and name the path; I will mirror
-   the existing controller's auth pattern
-   (`@AuthenticationPrincipal Jwt jwt`) and add no extra policy.
-5. **Q5 — Reuse `KafkaSourceMetadata` for read provenance?** It
-   currently lives in `kafka/` and is a write-time carrier. Reusing
-   it on read pulls a `kafka`-package type into a Kafka-free service
-   return. Default: introduce a small parallel
-   `service/KafkaProvenance` (no `kafka/` import). Confirm or ask me
-   to reuse.
-6. **Q6 — Guard against the older `TransactionService` document
-   shape coexisting in `txn`.** S1 short-circuits when
-   `record_type != 'transaction'`. Is that the right policy, or
-   should the read service ignore the field (riskier — it could mis-
-   read an older HTTP-style row that happens to have a `commit`
-   sub-field)? Default is the strict guard.
+1. **Q1 — Route choice.** Three reasonable options:
+   - **Default (proposed):** `GET /api/transactions/{id}/snapshot`.
+     Reads naturally as "the committed snapshot for this
+     transaction id"; cannot be confused with a future bare-id
+     endpoint that exposes only header status; cannot shadow the
+     existing literal `/open` and `/commit` POST mappings under
+     `/api/transactions`.
+   - **Alternative:** `GET /api/transactions/{id}` — shorter, but
+     a future "header-only status" GET would either need a different
+     path or break existing callers.
+   - **Alternative:** `GET /api/transactions/snapshot/{id}` — also
+     unambiguous but reads less naturally as a sub-resource.
+   Confirm `/api/transactions/{id}/snapshot`, or pick one of the
+   alternatives.
+2. **Q2 — JSON key style.** Default Jackson serialization on the
+   `@Immutable` snapshot classes will emit camelCase keys
+   (`txnId`, `commitId`, `messages[*].msgUuid`,
+   `messages[*].kafka.timestampMs`). The persisted Mongo records and
+   the Kafka message envelope use snake_case (`txn_id`, `commit_id`,
+   `msg_uuid`, `timestamp_ms`). For an HTTP read API, either is
+   defensible:
+   - **Default (proposed):** camelCase (no annotations), which is
+     consistent with `TransactionToken`/`CommitToken` shapes the
+     existing `TransactionController` already returns over the wire.
+   - **Alternative:** snake_case via
+     `@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy)` on
+     the three snapshot classes (or `@JsonProperty` per field), so
+     the HTTP body matches the storage / message-envelope vocabulary.
+     This is a one-annotation change with no semantic change to the
+     service.
+   Confirm camelCase, or ask for snake_case.
+3. **Q3 — Test strategy.** Default plan is the controller-level
+   Spock unit spec described in S3 (no Spring context). Two
+   alternatives if you want HTTP-layer coverage:
+   - **`@WebFluxTest(CommittedTransactionReadController)` slice**
+     under `src/test/groovy/.../controller/` with `@MockBean
+     CommittedTransactionReadService` and `WebTestClient`. Slices
+     don't load `SecurityConfig` by default, so the route can be
+     exercised without auth; alternatively `@Import(TestSecurityConfig)`
+     to engage the test JWT decoder.
+   - **Full integration spec** under
+     `src/integrationTest/groovy/.../controller/` using
+     `@SpringBootTest(webEnvironment=RANDOM_PORT)` +
+     `@AutoConfigureWebTestClient` + `KeycloakTestHelper.getAccessToken()`,
+     mirroring `DocumentListIntegrationTest`. This would exercise the
+     real security chain end-to-end against Mongo + Kafka + Keycloak,
+     at the cost of dragging in the full Docker stack.
+   Confirm the unit-only default, or pick one of the alternatives.
+4. **Q4 — Snapshot DTO location.** Per the accepted TASK-005
+   decision, snapshot return classes live in `service/`. Now that the
+   snapshot is also an HTTP response body, should they relocate to
+   `dto/`? Default: **no** (TASK-005 decision still applies; the
+   service is the producer and Jackson can serialize the existing
+   classes without relocation). If the director prefers to colocate
+   HTTP-shaped types in `dto/`, please confirm so I move them in the
+   same implementation turn.
+5. **Q5 — Per-id authorization / multi-tenant scoping.** The existing
+   `TransactionController` accepts the JWT but does not currently
+   gate writes by `org`/`grp`. The directive explicitly defers
+   authorization changes for TASK-006. Default: do not add
+   per-id/org/grp authorization — any authenticated principal can
+   read any committed snapshot. Confirm, or flag as a follow-up
+   task.
+6. **Q6 — Response on whitespace-only id.** When the path literally
+   matches (e.g. `/api/transactions/%20%20%20/snapshot`), the service
+   raises `IllegalArgumentException` and the global handler returns
+   400 with `ErrorResponse`. Default: keep that behavior; do not add
+   a duplicate inline check. Confirm.
 
 STOPPING here per orchestrator pre-work protocol — no implementation,
 no build/config/source/test/doc edits beyond this file.
