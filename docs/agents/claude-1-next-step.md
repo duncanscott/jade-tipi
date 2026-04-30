@@ -4,185 +4,464 @@ The developer writes pre-work plans here before implementation begins.
 
 STATUS: PRESENT
 
-## TASK-002 — Define Kafka transaction message vocabulary (pre-work)
+## TASK-003 — Persist Kafka transaction messages to txn (pre-work)
 
 ### Directive summary
 
 Per `DIRECTIVES.md` (signal `REQUEST_NEXT_STEP`) and
-`docs/orchestrator/tasks/TASK-002-kafka-transaction-message-vocabulary.md`
-(status `READY_FOR_PREWORK`), define the durable Kafka-first message contract
-for transaction-staged Jade-Tipi data submission. The directive expands my
-scope to the message DTOs, JSON schema, example messages, the architecture
-design note, the Kafka CLI, and the `UnitSpec` test if it blocks DTO
-verification.
+`docs/orchestrator/tasks/TASK-003-persist-kafka-transaction-messages.md`
+(status `READY_FOR_PREWORK`), build the first backend Kafka ingestion
+path. The Spring Boot application should consume canonical
+`org.jadetipi.dto.message.Message` records from a configurable Kafka
+topic pattern, validate them at the envelope/schema level, and persist
+them into MongoDB's `txn` collection as the durable transaction
+write-ahead log. Two record kinds live in `txn`:
 
-The pre-work goal is a plan only. Implementation must wait for the director
-to flip `TASK-002` to `READY_FOR_IMPLEMENTATION` or set the directive signal
-to `PROCEED_TO_IMPLEMENTATION`.
+- A header document keyed by `txn_id` (`record_type=transaction`).
+- One message document per received `Message` keyed by
+  `txn_id~msg_uuid` (`record_type=message`).
+
+`collection=txn/action=open` opens the header. `collection=txn/action=commit`
+stamps the header with a backend-generated orderable `commit_id` and
+marks it committed. All other valid `(collection, action)` pairs append
+data messages idempotently.
+
+This is pre-work only. No backend, build, or test code may change until
+the director moves `TASK-003` to `READY_FOR_IMPLEMENTATION` (or sets the
+global signal to `PROCEED_TO_IMPLEMENTATION`).
 
 ### Current baseline (read, not yet changed)
 
-- `libraries/jade-tipi-dto/src/main/java/org/jadetipi/dto/message/Message.java`
-  is a record `(txn, uuid, action, data)`. No `collection` field.
-- `Action` enum already contains `OPEN`, `ROLLBACK`, `COMMIT`, `CREATE`,
-  `UPDATE`, `DELETE`.
-- `Collection` enum already contains `ent`, `grp`, `lnk`, `uni`, `ppy`, `typ`,
-  `txn`, `vdn`, with per-collection valid actions (`txn` → open/rollback/commit,
-  others → create/update/delete).
-- `libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json`
-  requires `txn`, `uuid`, `action` only; no `collection`.
-- `libraries/jade-tipi-dto/src/main/resources/example/message/` contains
-  only `open-transaction.json`, which has no `collection` field.
-- `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/` contains only
-  `collections/UnitSpec.groovy` — no `message/` Spock tests yet. `UnitSpec`
-  has the `when:`-followed-by-`expect:` block-label issue noted in
-  `DIRECTIVES.md` (lines 47–60: `when: def units = …` then `expect: lines.size() == 812`).
+- `jade-tipi/build.gradle` has no Kafka dependency. It pulls
+  `spring-boot-starter-webflux`, `spring-boot-starter-data-mongodb-reactive`,
+  the project DTO/id libraries, Spock, and reactor-test. No
+  `spring-kafka`, no `reactor-kafka`, no Testcontainers.
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/` does not contain a
+  `kafka/` package yet. Existing leaf packages are
+  `config`, `controller`, `dto`, `endpoints`, `exception`, `filter`,
+  `mongo`, `service`, `util`.
+- `service/TransactionService.groovy` is the legacy HTTP-driven service.
+  It writes header documents into the `txn` collection with shape
+  `{ _id: <tipiId~org~grp>, grp:{organization,group}, txn:{id, secret, commit, open_seq, opened, commit_seq, committed} }`.
+  The legacy ID format (`tipiId~org~grp` produced by `IdGenerator.nextId()`
+  joined with org/grp) is structurally different from the canonical
+  `Transaction.getId()` (`uuid~org~grp~client`), so legacy headers and
+  new Kafka-produced headers will not collide on `_id`. The task says
+  do not refactor or delete this service.
+- `mongo/config/MongoDbInitializer.groovy` already creates the `txn`
+  collection (it iterates `Collection.values()` and creates each
+  abbreviation-named collection). No new collection creation needed.
+- `util/Constants.groovy` already exposes
+  `COLLECTION_TRANSACTIONS = 'txn'` and `TRANSACTION_ID_SEPARATOR = '~'`.
+  These are the only two constants new code needs from this file; the
+  others are document-collection-specific.
+- `application.yml` activates the `mongodb` profile by default and runs
+  on `${backendPort}`. There is no Kafka configuration block.
+- `application-mongodb.yml` configures the local Mongo connection
+  (`localhost:27017`, db `jdtp`). No Kafka section.
+- `docker/docker-compose.yml` defines a single Kafka broker
+  (`apache/kafka:4.1.1`) on `localhost:9092` with
+  `KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"`. The `kafka-init` sidecar
+  pre-creates exactly one topic: `jdtp_cli_kli` (single underscore form,
+  one partition). No `jdtp-txn-*` topic is pre-created locally.
 - `clients/kafka-kli/src/main/groovy/org/jadetipi/kafka/cli/KafkaCli.groovy`
-  builds messages with `Message.newInstance(txn, action, data)`. Open / rollback /
-  commit hardcode the transaction action; create / update / delete pass
-  through user data. No collection is set or read anywhere.
-- `clients/kafka-kli/src/test/` has only `resources/sample-message.json` (no
-  Spock specs). `sample-message.json` lacks `collection`.
-- `docs/architecture/kafka-transaction-message-vocabulary.md` already
-  describes the intended envelope, transaction record split, property
-  definitions vs. assignments, and the property-value object wrapping
-  convention. The plan below stays consistent with that note.
+  publishes to `DEFAULT_TOPIC = 'jdtp_cli_kli'`. This is the only Kafka
+  producer in the repo. Any local end-to-end test that uses `kli` to
+  produce will land messages on `jdtp_cli_kli` unless a different
+  `--topic` is passed.
+- `Message` is `(txn, uuid, collection, action, data)`. `Message.getId()`
+  returns `<txn.getId()>~<uuid>~<action>` (annotated `@JsonIgnore`).
+  `Message.validate()` runs JSON Schema validation against
+  `/schema/message.schema.json`.
+- `Transaction.getId()` is `<uuid>~<org>~<grp>~<client>` and is also
+  `@JsonIgnore`. This is the value the task calls `txn_id`.
+- Existing Mongo persistence patterns use `ReactiveMongoTemplate`
+  (`DocumentServiceMongoDbImpl`, `TransactionService`). The codebase is
+  WebFlux/reactive end-to-end.
+- `JadetipiApplicationTests.contextLoads` opens a Mongo connection, so
+  any new Spring-context test will require the Docker stack.
 
 ### Proposed plan
 
-1. **`Message` DTO — add `collection` as a first-class field.**
-   - Add `Collection collection` to the record between `uuid` and `action`,
-     producing `(txn, uuid, collection, action, data)`. Jackson order will
-     follow JSON property declarations.
-   - Update `Message.newInstance(...)` to take `Collection` and add a second
-     overload `newInstance(Transaction, Collection, Action, Map)` so
-     callers must declare collection explicitly. Remove the no-collection
-     overload to force the contract.
-   - `getId()` stays `<txn.getId()>~<uuid>~<action>`. Adding collection to
-     the ID is out of scope (no acceptance criterion requires it and changing
-     ID format risks breaking accepted TASK-001 expectations). Will note this
-     decision in the design doc.
-   - Equality stays on `(txn, uuid)`; collection does not affect identity.
+The minimum implementation to satisfy acceptance criteria has four
+seams: build dependency, configuration, Kafka listener, and
+persistence service (plus tests). I propose the layout below.
 
-2. **`message.schema.json` — require and validate `collection`.**
-   - Add `collection` to `required`.
-   - Add `Collection` `$defs` enum mirroring the eight abbreviations.
-   - Encode action/collection compatibility with a top-level
-     `allOf`: `if collection == "txn" then action ∈ {open, rollback, commit}`
-     and `if collection ∈ {ent, ppy, lnk, uni, grp, typ, vdn} then
-     action ∈ {create, update, delete}`. This mirrors `Collection.getActions()`
-     and is "valid action/collection combinations where practical" from the
-     acceptance criteria.
-   - Update the `examples` block at the bottom to a coherent transaction
-     flow consistent with the new example files.
+#### 1. Build & dependency (`jade-tipi/build.gradle`)
 
-3. **Example messages — full early transaction flow under
-   `libraries/jade-tipi-dto/src/main/resources/example/message/`.**
+- Add a single new runtime/compile dependency:
+  `implementation 'org.springframework.kafka:spring-kafka'`. Spring
+  Boot's BOM (3.5.6) pins a compatible version, so no explicit version
+  is needed. Spring Kafka brings the `kafka-clients` it needs.
+- Reason for `spring-kafka` (not `reactor-kafka`): the rest of the
+  codebase already uses Spring annotations (`@Service`, `@Component`,
+  `@KafkaListener` is the natural counterpart). The listener thread can
+  call `ReactiveMongoTemplate` operations and `.block()` to integrate
+  with the reactive persistence layer, since the Spring Kafka container
+  thread is not a Reactor Netty event loop. This keeps the surface
+  small and matches existing Spock-with-mocks test style. I will
+  surface `reactor-kafka` as an alternative in the open questions.
+- No test dependency on Testcontainers or `spring-kafka-test` for this
+  task — see verification section.
 
-   Add seven files using a stable, ordered naming convention so they read
-   as a sequence:
-   - `01-open-transaction.json` — `collection=txn`, `action=open`,
-     `data.description`.
-   - `02-create-property-definition.json` — `collection=ppy`,
-     `action=create`, `data.kind=definition`, `data.value_schema`
-     describing a `text` scalar wrapper.
-   - `03-create-property-definition-numeric.json` — second `ppy`
-     definition demonstrating the `{number, unit_id}` wrapper.
-   - `04-create-entity-type.json` — `collection=typ`, `action=create`.
-   - `05-update-entity-type-add-property.json` — `collection=typ`,
-     `action=update`, `data.operation=add_property`,
-     `data.property_id`, `data.required=true`.
-   - `06-create-entity.json` — `collection=ent`, `action=create`,
-     `data.type_id`.
-   - `07-assign-property-value-text.json` — `collection=ppy`,
-     `action=create`, `data.kind=assignment`, `data.value={"text": "barcode-1"}`.
-   - `08-assign-property-value-number.json` — companion assignment using
-     `{"number": 10, "unit_id": "…"}`.
-   - `09-commit-transaction.json` — `collection=txn`, `action=commit`.
+#### 2. Configuration
 
-   All examples will share the same `txn.uuid` and reference IDs that match
-   the design note's `lbl_gov~jgi_pps~…~pp~…` pattern.
+- Add a new `application.yml` block:
 
-4. **DTO tests — `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`.**
-   - Round-trip each bundled example through `JsonMapper` → `Message` → JSON
-     and assert `collection` survives.
-   - Call `message.validate()` on each example and assert no exception.
-   - Negative cases: missing `collection`, unknown collection abbreviation,
-     mismatched pair (`collection=txn` with `action=create`,
-     `collection=ppy` with `action=open`) — assert `ValidationException`.
-   - Property-value-shape sanity: an example assignment whose `data.value`
-     is a string (not an object) is allowed by the generic `SnakeCaseValue`
-     today; the schema does not constrain `data` shape at the top level.
-     Document this as a known gap rather than tightening here (full
-     reference validation is `OUT_OF_SCOPE`).
+  ```yaml
+  spring:
+    kafka:
+      bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+      consumer:
+        group-id: ${KAFKA_CONSUMER_GROUP:jadetipi-txn-ingest}
+        auto-offset-reset: earliest
+        enable-auto-commit: false
+        key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+      listener:
+        ack-mode: RECORD
+  jadetipi:
+    kafka:
+      txn-topic-pattern: ${KAFKA_TXN_TOPIC_PATTERN:jdtp-txn-.*|jdtp_cli_kli}
+      enabled: ${KAFKA_INGEST_ENABLED:true}
+  ```
 
-5. **Kafka CLI — pass `collection` through and never drop it.**
-   - `open`, `rollback`, `commit` handlers: hardcode
-     `Collection.TRANSACTION` when constructing the `Message`.
-   - `create`, `update`, `delete` handlers (`handleEntityAction`): add a
-     required `--collection` (`-c`) option accepting any of the eight
-     abbreviations; parse via `Collection.fromJson` and fail with a clear
-     error on unknown values. Adjust help text accordingly.
-   - `publish` handler: rely on Jackson to deserialize `collection` from
-     the input file. Add an explicit check that the parsed `Message.collection()`
-     is non-null before publishing so we surface a missing field instead
-     of silently dropping it.
-   - Update `clients/kafka-kli/src/test/resources/sample-message.json` to
-     include `"collection": "txn"` (it represents an `open` action).
-   - Add `clients/kafka-kli/src/test/groovy/org/jadetipi/kafka/cli/KafkaCliMessageSpec.groovy`
-     covering: parsing `sample-message.json` preserves `collection`;
-     `Message.newInstance(txn, Collection.PROPERTY, Action.CREATE, [:])`
-     serializes with the field set. No live Kafka producer in the test —
-     spec only exercises the message-shape side.
+  - Default pattern accepts the design target (`jdtp-txn-.*`) **and**
+    the only topic the local docker stack creates (`jdtp_cli_kli`).
+    This is the explicit "account for current Docker/local topic
+    naming" call from the acceptance criteria. The pattern can be
+    narrowed in production via env var.
+  - `enabled` is a kill switch so the existing
+    `JadetipiApplicationTests.contextLoads` test (which already needs
+    Mongo running) does not also start hitting Kafka. The test profile
+    will set `jadetipi.kafka.enabled=false` (see §6).
+  - `ack-mode: RECORD` plus `enable-auto-commit: false` means the
+    listener container only commits the offset after the listener
+    method returns successfully, giving us at-least-once semantics
+    paired with idempotent Mongo writes.
+  - Manual offset commit on a per-record basis is the simplest model
+    that satisfies "duplicate Kafka delivery with the same message
+    content should be treated as success" without exactly-once.
+- New file
+  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/kafka/KafkaIngestProperties.groovy`
+  (`@ConfigurationProperties("jadetipi.kafka")`) with two fields:
+  `String txnTopicPattern` and `boolean enabled` (default true). This
+  binds cleanly with `@EnableConfigurationProperties` and avoids
+  `@Value` strings sprinkled in the listener.
 
-6. **`UnitSpec` block-label fix — only if it blocks DTO verification.**
-   - Current code uses `given: … when: units = lines.collect { … } expect: … and: units.each { it.validate() }`. Spock disallows `expect:` after
-     `when:`. Restructure to `given: <setup including the collect step> expect:
-     <assertions> and: <more> and: <validate-each>`. Touch only this single
-     test method; keep the other test methods untouched.
-   - Will only land this fix as part of TASK-002 if running
-     `./gradlew :libraries:jade-tipi-dto:test` actually fails on this issue;
-     otherwise I will leave it alone and report it separately as the
-     directive instructs.
+#### 3. Kafka listener (`jade-tipi/.../kafka/`)
 
-7. **Architecture doc updates.**
-   - Edit `docs/architecture/kafka-transaction-message-vocabulary.md` to
-     reflect the final decisions: collection is a top-level required field,
-     `getId()` does not include collection, the schema constrains
-     action/collection pairings, and the example file set is the canonical
-     reference flow.
+New package
+`jade-tipi/src/main/groovy/org/jadetipi/jadetipi/kafka/`:
+
+- `TransactionMessageListener.groovy` — `@Component` with a single
+  `@KafkaListener(topicPattern = "#{jadetipiKafkaProperties.txnTopicPattern}", autoStartup = "#{jadetipiKafkaProperties.enabled}")`
+  method. Signature:
+
+  ```groovy
+  void onMessage(ConsumerRecord<String, byte[]> record, Acknowledgment ack)
+  ```
+
+  Steps:
+  1. Deserialize `record.value()` to `Message` via the project's
+     `org.jadetipi.dto.util.JsonMapper`. On parse failure, log error
+     with topic/partition/offset/key, ack the record (poison-pill
+     skip), and return. This avoids stalling the consumer on a single
+     bad message; alternative behavior — DLQ or fail-stop — is an open
+     question for the director.
+  2. Call `message.validate()`. On `ValidationException`, log the
+     validation result and ack-skip the record (same rationale).
+  3. Build a `KafkaSourceMetadata` value object
+     (`{ topic, partition, offset, timestamp }`).
+  4. Call `transactionMessagePersistenceService.persist(message, metadata)`
+     and `.block(Duration)` for the result. The block timeout
+     (`txn.persist.timeout`, default 30s) is configurable.
+  5. On success, `ack.acknowledge()`.
+  6. On failure, log and **do not** ack; let the listener container
+     re-deliver. (Spring Kafka with `ack-mode: RECORD` and a thrown
+     exception triggers default error handler retries; we will rely on
+     Spring's `DefaultErrorHandler` in this first cut and not customize
+     the back-off in this task.)
+- `KafkaSourceMetadata.groovy` — small Groovy record-style class
+  capturing `topic`, `partition`, `offset`, `timestampMs`. Lives next
+  to the listener so the persistence service does not depend on Kafka
+  client classes.
+
+The listener is the only file in `kafka/` that imports
+`org.apache.kafka.*` or `org.springframework.kafka.*`. The persistence
+service stays Kafka-free, satisfying the design note: "Prefer a small
+service boundary with no Kafka or HTTP imports".
+
+#### 4. Persistence service (`jade-tipi/.../service/`)
+
+New `service/TransactionMessagePersistenceService.groovy`. Public API:
+
+```groovy
+Mono<PersistResult> persist(Message message, KafkaSourceMetadata source)
+```
+
+`PersistResult` enum: `OPENED`, `OPEN_CONFIRMED_DUPLICATE`, `APPENDED`,
+`APPEND_DUPLICATE`, `COMMITTED`, `COMMIT_DUPLICATE`. (Plain enum, no
+Kafka/HTTP types.)
+
+Internal flow:
+
+- Compute `txnId = message.txn().getId()`.
+- Compute `recordId = txnId + "~" + message.uuid()` for data messages.
+- Branch by `(collection, action)`:
+  - **`txn`/`open`**: upsert a header document with `_id = txnId`,
+    `record_type = "transaction"`, `txn_id = txnId`, `state = "open"`,
+    `opened_at = now()` (server time on insert), and the same
+    `data` payload from the open message under `data`. Use
+    `mongoTemplate.upsert(query, update, COLLECTION_TXN)` with
+    `setOnInsert` for `opened_at` so a re-delivered open does not
+    rewrite the original timestamp. If a header already has
+    `state = "committed"`, return `OPEN_CONFIRMED_DUPLICATE` (no
+    error — operator already saw a commit) and log a warning.
+    Otherwise return `OPENED` for first-write or
+    `OPEN_CONFIRMED_DUPLICATE` for an existing open header.
+  - **`txn`/`commit`**: read existing header by `_id = txnId`. If
+    missing, return error (commit before open is a hard envelope-level
+    failure that should be reported). If `state == "committed"`,
+    treat as duplicate — return `COMMIT_DUPLICATE` and reuse the
+    stored `commit_id`. Otherwise generate a new `commit_id` via
+    `idGenerator.nextId()` (already a Spring bean in
+    `IdGeneratorConfig`; it produces an orderable, sortable ID — same
+    approach the legacy `TransactionService` uses for its commit_seq).
+    Update the header in one Mongo call with `state = "committed"`,
+    `commit_id`, `committed_at`, and the commit message's `data`
+    payload under `commit_data`. Return `COMMITTED`.
+  - **`txn`/`rollback`**: explicitly out of the acceptance criteria.
+    For first cut: log info, write nothing, return a new
+    `ROLLBACK_NOT_PERSISTED` result. Acknowledged in OOS already; I
+    will not invent rollback semantics here.
+  - **All non-`txn` collections** (`ent`, `ppy`, `typ`, `lnk`, `uni`,
+    `grp`, `vdn` × `create|update|delete`): build a message document
+    with `_id = recordId`, `record_type = "message"`, `txn_id`,
+    `msg_uuid`, `collection`, `action`, `data`, `received_at`, and
+    a `kafka` sub-doc `{ topic, partition, offset, timestamp_ms }`.
+    Insert with `mongoTemplate.insert(...)`. On
+    `DuplicateKeyException`:
+      1. `findById(recordId)` to retrieve the existing document.
+      2. Compare `collection`, `action`, and `data` against incoming
+         values. If equal, return `APPEND_DUPLICATE` (success).
+      3. If different, return error `ConflictingDuplicateException`
+         with both stored and incoming summaries in the message. The
+         listener will surface this clearly in the log; we do not
+         ack-skip on conflicts.
+- The service does **not** call `IdGenerator` for `txn_id` (per design
+  note), only for `commit_id`.
+
+Reactive shape: every step returns `Mono`, no `.block()` inside the
+service. The listener does the single bounded `.block()` so we do not
+mix Reactor and Spring-Kafka threading models inside the service.
+
+#### 5. Tests (mocked, no Docker, no live Kafka)
+
+`jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/TransactionMessagePersistenceServiceSpec.groovy`
+— Spock spec with mocked `ReactiveMongoTemplate` and mocked
+`IdGenerator`. Cases (matches acceptance criteria one-for-one):
+
+1. `txn/open` first time → `OPENED`, upsert called with insert-only
+   `opened_at`, `state=open`.
+2. `txn/open` re-delivery on existing open header →
+   `OPEN_CONFIRMED_DUPLICATE`, no `opened_at` rewrite.
+3. `txn/open` after commit → `OPEN_CONFIRMED_DUPLICATE` with
+   warning-level log assertion (optional).
+4. Data message first time → `APPENDED`, insert called with
+   `record_type=message`, `_id = txnId~msgUuid`, kafka metadata.
+5. Data message duplicate, equal payload → `APPEND_DUPLICATE` (no
+   error).
+6. Data message duplicate, different payload → fails the `Mono` with
+   `ConflictingDuplicateException`.
+7. `txn/commit` first time → `COMMITTED`, header updated with
+   `commit_id` from mocked `IdGenerator.nextId()`, `state=committed`,
+   `committed_at`.
+8. `txn/commit` duplicate → `COMMIT_DUPLICATE`, no second
+   `idGenerator.nextId()` call.
+9. `txn/commit` before open → `Mono.error(IllegalStateException)`.
+
+Listener-level test (lighter):
+`jade-tipi/src/test/groovy/org/jadetipi/jadetipi/kafka/TransactionMessageListenerSpec.groovy`
+— mocks the persistence service and the `Acknowledgment`, feeds
+synthetic `ConsumerRecord<String, byte[]>` instances. Cases:
+
+1. Valid message → service called with parsed `Message` plus
+   metadata, ack acknowledged once, no exception.
+2. Unparseable bytes → service not called, ack acknowledged
+   (poison-pill skip), warning logged.
+3. Schema-invalid message → service not called, ack acknowledged.
+4. Service returns error → ack **not** called; exception propagates.
+
+No Kafka broker, no embedded Kafka, no `spring-kafka-test`. These are
+unit-style Spock specs constructing `ConsumerRecord` directly.
+
+#### 6. Test-profile behavior
+
+The existing `application-test.*` profile is implicit (no file). To
+prevent `JadetipiApplicationTests.contextLoads` from booting a
+listener that immediately fails on a missing broker:
+
+- Add `jade-tipi/src/test/resources/application-test.yml` with:
+
+  ```yaml
+  jadetipi:
+    kafka:
+      enabled: false
+  spring:
+    kafka:
+      bootstrap-servers: localhost:9092
+  ```
+
+  The `enabled=false` flag flips `autoStartup` on the `@KafkaListener`,
+  so the consumer container is created but does not poll. The Mongo
+  context-load behavior of the test stays unchanged.
+- Confirm `@ActiveProfiles("test")` is already on
+  `JadetipiApplicationTests` (it is). This is the only change needed.
+
+#### 7. Optional: Kafka integration test
+
+The acceptance criteria say a Kafka integration test should be added
+"only if it is practical with the existing Docker/Testcontainers
+setup." The repo has no Testcontainers wiring and the docker stack is
+operator-launched. I will add an opt-in integration test under
+`jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/TransactionMessageIngestIntegrationSpec.groovy`
+that:
+
+- Is annotated `@EnabledIfEnvironmentVariable(named = "KAFKA_BOOTSTRAP_SERVERS", matches = ".+")`
+  so it stays skipped in CI / on developer machines without the docker
+  stack up.
+- Produces synthetic open + data + commit messages to a per-test
+  topic name (`jdtp-txn-itest-${uuid}`) using the
+  `kafka-clients` `KafkaProducer` directly.
+- Asserts the resulting `txn` collection contains the expected header
+  and message documents using `ReactiveMongoTemplate`.
+
+This single optional integration test is the only file I plan to add
+under `integrationTest/`. If the director would prefer to defer the
+integration test entirely until a Testcontainers wiring exists, I will
+drop it.
+
+#### 8. Documentation
+
+- Update
+  `docs/orchestrator/tasks/TASK-003-persist-kafka-transaction-messages.md`
+  `LATEST_REPORT` (allowed by the task's own `OWNED_PATHS`) at the end
+  of the implementation turn to record the as-built shape, the
+  effective topic pattern default, and any deferred items.
+
+### Proposed file changes (all inside expanded scope)
+
+- `jade-tipi/build.gradle` — add `spring-kafka` dependency.
+- `jade-tipi/src/main/resources/application.yml` — add `spring.kafka`
+  block and `jadetipi.kafka.*` properties.
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/kafka/KafkaIngestProperties.groovy`
+  (new).
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/kafka/KafkaSourceMetadata.groovy`
+  (new).
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/kafka/TransactionMessageListener.groovy`
+  (new).
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/TransactionMessagePersistenceService.groovy`
+  (new).
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/PersistResult.groovy`
+  (new enum) and a small
+  `ConflictingDuplicateException.groovy` under `service/` or
+  `exception/`. (Will pick `exception/` if the existing convention
+  goes there — to confirm during implementation, no scope question.)
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/TransactionMessagePersistenceServiceSpec.groovy`
+  (new).
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/kafka/TransactionMessageListenerSpec.groovy`
+  (new).
+- `jade-tipi/src/test/resources/application-test.yml` (new, only sets
+  `jadetipi.kafka.enabled=false`).
+- `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/TransactionMessageIngestIntegrationSpec.groovy`
+  (new, env-gated; optional and droppable).
+- `docs/orchestrator/tasks/TASK-003-persist-kafka-transaction-messages.md`
+  — update `LATEST_REPORT` only at end of implementation.
+
+No legacy code is touched: `TransactionService`, `TransactionController`,
+`IdGenerator`, and the rest of the existing service/mongo packages are
+left exactly as-is.
 
 ### Verification I plan to run after implementation
 
-- `./gradlew :libraries:jade-tipi-dto:test` — must compile and pass with the
-  new `MessageSpec` and any restructured `UnitSpec`.
-- `./gradlew :clients:kafka-kli:test` (and `:build`) — must compile and
-  pass the new CLI message spec.
-- No Docker stack required for these targets; both modules avoid the
-  Mongo `contextLoads` path that bites the full `./gradlew test` run.
+- `./gradlew :jade-tipi:compileGroovy` (acceptance-criterion-required)
+  — must pass.
+- `./gradlew :jade-tipi:test` — must pass. This will run the new Spock
+  specs **and** `JadetipiApplicationTests.contextLoads`. The
+  `contextLoads` test still requires `docker compose -f
+  docker/docker-compose.yml up` (Mongo); I will start the docker stack
+  before running it, per `DIRECTIVES.md` and `CLAUDE.md`. If the
+  director would prefer that I run only the new specs (e.g.
+  `./gradlew :jade-tipi:test --tests '*TransactionMessage*'`) to avoid
+  the Mongo dependency for the verification report, please say so.
+- `./gradlew :jade-tipi:integrationTest` — only if the Kafka
+  integration test is kept and the docker stack is up. The new test is
+  env-gated so it skips silently when `KAFKA_BOOTSTRAP_SERVERS` is
+  unset.
+- A short manual end-to-end check using the existing `kli` CLI: open
+  → create message → commit against a local broker, then inspect the
+  `txn` collection to confirm the documents (`record_type=transaction`
+  header with `state=committed` and a `commit_id`, plus one
+  `record_type=message` document with kafka metadata). This is for my
+  own verification — I will not require it to be reproducible by the
+  director and I will skip it if the local stack is not available.
 
 ### Blockers / open questions for the director
 
-1. **Action–collection compatibility encoded in the schema.** Acceptance
-   criteria call this out "where practical." My plan encodes the two clear
-   buckets (`txn` vs. everything else) using JSON Schema `if/then/allOf`.
-   If the director would rather keep the schema permissive and rely solely
-   on Java-side `Collection.getActions()` for enforcement, please say so
+1. **Topic pattern default.** I propose
+   `jdtp-txn-.*|jdtp_cli_kli` so the existing `kli`-produced traffic
+   on `jdtp_cli_kli` flows into the consumer without any docker
+   change. The alternative is to leave the default as the strict
+   design target `jdtp-txn-.*` and update the docker `kafka-init`
+   sidecar to also pre-create `jdtp-txn-default`. The docker
+   directory is **not** in TASK-003's owned paths, so I cannot do the
+   second approach unilaterally. Confirm whether the
+   "include `jdtp_cli_kli` in the default pattern" approach is
+   acceptable, or expand scope to let me touch
+   `docker/docker-compose.yml`.
+
+2. **`spring-kafka` vs `reactor-kafka`.** I default to `spring-kafka`
+   for the reasons in §3. `reactor-kafka` would let us stay
+   non-blocking end-to-end (no `.block()` between listener and
+   persistence service) but adds a dependency the project has never
+   used and a steeper learning curve in tests. Confirm the choice
    before implementation.
-2. **`collection` for property assignment messages.** The design note keeps
-   assignments under `ppy` and distinguishes definition vs. assignment via
-   `data.kind`. The plan follows that. Please confirm this is still
-   preferred over (for example) introducing a dedicated assignment
-   collection now.
-3. **Should `Message.getId()` change?** I plan to leave it alone. Adding
-   collection to the ID would be a wider compatibility break than this
-   task asks for, and TASK-001 was accepted with the current shape. Flag
-   if you want it included.
-4. **`--collection` UX in the CLI.** I plan to require `--collection` on
-   `create`, `update`, and `delete`, accepting only the eight abbreviations
-   (no full names) for a tight contract. Confirm before I land it; the
-   alternative is making it optional with a sensible default
-   (e.g., `ent`), which I think is worse but is reversible.
+
+3. **`commit_id` generator.** The task says transaction IDs are
+   client-composed and "do not call `IdGenerator` for transaction
+   IDs". I read that as scoped to `txn_id`. For the backend-generated,
+   orderable `commit_id` I plan to call `IdGenerator.nextId()` (the
+   same orderable IDs the legacy `TransactionService` uses for
+   commit_seq). Please confirm; if the director wants a different
+   commit-id strategy (e.g. a monotonic Mongo `findAndModify` counter
+   or a UUIDv7), I will switch.
+
+4. **Poison-pill behavior on parse/validate failure.** I propose
+   ack-and-skip with a warning log. The alternative — fail-stop the
+   consumer or DLQ — is more conservative but more code and not
+   requested by acceptance criteria. Confirm ack-and-skip.
+
+5. **Conflicting duplicate behavior.** When a Mongo `_id` collision
+   carries a different payload than the existing record, I propose
+   surfacing a `ConflictingDuplicateException` and leaving the record
+   un-acked (so the listener container retries). The alternative —
+   ack and only log — silently accepts data loss. Confirm error-out
+   semantics.
+
+6. **`txn/commit` arriving before `txn/open`.** I propose erroring
+   out (the listener does not ack, retries kick in). The alternative
+   — open the header lazily on commit — masks ordering bugs. Confirm
+   error-out.
+
+7. **`txn/rollback`.** Acceptance criteria do not mention rollback.
+   I plan to log+ignore (return `ROLLBACK_NOT_PERSISTED`) rather than
+   delete or mark the header. Confirm log-and-ignore is acceptable.
+
+8. **Optional Kafka integration test under `integrationTest/`.**
+   Should I include the env-gated Kafka integration spec described in
+   §7, or defer all integration coverage until Testcontainers wiring
+   is added in a later task?
 
 STOPPING here per orchestrator pre-work protocol — no implementation,
-no DTO/schema/CLI/test edits, no doc edits beyond this file.
+no build/config/source/test edits, no doc edits beyond this file.
