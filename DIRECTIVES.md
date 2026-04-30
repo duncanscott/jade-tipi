@@ -1,16 +1,16 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
-Begin the backend Kafka-first ingestion path. `TASK-003` should plan how the Spring Boot backend will consume canonical Jade-Tipi `Message` records from Kafka and persist them into MongoDB's `txn` collection as the durable transaction write-ahead log.
+Begin the backend Kafka-first ingestion path. `TASK-003` is approved for implementation: the Spring Boot backend should consume canonical Jade-Tipi `Message` records from Kafka and persist them into MongoDB's `txn` collection as the durable transaction write-ahead log.
 
 ## Active Task
 
 - `TASK-003`: Persist Kafka transaction messages to txn
 - Owner: `claude-1`
-- Current status: `READY_FOR_PREWORK`
+- Current status: `READY_FOR_IMPLEMENTATION`
 
 ## Scope Expansion
 
@@ -26,7 +26,17 @@ For `TASK-003`, `claude-1` may inspect and propose changes within:
 - `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/`
 - `docs/orchestrator/tasks/TASK-003-persist-kafka-transaction-messages.md`
 
-The pre-work response should propose the smallest implementation plan that validates and persists Kafka messages to `txn`. Do not begin implementation until the director moves `TASK-003` to `READY_FOR_IMPLEMENTATION`.
+Implement the smallest backend path that validates and persists Kafka messages to `txn`. Keep changes inside the scope expansion above and record the implementation outcome in the task report.
+
+## TASK-003 Director Decisions
+
+- Use `spring-kafka` for this first implementation. Keep the persistence service Kafka-free and HTTP-free.
+- Default the Kafka topic pattern to include both `jdtp-txn-.*` and the current local topic `jdtp_cli_kli`; do not edit `docker/docker-compose.yml` in this task.
+- Use `IdGenerator.nextId()` only for `commit_id`; transaction IDs must come from `Message.txn`.
+- Acknowledge and log malformed or schema-invalid messages. Do not acknowledge persistence failures, conflicting duplicates, or `txn/commit` before `txn/open`.
+- Treat `txn/rollback` as an explicit no-op result for now; do not implement rollback semantics.
+- Update the existing `jade-tipi/src/test/resources/application-test.yml` to disable Kafka listener startup in tests.
+- Defer the optional Kafka integration test unless it can use or create a topic reliably with the documented Docker setup. Unit tests for the persistence service and listener are enough for this turn.
 
 ## Known Baseline
 

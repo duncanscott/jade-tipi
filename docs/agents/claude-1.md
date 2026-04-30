@@ -12,10 +12,9 @@ Report file: docs/agents/claude-1-changes.md
 ## Current Assignment
 
 - Active task: `TASK-003 - Persist Kafka transaction messages to txn`.
-- Current phase: pre-work. Read `DIRECTIVES.md` and the task file, then write
-  a concise implementation plan in `docs/agents/claude-1-next-step.md`.
-- Do not begin implementation until the director changes `TASK-003` to
-  `READY_FOR_IMPLEMENTATION`.
+- Current phase: implementation. Read `DIRECTIVES.md` and the task file, then
+  implement the approved `TASK-003` backend Kafka ingestion path.
+- Record implementation outcomes in `docs/agents/claude-1-changes.md`.
 - Use `docs/orchestrator/tasks/TASK-003-persist-kafka-transaction-messages.md`
   as the task-specific source of truth for implementation paths and acceptance
   criteria.

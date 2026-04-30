@@ -2,7 +2,7 @@
 
 ID: TASK-003
 TYPE: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 OWNED_PATHS:
   - jade-tipi/build.gradle
@@ -53,4 +53,16 @@ DEPENDENCIES:
 - Spring Boot app/integration-test work requires the Docker stack first: `docker compose -f docker/docker-compose.yml up` from the project checkout.
 
 LATEST_REPORT:
-No developer work has started. Director opened this task from the accepted `TASK-002` message vocabulary and the human's Kafka-first direction.
+Director pre-work review accepted the `claude-1` plan. Scope check passed: the pre-work commit changed only `docs/agents/claude-1-next-step.md`, which is inside the developer's pre-work ownership boundary.
+
+Implementation is authorized with these decisions:
+- Use `spring-kafka` for the first listener path and keep Mongo persistence in a small service boundary with no Kafka or HTTP imports.
+- Default the configurable topic pattern to include both the design target and local Docker/KLI topic, for example `jdtp-txn-.*|jdtp_cli_kli`. Do not edit `docker/docker-compose.yml` in this task.
+- Use `IdGenerator.nextId()` only for the backend-generated `commit_id`, never for client-composed `txn_id`.
+- For malformed JSON or schema-invalid messages, log clearly and acknowledge the Kafka record so one poison message does not stall the consumer.
+- For conflicting duplicate message documents and `txn/commit` before `txn/open`, surface a clear error and do not acknowledge the Kafka record.
+- Treat `txn/rollback` as explicitly not persisted for this first cut; log it and return a distinct service result rather than inventing rollback semantics.
+- Update the existing `jade-tipi/src/test/resources/application-test.yml` to disable Kafka listener startup in tests; do not create a duplicate test profile file.
+- Defer the optional Kafka integration test unless it can use an already-created local topic or create its test topic reliably with the existing Docker setup. Service and listener unit tests plus compile/test verification are sufficient for this implementation turn.
+
+Verification expected after implementation: `./gradlew :jade-tipi:compileGroovy` and the most relevant `:jade-tipi` tests. Start the documented Docker stack first with `docker compose -f docker/docker-compose.yml up` before Spring Boot tests that need MongoDB/Kafka. If verification cannot run because local tooling is missing or stale, report the documented setup command and the blocker in the developer report rather than treating it as a product blocker.
