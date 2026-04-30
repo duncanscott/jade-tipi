@@ -11,12 +11,16 @@ Report file: docs/agents/claude-1-changes.md
 
 ## Current Assignment
 
-- Active task: `TASK-003 - Persist Kafka transaction messages to txn`.
-- Current phase: implementation. Read `DIRECTIVES.md` and the task file, then
-  implement the approved `TASK-003` backend Kafka ingestion path.
-- Record implementation outcomes in `docs/agents/claude-1-changes.md`.
-- Use `docs/orchestrator/tasks/TASK-003-persist-kafka-transaction-messages.md`
-  as the task-specific source of truth for implementation paths and acceptance
+- Active task: `TASK-004 - Add Kafka transaction ingest integration coverage`.
+- Current phase: pre-work. Read `DIRECTIVES.md` and the task file, then
+  propose the smallest reliable Docker-backed integration-test strategy for the
+  accepted Kafka ingestion path. Do not implement until the director moves the
+  task to `READY_FOR_IMPLEMENTATION`.
+- Record pre-work in `docs/agents/claude-1-next-step.md`; record implementation
+  outcomes in `docs/agents/claude-1-changes.md` only after implementation is
+  approved.
+- Use `docs/orchestrator/tasks/TASK-004-kafka-transaction-ingest-integration-test.md`
+  as the task-specific source of truth for pre-work paths and acceptance
   criteria.
 
 ## Owned Paths

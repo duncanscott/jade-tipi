@@ -2,8 +2,10 @@
 
 ID: TASK-003
 TYPE: implementation
-STATUS: IMPLEMENTATION_COMPLETE
+STATUS: ACCEPTED
 OWNER: claude-1
+NEXT_TASK:
+  - TASK-004
 OWNED_PATHS:
   - jade-tipi/build.gradle
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/config/
@@ -55,6 +57,16 @@ DEPENDENCIES:
 - Spring Boot app/integration-test work requires the Docker stack first: `docker compose -f docker/docker-compose.yml up` from the project checkout.
 
 LATEST_REPORT:
+Director implementation review on 2026-04-30:
+- Accepted claude-1 implementation commit `93e7e12`.
+- Findings: no blocking bugs, regressions, or missing assertions found in the reviewed service/listener/test changes.
+- Scope check passed. The implementation changed `docs/agents/claude-1-changes.md` plus task-authorized backend/config/test paths and this task file; no edits were found outside claude-1's owned report path or the `TASK-003` scope expansion.
+- Acceptance criteria are satisfied: backend Spring Kafka dependency/config exists, the listener deserializes canonical `Message` values through `JsonMapper`, validates via `Message.validate()`, acknowledges malformed/schema-invalid poison pills, leaves persistence failures unacknowledged, and delegates to a Kafka-free/HTTP-free persistence service.
+- The persistence service writes the required `txn` header and message record kinds, uses client-composed `Message.txn.getId()` for `txn_id`, uses `IdGenerator.nextId()` only for `commit_id`, handles open/append/commit duplicate paths, reports conflicting data-message duplicates, and treats rollback as an explicit no-op result per directive.
+- Tests cover the requested persistence and listener behavior at unit level. The optional Kafka integration test remains deferred; `TASK-004` is opened to add Docker-backed end-to-end coverage for the newly accepted ingest path.
+- Director verification passed for `./gradlew :jade-tipi:compileGroovy`.
+- Director rerun of targeted tests was blocked by local tooling/sandbox access, not a product failure: `./gradlew :jade-tipi:test --tests '*TransactionMessage*'` and `./gradlew :jade-tipi:compileTestGroovy` failed before build configuration because the Gradle wrapper could not open `/Users/duncanscott/.gradle/wrapper/dists/gradle-8.14.3-bin/.../gradle-8.14.3-bin.zip.lck` (`Operation not permitted`). Docker inspection was also blocked by Docker socket permissions. In a normal developer shell, use the documented setup/verification sequence: `docker compose -f docker/docker-compose.yml up -d mongodb`, then `./gradlew :jade-tipi:test`.
+
 Implementation completed by `claude-1` on branch `claude-1`.
 
 As-built shape:

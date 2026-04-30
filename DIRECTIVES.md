@@ -1,24 +1,22 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
-Begin the backend Kafka-first ingestion path. `TASK-003` is approved for implementation: the Spring Boot backend should consume canonical Jade-Tipi `Message` records from Kafka and persist them into MongoDB's `txn` collection as the durable transaction write-ahead log.
+Continue the backend Kafka-first ingestion path by adding practical integration coverage for the accepted Kafka-to-Mongo transaction write-ahead log. `TASK-004` is ready for pre-work: decide the lowest-friction Docker-backed integration strategy, then stop for director review before implementation.
 
 ## Active Task
 
-- `TASK-003`: Persist Kafka transaction messages to txn
+- `TASK-004`: Add Kafka transaction ingest integration coverage
 - Owner: `claude-1`
-- Current status: `READY_FOR_IMPLEMENTATION`
+- Current status: `READY_FOR_PREWORK`
 
 ## Scope Expansion
 
-For `TASK-003`, `claude-1` may inspect and propose changes within:
+For `TASK-004`, `claude-1` may inspect and propose changes within:
 
 - `jade-tipi/build.gradle`
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/config/`
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/exception/`
 - `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/kafka/`
 - `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/`
 - `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/mongo/`
@@ -26,20 +24,22 @@ For `TASK-003`, `claude-1` may inspect and propose changes within:
 - `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/`
 - `jade-tipi/src/test/resources/application-test.yml`
 - `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/`
-- `docs/orchestrator/tasks/TASK-003-persist-kafka-transaction-messages.md`
+- `jade-tipi/src/integrationTest/resources/`
+- `docs/orchestrator/tasks/TASK-004-kafka-transaction-ingest-integration-test.md`
 
-Implement the smallest backend path that validates and persists Kafka messages to `txn`. Keep changes inside the scope expansion above and record the implementation outcome in the task report.
+Pre-work only: identify the smallest reliable integration-test strategy for the accepted Kafka ingestion path. Keep changes inside the scope expansion above and record the proposed implementation plan in `docs/agents/claude-1-next-step.md`.
 
-## TASK-003 Director Decisions
+## TASK-004 Director Decisions
 
-- Use `spring-kafka` for this first implementation. Keep the persistence service Kafka-free and HTTP-free.
-- Default the Kafka topic pattern to include both `jdtp-txn-.*` and the current local topic `jdtp_cli_kli`; do not edit `docker/docker-compose.yml` in this task.
-- Use `IdGenerator.nextId()` only for `commit_id`; transaction IDs must come from `Message.txn`.
-- Acknowledge and log malformed or schema-invalid messages. Do not acknowledge persistence failures, conflicting duplicates, or `txn/commit` before `txn/open`.
-- Treat `txn/rollback` as an explicit no-op result for now; do not implement rollback semantics.
-- Update the existing `jade-tipi/src/test/resources/application-test.yml` to disable Kafka listener startup in tests.
-- Place a custom conflicting-duplicate exception in the existing `org.jadetipi.jadetipi.exception` package if needed.
-- Defer the optional Kafka integration test unless it can use or create a topic reliably with the documented Docker setup. Unit tests for the persistence service and listener are enough for this turn.
+- Prefer the current Docker Compose services and Gradle integration-test wiring over adding Testcontainers unless pre-work shows the documented setup cannot make the test reliable.
+- Kafka auto-topic creation is disabled. Pre-work must decide whether to use the existing `jdtp_cli_kli` topic or create a per-test topic through a reliable documented/admin-client path.
+- The integration test should publish canonical open, data, and commit messages, then assert the `txn` header and message documents in MongoDB.
+- If Docker or local Gradle tooling is unavailable during verification, report the exact documented setup command rather than treating it as a product blocker.
+
+## TASK-003 Director Review
+
+- `TASK-003` is accepted. The backend now has a Spring Kafka listener that deserializes canonical `Message` records, validates them, and persists transaction headers/messages into MongoDB's `txn` collection through a Kafka-free/HTTP-free persistence service.
+- Director verification passed for `./gradlew :jade-tipi:compileGroovy`; targeted test reruns were blocked by local Gradle wrapper lock-file permissions and Docker socket access, not by an observed product failure. The developer reported `./gradlew :jade-tipi:test` passing with MongoDB started via Docker.
 
 ## Known Baseline
 
