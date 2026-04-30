@@ -1,16 +1,16 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
-Continue the backend Kafka-first path by adding the first committed read-side layer over the accepted Kafka-to-Mongo transaction write-ahead log. `TASK-004` is accepted; `TASK-005` is ready for pre-work only.
+Continue the backend Kafka-first path by adding the first committed read-side layer over the accepted Kafka-to-Mongo transaction write-ahead log. `TASK-004` is accepted; `TASK-005` is ready for implementation.
 
 ## Active Task
 
 - `TASK-005`: Add committed transaction snapshot read layer
 - Owner: `claude-1`
-- Current status: `READY_FOR_PREWORK`
+- Current status: `READY_FOR_IMPLEMENTATION`
 
 ## Scope Expansion
 
@@ -24,12 +24,18 @@ For `TASK-005`, `claude-1` may inspect and propose changes within:
 - `docs/orchestrator/tasks/TASK-005-committed-transaction-snapshot-read-layer.md`
 - `docs/architecture/kafka-transaction-message-vocabulary.md`
 
-Pre-work only. `claude-1` should inspect the current backend read/write services and tests, then record the smallest implementation plan in `docs/agents/claude-1-next-step.md`. Do not implement until the director moves `TASK-005` to `READY_FOR_IMPLEMENTATION`.
+Implementation is approved. `claude-1` should implement the smallest committed transaction snapshot read service described in the task file and pre-work review.
 
 ## TASK-005 Director Decisions
 
+- Pre-work review passed on 2026-04-30. The latest claude-1 pre-work commit changed only `docs/agents/claude-1-next-step.md`, inside the developer-owned pre-work paths.
 - Start from a Kafka-free and HTTP-free read service over the `txn` collection. Add or change a controller only if pre-work shows a minimal API surface is needed for useful verification.
+- Do not add a controller for `TASK-005`; service-level coverage is sufficient.
 - The transaction header's `commit_id` remains the authoritative committed-visibility marker. Child message stamping is still not required.
+- Require `record_type=transaction`, `state=committed`, and a non-blank `commit_id`; ignore older `TransactionService`-shape records in `txn`.
+- Keep snapshot return classes in the `service` package for now. Use a service-local Kafka provenance value object instead of reusing the write-side `kafka.KafkaSourceMetadata` type.
+- Order messages by `_id` ascending. In unit tests, assert the Mongo query's sort rather than relying on mocked result order to prove database sorting.
+- After implementation, set `TASK-005` to `READY_FOR_REVIEW`; `IMPLEMENTATION_COMPLETE` is not a valid lifecycle status.
 - Preserve the current `txn` write-ahead log shape from `TASK-003`; do not redesign the message envelope or persistence record shape.
 - Do not materialize to `ent`, `ppy`, `typ`, `lnk`, or other long-term collections in `TASK-005`.
 - If Docker or local Gradle tooling is unavailable during verification, report the exact documented setup command rather than treating it as a product blocker.

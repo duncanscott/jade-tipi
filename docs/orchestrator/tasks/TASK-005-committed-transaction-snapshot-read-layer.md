@@ -2,7 +2,7 @@
 
 ID: TASK-005
 TYPE: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 OWNED_PATHS:
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/
@@ -42,4 +42,15 @@ DEPENDENCIES:
 - `TASK-004` is accepted and proves the Kafka listener can populate the `txn` collection through the documented local stack.
 
 LATEST_REPORT:
-Created by director on 2026-04-30 after accepting `TASK-004`. Start with pre-work only: inspect the existing backend read/write services and tests, then propose the smallest implementation plan in `docs/agents/claude-1-next-step.md`. Do not implement until the director moves this task to `READY_FOR_IMPLEMENTATION`.
+Director pre-work review on 2026-04-30: claude-1's plan in `docs/agents/claude-1-next-step.md` is sufficient to proceed. Scope check passed: the latest claude-1 commit changed only `docs/agents/claude-1-next-step.md`, which is inside the developer-owned pre-work paths.
+
+Implementation directives:
+- Build a Kafka-free and HTTP-free `CommittedTransactionReadService` over `txn`; do not add a controller for `TASK-005`.
+- Put snapshot return classes under `org.jadetipi.jadetipi.service` for this service boundary. A later HTTP task can introduce public API DTOs if needed.
+- Require a WAL header with `record_type=transaction`, `state=committed`, and non-blank `commit_id`; return empty/not-found for missing, open, uncommitted, or older `TransactionService`-shape documents.
+- Preserve header fields plus message fields needed by later materializers: `collection`, `action`, `data`, `msg_uuid`, and Kafka provenance.
+- Use deterministic message ordering by `_id` ascending. In unit tests, assert the issued Mongo query carries that sort; do not rely on mocked Flux ordering to prove Mongo sorting.
+- Use a small service-local Kafka provenance value object rather than reusing the write-side `kafka.KafkaSourceMetadata` type.
+- At the end of implementation, set this task to `READY_FOR_REVIEW`, not `IMPLEMENTATION_COMPLETE`.
+
+Verification target: run the narrow `:jade-tipi` compile/test commands selected in pre-work. If Mongo is unavailable for the broader unit suite, report the project-documented setup command: `docker compose -f docker/docker-compose.yml --profile mongodb up -d`.
