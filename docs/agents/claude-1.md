@@ -11,8 +11,12 @@ Report file: docs/agents/claude-1-changes.md
 
 ## Current Assignment
 
-- No active assignment yet. The director should create a task under
-  docs/orchestrator/tasks/ before routing implementation work.
+- Active task: `TASK-002 - Define Kafka transaction message vocabulary`.
+- Current phase: pre-work. Read `DIRECTIVES.md` and
+  `docs/orchestrator/tasks/TASK-002-kafka-transaction-message-vocabulary.md`,
+  then write the proposed implementation plan before editing code.
+- Use `docs/architecture/kafka-transaction-message-vocabulary.md` as the
+  starting design note.
 
 ## Owned Paths
 
