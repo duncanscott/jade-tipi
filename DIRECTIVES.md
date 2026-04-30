@@ -1,16 +1,16 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: HUMAN_REQUIRED
 
 ## Active Focus
 
-Implement the Kafka-first transaction message vocabulary for property/type/entity operations. The pre-work plan for `TASK-002` has been accepted; proceed with the bounded DTO/schema/example/test/CLI changes only.
+TASK-002 defined the Kafka-first transaction message vocabulary for property/type/entity operations and is accepted. Await human direction before opening backend Kafka ingestion or transaction persistence work.
 
 ## Active Task
 
 - `TASK-002`: Define Kafka transaction message vocabulary
 - Owner: `claude-1`
-- Current status: `READY_FOR_IMPLEMENTATION`
+- Current status: `ACCEPTED`
 
 ## Scope Expansion
 
@@ -25,7 +25,7 @@ For `TASK-002`, `claude-1` may inspect and propose changes within:
 - `clients/kafka-kli/src/test/groovy/org/jadetipi/kafka/cli/`
 - `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/collections/UnitSpec.groovy`
 
-Implementation is authorized for `TASK-002` within the task-owned paths only.
+No further TASK-002 implementation should be routed. The next likely project step is a bounded backend Kafka ingestion task that persists submitted messages into the MongoDB `txn` collection.
 
 ## Known Baseline
 

@@ -12,11 +12,11 @@ Report file: docs/agents/claude-1-changes.md
 ## Current Assignment
 
 - Active task: `TASK-002 - Define Kafka transaction message vocabulary`.
-- Current phase: implementation. Read `DIRECTIVES.md` and
-  `docs/orchestrator/tasks/TASK-002-kafka-transaction-message-vocabulary.md`,
-  then implement the accepted plan within the task-owned paths.
-- Use `docs/architecture/kafka-transaction-message-vocabulary.md` as the
-  starting design note.
+- Current phase: accepted. Do not continue implementation for `TASK-002`;
+  wait for new director instructions before taking another task.
+- Use `docs/orchestrator/tasks/TASK-002-kafka-transaction-message-vocabulary.md`
+  as the task-specific source of truth for implementation paths and acceptance
+  criteria.
 
 ## Owned Paths
 

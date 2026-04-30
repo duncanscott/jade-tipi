@@ -5,14 +5,24 @@ ID: claude-1
 CAPABILITIES:
   - browser-ui
   - code-implementation
+  - docker-stack
+  - gradle-verification
+  - kafka-integration
+  - local-builds
   - long-running-implementation
 
 BLOCKED_CAPABILITIES:
 
 
 EVIDENCE:
-  - Bootstrap default. Update after real review cycles with observed strengths,
-    tool access, and launch-mode limitations.
+  - Bootstrap default for browser-ui, code-implementation, and
+    long-running-implementation.
+  - TASK-002 implementation reported successful local verification with
+    `./gradlew :libraries:jade-tipi-dto:test` and
+    `./gradlew :clients:kafka-kli:build`, while Codex director verification
+    was blocked by sandbox Gradle file-lock socket restrictions.
+  - Claude launch mode is better suited for normal local build execution,
+    Docker-backed checks, and Kafka integration smoke tests.
 
 NOTES:
 Keep this file director-owned. Add or remove capabilities only when a review

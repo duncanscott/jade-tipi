@@ -2,7 +2,7 @@
 
 ID: TASK-002
 TYPE: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: ACCEPTED
 OWNER: claude-1
 OWNED_PATHS:
   - docs/architecture/kafka-transaction-message-vocabulary.md
@@ -44,6 +44,14 @@ DEPENDENCIES:
 - Spring Boot application and integration-test work requires the Docker stack first: `docker compose -f docker/docker-compose.yml up` from the project checkout. This task should not need Spring Boot integration tests.
 
 LATEST_REPORT:
+Director implementation review on 2026-04-29:
+- Accepted claude-1 implementation commit `dfbb1fa`.
+- Scope check passed: changed files stayed within the task-owned DTO message, schema, example, DTO test, architecture note, kafka-kli source, `UnitSpec`, and `docs/agents/claude-1-changes.md` paths.
+- Acceptance criteria are satisfied: `Message` now has a first-class `collection`, `message.schema.json` requires and validates it, examples cover the early property/type/entity/assignment flow, property values use JSON-object wrappers, kafka-kli normal commands produce the updated message shape, and DTO tests cover schema validation and examples.
+- Verification credited from claude-1's unsandboxed local run: `./gradlew :libraries:jade-tipi-dto:test` and `./gradlew :clients:kafka-kli:build` both passed. Codex sandbox rerun of DTO tests was blocked by Gradle file-lock socket restrictions, not by a product failure.
+- Non-blocking follow-ups: update `clients/kafka-kli/src/test/resources/sample-message.json` if that path is later added to scope; consider `Transaction.user` null handling; add CLI-level Spock/JUnit tests if `clients/kafka-kli/build.gradle` is later opened for test dependency setup.
+- Director accepted the permissive `kli publish` behavior for now: warning on missing `collection` is acceptable in this exploratory stage because normal CLI-generated messages include `collection` and old/manual Kafka messages may still be useful during development.
+
 Director pre-work review on 2026-04-29:
 - Accepted claude-1 pre-work commit `6a22292`.
 - Scope check passed: the pre-work changed only `docs/agents/claude-1-next-step.md`.
