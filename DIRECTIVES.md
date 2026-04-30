@@ -1,16 +1,16 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
-Start Kafka-first transaction submission work by defining the durable message vocabulary for property/type/entity operations. The immediate goal is a pre-work plan for `TASK-002`, not implementation yet.
+Implement the Kafka-first transaction message vocabulary for property/type/entity operations. The pre-work plan for `TASK-002` has been accepted; proceed with the bounded DTO/schema/example/test/CLI changes only.
 
 ## Active Task
 
 - `TASK-002`: Define Kafka transaction message vocabulary
 - Owner: `claude-1`
-- Current status: `READY_FOR_PREWORK`
+- Current status: `READY_FOR_IMPLEMENTATION`
 
 ## Scope Expansion
 
@@ -25,7 +25,7 @@ For `TASK-002`, `claude-1` may inspect and propose changes within:
 - `clients/kafka-kli/src/test/groovy/org/jadetipi/kafka/cli/`
 - `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/collections/UnitSpec.groovy`
 
-Do not begin implementation until the director changes `TASK-002` to `READY_FOR_IMPLEMENTATION` or this file's signal to `PROCEED_TO_IMPLEMENTATION`.
+Implementation is authorized for `TASK-002` within the task-owned paths only.
 
 ## Known Baseline
 
