@@ -7,11 +7,13 @@ OWNER: claude-1
 OWNED_PATHS:
   - jade-tipi/build.gradle
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/config/
+  - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/exception/
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/kafka/
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/mongo/
   - jade-tipi/src/main/resources/
   - jade-tipi/src/test/groovy/org/jadetipi/jadetipi/
+  - jade-tipi/src/test/resources/application-test.yml
   - jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/
   - docs/orchestrator/tasks/TASK-003-persist-kafka-transaction-messages.md
 REQUIRED_CAPABILITIES:

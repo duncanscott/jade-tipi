@@ -18,11 +18,13 @@ For `TASK-003`, `claude-1` may inspect and propose changes within:
 
 - `jade-tipi/build.gradle`
 - `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/config/`
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/exception/`
 - `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/kafka/`
 - `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/`
 - `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/mongo/`
 - `jade-tipi/src/main/resources/`
 - `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/`
+- `jade-tipi/src/test/resources/application-test.yml`
 - `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/`
 - `docs/orchestrator/tasks/TASK-003-persist-kafka-transaction-messages.md`
 
@@ -36,6 +38,7 @@ Implement the smallest backend path that validates and persists Kafka messages t
 - Acknowledge and log malformed or schema-invalid messages. Do not acknowledge persistence failures, conflicting duplicates, or `txn/commit` before `txn/open`.
 - Treat `txn/rollback` as an explicit no-op result for now; do not implement rollback semantics.
 - Update the existing `jade-tipi/src/test/resources/application-test.yml` to disable Kafka listener startup in tests.
+- Place a custom conflicting-duplicate exception in the existing `org.jadetipi.jadetipi.exception` package if needed.
 - Defer the optional Kafka integration test unless it can use or create a topic reliably with the documented Docker setup. Unit tests for the persistence service and listener are enough for this turn.
 
 ## Known Baseline
