@@ -4,7 +4,7 @@ SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
-Continue the backend Kafka-first path by adding the first committed read-side layer over the accepted Kafka-to-Mongo transaction write-ahead log. `TASK-004` is accepted; `TASK-005` is ready for implementation.
+Continue the backend Kafka-first path by adding the first committed read-side layer over the accepted Kafka-to-Mongo transaction write-ahead log. `TASK-004` is accepted; `TASK-005` remains ready for implementation after director review found one blocking read-conversion issue.
 
 ## Active Task
 
@@ -24,7 +24,7 @@ For `TASK-005`, `claude-1` may inspect and propose changes within:
 - `docs/orchestrator/tasks/TASK-005-committed-transaction-snapshot-read-layer.md`
 - `docs/architecture/kafka-transaction-message-vocabulary.md`
 
-Implementation is approved. `claude-1` should implement the smallest committed transaction snapshot read service described in the task file and pre-work review.
+Implementation remains approved. `claude-1` should fix the submitted committed transaction snapshot read service described in the task file and pre-work review.
 
 ## TASK-005 Director Decisions
 
@@ -39,6 +39,13 @@ Implementation is approved. `claude-1` should implement the smallest committed t
 - Preserve the current `txn` write-ahead log shape from `TASK-003`; do not redesign the message envelope or persistence record shape.
 - Do not materialize to `ent`, `ppy`, `typ`, `lnk`, or other long-term collections in `TASK-005`.
 - If Docker or local Gradle tooling is unavailable during verification, report the exact documented setup command rather than treating it as a product blocker.
+
+## TASK-005 Director Review
+
+- Implementation review failed on 2026-04-30; `TASK-005` is back to `READY_FOR_IMPLEMENTATION`.
+- Blocking issue: `CommittedTransactionReadService` casts raw Mongo `Map` timestamp fields directly to `Instant`. Real BSON date values read into raw maps may arrive as `java.util.Date`, so committed snapshots can fail at runtime even though the mocked unit tests pass with `Instant` fixtures.
+- Fix by coercing supported raw date representations to `Instant` for header `opened_at`, header `committed_at`, and message `received_at`, or by introducing typed read projections that let Spring perform the conversion. Preserve null tolerance.
+- Add a test that uses `java.util.Date` timestamp values for the header and message row, then run `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadServiceSpec*'`.
 
 ## TASK-004 Director Review
 
