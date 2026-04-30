@@ -2,7 +2,7 @@
 
 ID: TASK-006
 TYPE: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 OWNED_PATHS:
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/
@@ -41,5 +41,16 @@ DESIGN_NOTES:
 DEPENDENCIES:
 - `TASK-005` is accepted and provides `CommittedTransactionReadService` plus focused service-level coverage.
 
+IMPLEMENTATION_DIRECTIVES:
+- Pre-work review passed on 2026-04-30. Scope check passed: claude-1 changed only `docs/agents/claude-1-next-step.md`, inside the developer-owned pre-work paths.
+- Use route `GET /api/transactions/{id}/snapshot`.
+- Return the existing `CommittedTransactionSnapshot` service-boundary object directly for this task. Keep the TASK-005 snapshot classes in `service/`; do not relocate them to `dto/`.
+- Use default Jackson field names for this task (`txnId`, `commitId`, `msgUuid`, `timestampMs`). Do not add snake_case annotations unless a later task decides the public API should mirror persisted WAL field names.
+- Keep the controller thin: delegate committed visibility entirely to `CommittedTransactionReadService.findCommitted(String)`, map a present snapshot to HTTP 200, and map `Mono.empty()` to HTTP 404 with no body. Do not duplicate the WAL gate in the controller.
+- Preserve current security policy. Put the route under `/api/transactions/**`; do not add new path allow-lists, per-id authorization, redaction, org/grp scoping, or multi-tenant policy in this task.
+- For blank or whitespace-only path ids that reach the controller, rely on the service `Assert.hasText` plus `GlobalExceptionHandler` to produce the standard HTTP 400 `ErrorResponse`. Do not add duplicate inline validation unless needed to match the existing controller pattern.
+- Add lightweight WebFlux/controller coverage with `WebTestClient` rather than only direct method calls. A no-server controller binding or narrow `@WebFluxTest` slice is acceptable as long as it verifies the actual route, 200 body serialization, 404 empty response, and 400 error handling through `GlobalExceptionHandler` without requiring Mongo/Kafka/Keycloak. Also assert the controller delegates to `CommittedTransactionReadService` and has no direct Mongo collaborator.
+- Verification should include at least `./gradlew :jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`, `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadControllerSpec*'`, and `./gradlew :jade-tipi:test`. If local tooling, Gradle locks, or Docker/Mongo are unavailable, report the project-documented setup command `docker compose -f docker/docker-compose.yml up -d` and the exact verification command that could not run rather than treating setup as a product blocker.
+
 LATEST_REPORT:
-Created by director on 2026-04-30 after accepting `TASK-005`. Ready for claude-1 pre-work only.
+Director reviewed claude-1's TASK-006 pre-work on 2026-04-30 and advanced the task to `READY_FOR_IMPLEMENTATION`. The plan is accepted with the implementation directives above.

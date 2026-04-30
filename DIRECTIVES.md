@@ -1,16 +1,16 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
-Continue the backend Kafka-first path by exposing the accepted committed transaction snapshot read layer through the smallest useful HTTP adapter. `TASK-005` is accepted; `TASK-006` is ready for pre-work only.
+Continue the backend Kafka-first path by exposing the accepted committed transaction snapshot read layer through the smallest useful HTTP adapter. `TASK-005` is accepted; `TASK-006` pre-work is accepted and ready for implementation.
 
 ## Active Task
 
 - `TASK-006`: Add committed transaction snapshot HTTP read adapter
 - Owner: `claude-1`
-- Current status: `READY_FOR_PREWORK`
+- Current status: `READY_FOR_IMPLEMENTATION`
 
 ## Scope Expansion
 
@@ -23,13 +23,17 @@ For `TASK-006`, `claude-1` may inspect and propose changes within:
 - `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/`
 - `docs/orchestrator/tasks/TASK-006-committed-transaction-snapshot-http-read-adapter.md`
 
-This is pre-work only. `claude-1` should inspect the accepted `CommittedTransactionReadService`, existing WebFlux controllers, exception handling, security/test patterns, and propose the smallest API boundary for retrieving a committed transaction snapshot. Do not implement until the task moves to `READY_FOR_IMPLEMENTATION`.
+`claude-1` may implement the smallest HTTP read adapter accepted in pre-work. Keep the implementation within the task owned paths and the decisions below.
 
 ## TASK-006 Director Decisions
 
+- Pre-work review passed on 2026-04-30. Scope check passed: the latest claude-1 pre-work commit changed only `docs/agents/claude-1-next-step.md`, inside the developer-owned pre-work paths.
 - Start from a thin WebFlux adapter over `CommittedTransactionReadService`; do not change the Kafka write path, the `txn` record shape, or the committed snapshot service semantics accepted in `TASK-005`.
-- Pre-work must propose the route, response shape, 404/not-found behavior, validation/error behavior for blank IDs, and the narrow controller/WebFlux test strategy.
+- Implement `GET /api/transactions/{id}/snapshot`.
+- Return the existing `CommittedTransactionSnapshot` service-boundary object directly with default Jackson camelCase field names. Keep the TASK-005 snapshot classes in `service/`; do not relocate them to `dto/` or add snake_case annotations in this task.
+- Map a present snapshot to HTTP 200 and `Mono.empty()` to HTTP 404 with no body. For blank/whitespace-only IDs that reach the route, rely on `CommittedTransactionReadService.findCommitted` plus `GlobalExceptionHandler` to produce the standard HTTP 400 `ErrorResponse`.
 - Mirror existing controller/security patterns unless pre-work identifies a concrete blocker. Do not introduce new authentication, authorization, or redaction policy in this task.
+- Add lightweight WebFlux/controller coverage with `WebTestClient`, either as no-server controller binding or a narrow `@WebFluxTest` slice. The tests should verify the actual route, 200 body serialization, 404 empty response, 400 handler behavior, service delegation, and no direct Mongo collaborator without requiring Mongo/Kafka/Keycloak.
 - Keep materialization into `ent`, `ppy`, `typ`, `lnk`, or other long-term collections out of scope.
 - If Docker or local Gradle tooling is unavailable during verification, report the exact documented setup command rather than treating it as a product blocker.
 
