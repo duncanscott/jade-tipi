@@ -11,15 +11,15 @@ Report file: docs/agents/claude-1-changes.md
 
 ## Current Assignment
 
-- Active task: `TASK-004 - Add Kafka transaction ingest integration coverage`.
+- Active task: `TASK-005 - Add committed transaction snapshot read layer`.
 - Current phase: pre-work. Read `DIRECTIVES.md` and the task file, then
-  propose the smallest reliable Docker-backed integration-test strategy for the
-  accepted Kafka ingestion path. Do not implement until the director moves the
-  task to `READY_FOR_IMPLEMENTATION`.
+  propose the smallest backend read-side strategy for retrieving a committed
+  transaction snapshot from the accepted `txn` write-ahead log. Do not
+  implement until the director moves the task to `READY_FOR_IMPLEMENTATION`.
 - Record pre-work in `docs/agents/claude-1-next-step.md`; record implementation
   outcomes in `docs/agents/claude-1-changes.md` only after implementation is
   approved.
-- Use `docs/orchestrator/tasks/TASK-004-kafka-transaction-ingest-integration-test.md`
+- Use `docs/orchestrator/tasks/TASK-005-committed-transaction-snapshot-read-layer.md`
   as the task-specific source of truth for pre-work paths and acceptance
   criteria.
 

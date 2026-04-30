@@ -2,8 +2,10 @@
 
 ID: TASK-004
 TYPE: implementation
-STATUS: IMPLEMENTATION_COMPLETE
+STATUS: ACCEPTED
 OWNER: claude-1
+NEXT_TASK:
+  - TASK-005
 OWNED_PATHS:
   - jade-tipi/build.gradle
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/kafka/
@@ -46,25 +48,12 @@ DEPENDENCIES:
 - Local Docker-backed verification should use the documented project command: `docker compose -f docker/docker-compose.yml up -d` or a narrower documented service subset if pre-work confirms it is sufficient.
 
 LATEST_REPORT:
-Implementation complete on 2026-04-30 by `claude-1`. The accepted Kafka transaction ingestion path now has end-to-end integration coverage that exercises `TransactionMessageListener` and `TransactionMessagePersistenceService` against the documented Docker Kafka/Mongo stack.
-
-As-built (matches pre-work defaults; no production code changed):
-- New file: `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/TransactionMessageKafkaIngestIntegrationSpec.groovy`. Two features:
-  1. Happy path — produce open + data + commit canonical `Message` records to a per-spec topic; assert the `txn` header reaches `state=committed` with backend `commit_id`, the data message document has `_id=txnId~msgUuid`, `record_type=message`, `collection=ppy`, and `kafka.{topic,partition,offset,timestamp_ms}` populated; assert exactly one header + one message document for the txn.
-  2. Idempotency sanity check — re-publish the same data message after commit; assert per-`txn_id` document count stays at 2 (`APPEND_DUPLICATE` path).
-- Per-spec topic `jdtp-txn-itest-${shortUuid}` created via `AdminClient.createTopics` from a static `@DynamicPropertySource` method (so the topic exists before the Spring listener container starts) and deleted in `cleanupSpec`.
-- Listener subscribes only to the per-run topic (regex override of `jadetipi.kafka.txn-topic-pattern`), uses a per-run unique `spring.kafka.consumer.group-id`, and runs with `metadata.max.age.ms=2000` so pattern subscription discovers the test topic in ~2s.
-- Producer is a plain `KafkaProducer<String, byte[]>` (acks=all) serializing each `Message` with `org.jadetipi.dto.util.JsonMapper.toBytes(...)`. No new dependency.
-- Spock `@IgnoreIf` gate: spec runs only when `JADETIPI_IT_KAFKA in {1, true, TRUE, yes}` AND a 2s `AdminClient.describeCluster` probe to `KAFKA_BOOTSTRAP_SERVERS` (default `localhost:9092`) succeeds. Otherwise both features report `skipped` and the Spring context is never loaded.
-- Mongo cleanup is targeted: `mongoTemplate.remove({txn_id: ...}, 'txn')` per feature so the spec coexists with `TransactionServiceIntegrationSpec`.
-- Production Kafka ingestion behavior, `application.yml`, and existing test profile are unchanged. `application-test.yml` still sets `jadetipi.kafka.enabled: false` for the unit-test context loads; the integration spec re-enables it via `@DynamicPropertySource` for its own context only.
-
-Verification (2026-04-30, full Docker stack up):
-- `docker compose -f docker/docker-compose.yml up -d` — `mongodb`, `keycloak`, `kafka` all healthy.
-- `./gradlew :jade-tipi:compileGroovy` — BUILD SUCCESSFUL.
-- `./gradlew :jade-tipi:compileIntegrationTestGroovy` — BUILD SUCCESSFUL.
-- `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*TransactionMessageKafkaIngestIntegrationSpec*'` — BUILD SUCCESSFUL. Test report: `tests=2, skipped=0, failures=0, errors=0, time=5.347s` (initial run); `4.917s` on a `--rerun-tasks` re-run (stable).
-- `./gradlew :jade-tipi:integrationTest --tests '*TransactionMessageKafkaIngestIntegrationSpec*'` (env flag NOT set) — BUILD SUCCESSFUL. Test report: `tests=2, skipped=2, failures=0, errors=0, time=0.0s`.
-- `./gradlew :jade-tipi:test --rerun-tasks` — BUILD SUCCESSFUL. 37 unit tests pass (no regression).
-
-Out-of-scope items confirmed not implemented: materialization to `ent`/`ppy`/`typ`/`lnk`, HTTP submission wrapper, Kafka ACLs / SASL / Streams / exactly-once, message envelope or persistence record shape redesign. The integration test exposed no bug, so production code remains as accepted in `TASK-003`.
+Director implementation review on 2026-04-30:
+- Accepted claude-1 implementation commit `a759cf1`.
+- Scope check passed. The implementation changed `docs/agents/claude-1-changes.md`, this task file, and `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/TransactionMessageKafkaIngestIntegrationSpec.groovy`; no edits were found outside claude-1's report path or the `TASK-004` scope expansion.
+- Acceptance criteria are satisfied. The new integration spec publishes canonical transaction open, property create, and commit `Message` records to Kafka, exercises the real `TransactionMessageListener` and `TransactionMessagePersistenceService`, and asserts the committed `txn` header plus the expected message document and Kafka provenance in MongoDB.
+- The implementation honors `DIRECTIVES.md`: it uses the documented Docker Kafka/Mongo stack, creates an isolated AdminClient-managed per-run topic, gates the spec with `JADETIPI_IT_KAFKA=1` plus a fast broker probe, uses a unique consumer group, serializes with `JsonMapper` through a raw `KafkaProducer<String, byte[]>`, polls MongoDB with inline bounded helpers, and leaves production ingestion behavior unchanged.
+- Non-blocking review note: the optional duplicate-delivery feature's final count assertion can pass before the duplicate record has actually been consumed because the per-`txn_id` count is already `2`. The required happy-path integration coverage is unaffected; if idempotency becomes a required integration guarantee, add an explicit consumer-offset/logical-processing assertion.
+- Director local verification was blocked before product tests by sandbox/tooling permissions, not by an observed product failure. `./gradlew :jade-tipi:compileIntegrationTestGroovy` failed opening `/Users/duncanscott/.gradle/wrapper/dists/gradle-8.14.3-bin/.../gradle-8.14.3-bin.zip.lck` (`Operation not permitted`), `gradle --version` failed loading the native-platform dylib in this sandbox, and `docker compose -f docker/docker-compose.yml ps` could not access the Docker socket. In a normal developer shell, use the project-documented setup and verification sequence: `docker compose -f docker/docker-compose.yml up -d`, `./gradlew :jade-tipi:compileIntegrationTestGroovy`, and `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*TransactionMessageKafkaIngestIntegrationSpec*'`.
+- Credited developer verification: with the Docker stack up, claude-1 reported `./gradlew :jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileIntegrationTestGroovy`, `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*TransactionMessageKafkaIngestIntegrationSpec*'`, skipped-mode integration-test verification, and `./gradlew :jade-tipi:test --rerun-tasks` all passing.
+- Out-of-scope items stayed out of scope: no materialization to `ent`/`ppy`/`typ`/`lnk`, no HTTP submission wrapper, no Kafka ACL/SASL/Streams/exactly-once work, and no message envelope or persistence record-shape redesign.

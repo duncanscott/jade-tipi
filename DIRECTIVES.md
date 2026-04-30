@@ -1,42 +1,45 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
-Continue the backend Kafka-first ingestion path by adding practical integration coverage for the accepted Kafka-to-Mongo transaction write-ahead log. `TASK-004` pre-work has been reviewed and is approved for implementation.
+Continue the backend Kafka-first path by adding the first committed read-side layer over the accepted Kafka-to-Mongo transaction write-ahead log. `TASK-004` is accepted; `TASK-005` is ready for pre-work only.
 
 ## Active Task
 
-- `TASK-004`: Add Kafka transaction ingest integration coverage
+- `TASK-005`: Add committed transaction snapshot read layer
 - Owner: `claude-1`
-- Current status: `READY_FOR_IMPLEMENTATION`
+- Current status: `READY_FOR_PREWORK`
 
 ## Scope Expansion
 
-For `TASK-004`, `claude-1` may inspect and propose changes within:
+For `TASK-005`, `claude-1` may inspect and propose changes within:
 
-- `jade-tipi/build.gradle`
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/kafka/`
 - `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/`
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/mongo/`
-- `jade-tipi/src/main/resources/`
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/controller/`
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/dto/`
 - `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/`
-- `jade-tipi/src/test/resources/application-test.yml`
 - `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/`
-- `jade-tipi/src/integrationTest/resources/`
-- `docs/orchestrator/tasks/TASK-004-kafka-transaction-ingest-integration-test.md`
+- `docs/orchestrator/tasks/TASK-005-committed-transaction-snapshot-read-layer.md`
+- `docs/architecture/kafka-transaction-message-vocabulary.md`
 
-Implementation is approved. Keep changes inside the scope expansion above and record implementation outcomes in `docs/agents/claude-1-changes.md`.
+Pre-work only. `claude-1` should inspect the current backend read/write services and tests, then record the smallest implementation plan in `docs/agents/claude-1-next-step.md`. Do not implement until the director moves `TASK-005` to `READY_FOR_IMPLEMENTATION`.
 
-## TASK-004 Director Decisions
+## TASK-005 Director Decisions
 
-- Prefer the current Docker Compose services and Gradle integration-test wiring over adding Testcontainers unless pre-work shows the documented setup cannot make the test reliable.
-- Kafka auto-topic creation is disabled. Pre-work must decide whether to use the existing `jdtp_cli_kli` topic or create a per-test topic through a reliable documented/admin-client path.
-- The integration test should publish canonical open, data, and commit messages, then assert the `txn` header and message documents in MongoDB.
+- Start from a Kafka-free and HTTP-free read service over the `txn` collection. Add or change a controller only if pre-work shows a minimal API surface is needed for useful verification.
+- The transaction header's `commit_id` remains the authoritative committed-visibility marker. Child message stamping is still not required.
+- Preserve the current `txn` write-ahead log shape from `TASK-003`; do not redesign the message envelope or persistence record shape.
+- Do not materialize to `ent`, `ppy`, `typ`, `lnk`, or other long-term collections in `TASK-005`.
 - If Docker or local Gradle tooling is unavailable during verification, report the exact documented setup command rather than treating it as a product blocker.
-- Director approved the claude-1 pre-work defaults on 2026-04-30: use an AdminClient-created per-test topic, gate with `JADETIPI_IT_KAFKA=1` and a fast broker probe, use a unique consumer group, use a raw `KafkaProducer<String, byte[]>`, poll MongoDB with an inline bounded helper, and clean up only the test topic/documents. Do not add Awaitility, a new profile file, or logback noise controls unless implementation shows they are needed.
-- Create the test topic before Spring's topic-pattern listener needs to discover it where possible, and shorten `spring.kafka.consumer.properties.metadata.max.age.ms` for this spec to avoid a long metadata-refresh wait.
+
+## TASK-004 Director Review
+
+- `TASK-004` is accepted. The backend now has opt-in Docker-backed Kafka integration coverage that publishes canonical open/data/commit messages, consumes them through `TransactionMessageListener`, and asserts the committed `txn` header plus message document and Kafka provenance in MongoDB.
+- Scope check passed. The implementation changed only claude-1's report file, the `TASK-004` task file, and the new integration spec under the approved integration-test path.
+- Director verification was blocked by local sandbox permissions on the Gradle wrapper lock and Docker socket, not by an observed product failure. In a normal developer shell, use `docker compose -f docker/docker-compose.yml up -d`, then `./gradlew :jade-tipi:compileIntegrationTestGroovy` and `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*TransactionMessageKafkaIngestIntegrationSpec*'`.
+- Non-blocking note: the optional duplicate-delivery integration feature can pass before the duplicate record is proven consumed because the document count is already `2`; keep this in mind if idempotency becomes a required integration-level assertion.
 
 ## TASK-003 Director Review
 
