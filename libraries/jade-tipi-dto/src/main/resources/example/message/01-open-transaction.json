@@ -5,11 +5,13 @@
       "org": "jade-tipi-org",
       "grp": "dev"
     },
-    "client": "jade-cli"
+    "client": "kli",
+    "user": "0000-0002-1825-0097"
   },
   "uuid": "018fd849-2a40-7def-8b56-222222222222",
+  "collection": "txn",
   "action": "open",
   "data": {
-    "description": "importing sample batch"
+    "description": "importing plate barcodes"
   }
 }

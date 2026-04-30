@@ -1,0 +1,241 @@
+/**
+ * Part of Jade-Tipi — an open scientific metadata framework.
+ *
+ * Copyright (c) 2025 Duncan Scott and Jade-Tipi contributors
+ * SPDX-License-Identifier: AGPL-3.0-only OR Commercial
+ *
+ * This file is part of a dual-licensed distribution:
+ * - Under AGPL-3.0 for open-source use (see LICENSE)
+ * - Under Commercial License for proprietary use (see DUAL-LICENSE.txt or contact licensing@jade-tipi.org)
+ *
+ * https://jade-tipi.org/license
+ */
+package org.jadetipi.dto.message
+
+import org.jadetipi.dto.collections.Group
+import org.jadetipi.dto.collections.Transaction
+import org.jadetipi.dto.util.JsonMapper
+import org.jadetipi.dto.util.ValidationException
+import spock.lang.Specification
+import spock.lang.Unroll
+
+class MessageSpec extends Specification {
+
+    private static final List<String> EXAMPLE_PATHS = [
+            '/example/message/01-open-transaction.json',
+            '/example/message/02-create-property-definition-text.json',
+            '/example/message/03-create-property-definition-numeric.json',
+            '/example/message/04-create-entity-type.json',
+            '/example/message/05-update-entity-type-add-property.json',
+            '/example/message/06-create-entity.json',
+            '/example/message/07-assign-property-value-text.json',
+            '/example/message/08-assign-property-value-number.json',
+            '/example/message/09-commit-transaction.json'
+    ]
+
+    private static String readResource(String path) {
+        def stream = MessageSpec.getResourceAsStream(path)
+        assert stream != null: "Resource not found: ${path}"
+        stream.getText('UTF-8')
+    }
+
+    def "newInstance constructs a Message with the given collection and action"() {
+        given:
+        def txn = new Transaction(
+                '018fd849-2a40-7abc-8a45-111111111111',
+                new Group('jade-tipi-org', 'dev'),
+                'kli',
+                '0000-0002-1825-0097'
+        )
+
+        when:
+        def message = Message.newInstance(txn, Collection.PROPERTY, Action.CREATE, [kind: 'definition'])
+
+        then:
+        message.txn() == txn
+        message.collection() == Collection.PROPERTY
+        message.action() == Action.CREATE
+        message.uuid() != null
+        message.data() == [kind: 'definition']
+    }
+
+    def "Message JSON includes the collection field"() {
+        given:
+        def txn = new Transaction(
+                '018fd849-2a40-7abc-8a45-111111111111',
+                new Group('jade-tipi-org', 'dev'),
+                'kli',
+                null
+        )
+        def message = Message.newInstance(txn, Collection.ENTITY, Action.CREATE, [id: 'jade-tipi-org~dev~uuid~en~plate_a'])
+
+        when:
+        String json = JsonMapper.toJson(message)
+        Map parsed = JsonMapper.fromJson(json, Map)
+
+        then:
+        parsed.collection == 'ent'
+        parsed.action == 'create'
+    }
+
+    @Unroll
+    def "example #examplePath round-trips through JsonMapper preserving collection"() {
+        given:
+        String json = readResource(examplePath)
+
+        when:
+        Message message = JsonMapper.fromJson(json, Message)
+
+        then:
+        message.collection() != null
+        message.action() != null
+
+        when:
+        String roundTripped = JsonMapper.toJson(message)
+        Message reparsed = JsonMapper.fromJson(roundTripped, Message)
+
+        then:
+        reparsed.collection() == message.collection()
+        reparsed.action() == message.action()
+        reparsed.txn() == message.txn()
+        reparsed.uuid() == message.uuid()
+
+        where:
+        examplePath << EXAMPLE_PATHS
+    }
+
+    @Unroll
+    def "example #examplePath validates against the schema"() {
+        given:
+        String json = readResource(examplePath)
+        Message message = JsonMapper.fromJson(json, Message)
+
+        when:
+        message.validate()
+
+        then:
+        noExceptionThrown()
+
+        where:
+        examplePath << EXAMPLE_PATHS
+    }
+
+    def "schema rejects messages missing the collection field"() {
+        given:
+        String json = '''
+            {
+              "txn": {
+                "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+                "group": { "org": "jade-tipi-org", "grp": "dev" },
+                "client": "kli"
+              },
+              "uuid": "018fd849-2a40-7def-8b56-222222222222",
+              "action": "open",
+              "data": { "description": "missing collection" }
+            }
+        '''.trim()
+        Message message = JsonMapper.fromJson(json, Message)
+
+        when:
+        message.validate()
+
+        then:
+        ValidationException ex = thrown()
+        ex.message.toLowerCase().contains('collection')
+    }
+
+    def "fromJson rejects unknown collection abbreviations"() {
+        given:
+        String json = '''
+            {
+              "txn": {
+                "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+                "group": { "org": "jade-tipi-org", "grp": "dev" },
+                "client": "kli"
+              },
+              "uuid": "018fd849-2a40-7def-8b56-222222222222",
+              "collection": "xyz",
+              "action": "open",
+              "data": {}
+            }
+        '''.trim()
+
+        when:
+        JsonMapper.fromJson(json, Message)
+
+        then:
+        thrown(Exception)
+    }
+
+    def "schema rejects collection=txn paired with a data action"() {
+        given:
+        def txn = new Transaction(
+                '018fd849-2a40-7abc-8a45-111111111111',
+                new Group('jade-tipi-org', 'dev'),
+                'kli',
+                null
+        )
+        def message = Message.newInstance(txn, Collection.TRANSACTION, Action.CREATE, [id: 'x'])
+
+        when:
+        message.validate()
+
+        then:
+        ValidationException ex = thrown()
+        ex.message.toLowerCase().contains('action')
+    }
+
+    def "schema rejects collection=ppy paired with a transaction-control action"() {
+        given:
+        def txn = new Transaction(
+                '018fd849-2a40-7abc-8a45-111111111111',
+                new Group('jade-tipi-org', 'dev'),
+                'kli',
+                null
+        )
+        def message = Message.newInstance(txn, Collection.PROPERTY, Action.OPEN, [:])
+
+        when:
+        message.validate()
+
+        then:
+        ValidationException ex = thrown()
+        ex.message.toLowerCase().contains('action')
+    }
+
+    def "Message id remains <txn>~<uuid>~<action> and excludes collection"() {
+        given:
+        def txn = new Transaction(
+                '018fd849-2a40-7abc-8a45-111111111111',
+                new Group('jade-tipi-org', 'dev'),
+                'kli',
+                null
+        )
+        def message = new Message(
+                txn,
+                '018fd849-2a40-7def-8b56-222222222222',
+                Collection.PROPERTY,
+                Action.CREATE,
+                [:]
+        )
+
+        expect:
+        message.getId() == "${txn.getId()}~018fd849-2a40-7def-8b56-222222222222~create"
+    }
+
+    def "Message equality stays based on txn and uuid only"() {
+        given:
+        def txn = new Transaction(
+                '018fd849-2a40-7abc-8a45-111111111111',
+                new Group('jade-tipi-org', 'dev'),
+                'kli',
+                null
+        )
+        def a = new Message(txn, '018fd849-2a40-7def-8b56-222222222222', Collection.PROPERTY, Action.CREATE, [:])
+        def b = new Message(txn, '018fd849-2a40-7def-8b56-222222222222', Collection.ENTITY, Action.UPDATE, [k: 'v'])
+
+        expect:
+        a == b
+        a.hashCode() == b.hashCode()
+    }
+}

@@ -1,0 +1,20 @@
+{
+  "txn": {
+    "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+    "group": {
+      "org": "jade-tipi-org",
+      "grp": "dev"
+    },
+    "client": "kli",
+    "user": "0000-0002-1825-0097"
+  },
+  "uuid": "018fd849-2a44-7444-8d04-dddddddddddd",
+  "collection": "typ",
+  "action": "update",
+  "data": {
+    "id": "jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~ty~plate_96",
+    "operation": "add_property",
+    "property_id": "jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~pp~barcode",
+    "required": true
+  }
+}

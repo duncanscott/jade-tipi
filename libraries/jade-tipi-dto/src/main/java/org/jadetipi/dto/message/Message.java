@@ -12,6 +12,7 @@
  */
 package org.jadetipi.dto.message;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.github.f4b6a3.uuid.UuidCreator;
@@ -32,12 +33,15 @@ import java.util.Objects;
  * {
  *   "txn": { "uuid": "...", "group": {...}, "client": "..." },
  *   "uuid": "018fd849-2a40-7def-8b56-222222222222",
- *   "action": "open",
+ *   "collection": "ppy",
+ *   "action": "create",
  *   "data": { ... }
  * }
  * </pre>
  *
- * <p>Message ID format: {@code <txn.getId()>~<uuid>}
+ * <p>Message ID format: {@code <txn.getId()>~<uuid>~<action>}. The collection
+ * is intentionally omitted from the ID to keep IDs stable for messages whose
+ * target collection is implied by their transaction context.
  *
  * <p>Equality is based on txn and uuid only.
  *
@@ -47,12 +51,13 @@ import java.util.Objects;
 public record Message(
         @JsonProperty("txn") Transaction txn,
         @JsonProperty("uuid") String uuid,
+        @JsonProperty("collection") Collection collection,
         @JsonProperty("action") Action action,
         @JsonProperty("data") Map<String, Object> data
 ) {
 
-    public static Message newInstance(Transaction txn, Action action, Map<String, Object> data) {
-        return new Message(txn, UuidCreator.getTimeOrderedEpoch().toString(), action, data);
+    public static Message newInstance(Transaction txn, Collection collection, Action action, Map<String, Object> data) {
+        return new Message(txn, UuidCreator.getTimeOrderedEpoch().toString(), collection, action, data);
     }
 
     private static final String SCHEMA_PATH = "/schema/message.schema.json";
@@ -64,6 +69,7 @@ public record Message(
         }
     }
 
+    @JsonIgnore
     public String getId() {
         return txn.getId() + Constants.ID_SEPARATOR + uuid + Constants.ID_SEPARATOR + action;
     }

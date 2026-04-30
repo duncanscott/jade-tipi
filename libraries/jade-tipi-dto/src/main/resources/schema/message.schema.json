@@ -7,6 +7,7 @@
   "required": [
     "txn",
     "uuid",
+    "collection",
     "action"
   ],
   "additionalProperties": false,
@@ -17,6 +18,9 @@
     "uuid": {
       "$ref": "#/$defs/UUIDv7",
       "description": "UUIDv7 unique to this message"
+    },
+    "collection": {
+      "$ref": "#/$defs/Collection"
     },
     "action": {
       "$ref": "#/$defs/Action"
@@ -31,6 +35,38 @@
       "description": "Message-specific payload data. All property names must be snake_case."
     }
   },
+  "allOf": [
+    {
+      "description": "Transaction collection accepts only transaction-control actions.",
+      "if": {
+        "properties": {
+          "collection": { "const": "txn" }
+        },
+        "required": ["collection"]
+      },
+      "then": {
+        "properties": {
+          "action": { "enum": ["open", "rollback", "commit"] }
+        }
+      }
+    },
+    {
+      "description": "Non-transaction collections accept only data-mutating actions.",
+      "if": {
+        "properties": {
+          "collection": {
+            "enum": ["ent", "ppy", "lnk", "uni", "grp", "typ", "vdn"]
+          }
+        },
+        "required": ["collection"]
+      },
+      "then": {
+        "properties": {
+          "action": { "enum": ["create", "update", "delete"] }
+        }
+      }
+    }
+  ],
   "$defs": {
     "UUIDv7": {
       "title": "UUIDv7",
@@ -104,6 +140,21 @@
         }
       }
     },
+    "Collection": {
+      "title": "Collection",
+      "description": "Target Jade-Tipi collection abbreviation",
+      "type": "string",
+      "enum": [
+        "ent",
+        "grp",
+        "lnk",
+        "ppy",
+        "typ",
+        "txn",
+        "uni",
+        "vdn"
+      ]
+    },
     "Action": {
       "title": "Action",
       "description": "Action type for the message",
@@ -131,15 +182,12 @@
     "SnakeCaseValue": {
       "title": "SnakeCaseValue",
       "description": "Value that may contain nested snake_case objects or arrays",
-      "oneOf": [
+      "anyOf": [
         {
           "type": "string"
         },
         {
           "type": "number"
-        },
-        {
-          "type": "integer"
         },
         {
           "type": "boolean"
@@ -170,6 +218,7 @@
         "client": "jade-cli"
       },
       "uuid": "018fd849-2a40-7def-8b56-222222222222",
+      "collection": "txn",
       "action": "open",
       "data": {
         "description": "importing sample batch"
@@ -185,11 +234,19 @@
         "client": "jade-cli"
       },
       "uuid": "018fd849-2a41-7123-8c67-333333333333",
+      "collection": "ppy",
       "action": "create",
       "data": {
-        "entity_type": "sample",
-        "sample_name": "Sample A",
-        "volume_ml": 100
+        "kind": "definition",
+        "id": "jade-tipi-org~dev~018fd849-2a41-7123-8c67-333333333333~pp~barcode",
+        "name": "barcode",
+        "value_schema": {
+          "type": "object",
+          "required": ["text"],
+          "properties": {
+            "text": { "type": "string" }
+          }
+        }
       }
     },
     {
@@ -202,6 +259,7 @@
         "client": "jade-cli"
       },
       "uuid": "018fd849-2a43-7789-8e89-555555555555",
+      "collection": "txn",
       "action": "commit",
       "data": {
         "comment": "batch import complete"

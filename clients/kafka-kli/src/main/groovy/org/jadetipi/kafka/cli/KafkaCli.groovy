@@ -26,6 +26,7 @@ import org.apache.kafka.common.serialization.StringSerializer
 import org.apache.kafka.common.serialization.ByteArraySerializer
 import org.jadetipi.dto.collections.Group
 import org.jadetipi.dto.message.Action
+import org.jadetipi.dto.message.Collection
 import org.jadetipi.dto.message.Message
 import org.jadetipi.dto.collections.Transaction
 import org.jadetipi.dto.util.JsonMapper
@@ -549,7 +550,7 @@ class KafkaCli {
 
         // Create transaction and OPEN message
         Transaction txn = Transaction.newInstance(org, grp, DEFAULT_CLIENT_ID, orcid ?: 'unknown')
-        Message message = Message.newInstance(txn, Action.OPEN, data)
+        Message message = Message.newInstance(txn, Collection.TRANSACTION, Action.OPEN, data)
         String key = txn.getId()
 
         if (verbose) {
@@ -631,7 +632,7 @@ class KafkaCli {
         String topic = config?.topic as String ?: DEFAULT_TOPIC
 
         // Create ROLLBACK message
-        Message message = Message.newInstance(txn, Action.ROLLBACK, data)
+        Message message = Message.newInstance(txn, Collection.TRANSACTION, Action.ROLLBACK, data)
         String key = txn.getId()
 
         if (verbose) {
@@ -707,7 +708,7 @@ class KafkaCli {
         String topic = config?.topic as String ?: DEFAULT_TOPIC
 
         // Create COMMIT message
-        Message message = Message.newInstance(txn, Action.COMMIT, data)
+        Message message = Message.newInstance(txn, Collection.TRANSACTION, Action.COMMIT, data)
         String key = txn.getId()
 
         if (verbose) {
@@ -756,11 +757,13 @@ class KafkaCli {
     private void handleEntityAction(String[] args, boolean globalVerbose, String commandName, Action action) {
         def cli = new CliBuilder(
                 name: "kli ${commandName}",
-                usage: "kli ${commandName} [options]",
+                usage: "kli ${commandName} --collection <abbr> [options]",
                 header: "${commandName.capitalize()} an object within the current transaction."
         )
         cli.with {
             h(longOpt: 'help', 'Show this help message')
+            c(longOpt: 'collection', args: 1, argName: 'abbr',
+                    'Target collection (ent, ppy, lnk, uni, grp, typ, vdn)')
             d(longOpt: 'data', args: 1, argName: 'json|@file', 'JSON data or @filepath')
             v(longOpt: 'verbose', 'Enable verbose output')
         }
@@ -775,6 +778,26 @@ class KafkaCli {
         }
 
         boolean verbose = options.'verbose' || globalVerbose
+        String collectionRaw = options.'collection'
+        if (!collectionRaw?.trim()) {
+            printError("--collection is required for kli ${commandName}.")
+            System.exit(1)
+        }
+        Collection collection
+        try {
+            collection = Collection.fromJson(collectionRaw)
+        } catch (IllegalArgumentException e) {
+            printError("Unknown collection '${collectionRaw}'. Use one of: ent, ppy, lnk, uni, grp, typ, vdn.")
+            System.exit(1)
+        }
+        if (collection == Collection.TRANSACTION) {
+            printError("Collection 'txn' is reserved for kli open/rollback/commit.")
+            System.exit(1)
+        }
+        if (!collection.actions.contains(action)) {
+            printError("Action '${action}' is not valid for collection '${collection}'.")
+            System.exit(1)
+        }
         Map<String, Object> data = parseDataOption(options.'data')
 
         // Require active session
@@ -801,7 +824,7 @@ class KafkaCli {
         }
 
         Transaction txn = reconstructTransaction(session)
-        Message message = Message.newInstance(txn, action, data)
+        Message message = Message.newInstance(txn, collection, action, data)
         String key = txn.getId()
 
         if (verbose) {
@@ -898,12 +921,17 @@ class KafkaCli {
             System.exit(1)
         }
 
+        if (message.collection() == null) {
+            System.err.println("Warning: message file ${filePath} is missing 'collection'; publishing as null.")
+        }
+
         String key = message.txn().getId()
 
         if (verbose) {
             println "Bootstrap server: ${bootstrapServer}"
             println "Topic:            ${topic}"
             println "Message ID:       ${message.getId()}"
+            println "Collection:       ${message.collection()}"
             println "Action:           ${message.action()}"
             println "Key:              ${key}"
             println ''

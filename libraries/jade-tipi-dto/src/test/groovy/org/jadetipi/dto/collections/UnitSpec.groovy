@@ -45,8 +45,6 @@ class UnitSpec extends Specification {
     def "all SI units from JSONL validate successfully"() {
         given:
         def lines = readJsonlLines()
-
-        when:
         def units = lines.collect { JsonMapper.fromJson(it, Unit) }
 
         expect:

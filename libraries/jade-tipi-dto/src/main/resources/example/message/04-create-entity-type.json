@@ -1,0 +1,19 @@
+{
+  "txn": {
+    "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+    "group": {
+      "org": "jade-tipi-org",
+      "grp": "dev"
+    },
+    "client": "kli",
+    "user": "0000-0002-1825-0097"
+  },
+  "uuid": "018fd849-2a43-7333-8c03-cccccccccccc",
+  "collection": "typ",
+  "action": "create",
+  "data": {
+    "id": "jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~ty~plate_96",
+    "name": "plate_96",
+    "description": "96-well sample plate"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "txn": {
+    "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+    "group": {
+      "org": "jade-tipi-org",
+      "grp": "dev"
+    },
+    "client": "kli",
+    "user": "0000-0002-1825-0097"
+  },
+  "uuid": "018fd849-2a47-7777-8a07-aaaaaaaaaaab",
+  "collection": "ppy",
+  "action": "create",
+  "data": {
+    "kind": "assignment",
+    "id": "jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~en~plate_a~jade-tipi-org~dev~018fd849-2a42-7222-8b02-bbbbbbbbbbbb~pp~volume",
+    "entity_id": "jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~en~plate_a",
+    "property_id": "jade-tipi-org~dev~018fd849-2a42-7222-8b02-bbbbbbbbbbbb~pp~volume",
+    "value": {
+      "number": 10,
+      "unit_id": "jade-tipi-org~dev~liter~milli~ml~SI"
+    }
+  }
+}
