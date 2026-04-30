@@ -1,30 +1,37 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
-Continue the backend Kafka-first path by adding the first committed read-side layer over the accepted Kafka-to-Mongo transaction write-ahead log. `TASK-004` is accepted; `TASK-005` remains ready for implementation after director review found one blocking read-conversion issue.
+Continue the backend Kafka-first path by exposing the accepted committed transaction snapshot read layer through the smallest useful HTTP adapter. `TASK-005` is accepted; `TASK-006` is ready for pre-work only.
 
 ## Active Task
 
-- `TASK-005`: Add committed transaction snapshot read layer
+- `TASK-006`: Add committed transaction snapshot HTTP read adapter
 - Owner: `claude-1`
-- Current status: `READY_FOR_IMPLEMENTATION`
+- Current status: `READY_FOR_PREWORK`
 
 ## Scope Expansion
 
-For `TASK-005`, `claude-1` may inspect and propose changes within:
+For `TASK-006`, `claude-1` may inspect and propose changes within:
 
 - `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/`
 - `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/controller/`
 - `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/dto/`
 - `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/`
 - `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/`
-- `docs/orchestrator/tasks/TASK-005-committed-transaction-snapshot-read-layer.md`
-- `docs/architecture/kafka-transaction-message-vocabulary.md`
+- `docs/orchestrator/tasks/TASK-006-committed-transaction-snapshot-http-read-adapter.md`
 
-Implementation remains approved. `claude-1` should fix the submitted committed transaction snapshot read service described in the task file and pre-work review.
+This is pre-work only. `claude-1` should inspect the accepted `CommittedTransactionReadService`, existing WebFlux controllers, exception handling, security/test patterns, and propose the smallest API boundary for retrieving a committed transaction snapshot. Do not implement until the task moves to `READY_FOR_IMPLEMENTATION`.
+
+## TASK-006 Director Decisions
+
+- Start from a thin WebFlux adapter over `CommittedTransactionReadService`; do not change the Kafka write path, the `txn` record shape, or the committed snapshot service semantics accepted in `TASK-005`.
+- Pre-work must propose the route, response shape, 404/not-found behavior, validation/error behavior for blank IDs, and the narrow controller/WebFlux test strategy.
+- Mirror existing controller/security patterns unless pre-work identifies a concrete blocker. Do not introduce new authentication, authorization, or redaction policy in this task.
+- Keep materialization into `ent`, `ppy`, `typ`, `lnk`, or other long-term collections out of scope.
+- If Docker or local Gradle tooling is unavailable during verification, report the exact documented setup command rather than treating it as a product blocker.
 
 ## TASK-005 Director Decisions
 
@@ -42,10 +49,11 @@ Implementation remains approved. `claude-1` should fix the submitted committed t
 
 ## TASK-005 Director Review
 
-- Implementation review failed on 2026-04-30; `TASK-005` is back to `READY_FOR_IMPLEMENTATION`.
-- Blocking issue: `CommittedTransactionReadService` casts raw Mongo `Map` timestamp fields directly to `Instant`. Real BSON date values read into raw maps may arrive as `java.util.Date`, so committed snapshots can fail at runtime even though the mocked unit tests pass with `Instant` fixtures.
-- Fix by coercing supported raw date representations to `Instant` for header `opened_at`, header `committed_at`, and message `received_at`, or by introducing typed read projections that let Spring perform the conversion. Preserve null tolerance.
-- Add a test that uses `java.util.Date` timestamp values for the header and message row, then run `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadServiceSpec*'`.
+- `TASK-005` is accepted on 2026-04-30. The read service now returns committed `txn` snapshots only for WAL-shaped headers with `record_type=transaction`, `state=committed`, and non-blank `commit_id`; it preserves message fields and Kafka provenance, orders message queries by `_id` ASC, and stays Kafka-free and HTTP-free.
+- The director's previous blocking timestamp issue is resolved. `CommittedTransactionReadService` now coerces raw `Instant`, `java.util.Date`, and `null` timestamp values for header `opened_at`, header `committed_at`, and message `received_at`; unexpected timestamp types fail loudly instead of silently degrading.
+- Scope check passed. The latest claude-1 commit changed only `docs/agents/claude-1-changes.md`, the `TASK-005` task file, `CommittedTransactionReadService.groovy`, and `CommittedTransactionReadServiceSpec.groovy`, all within the active task expansion plus the developer report path. The full `TASK-005` implementation stayed inside service/test/task scope and did not add controllers, DTO-package files, write-side persistence changes, build changes, or resource changes.
+- Director local verification was blocked before product tests by sandbox/tooling permissions, not by an observed product failure. `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadServiceSpec*'` failed opening the Gradle wrapper cache lock in `/Users/duncanscott/.gradle`; `gradle --version` failed loading the native-platform dylib; `docker compose -f docker/docker-compose.yml ps` could not access the Docker socket. In a normal developer shell, use the documented setup and verification sequence: `docker compose -f docker/docker-compose.yml up -d`, then `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadServiceSpec*'` and `./gradlew :jade-tipi:test`.
+- Credited developer verification: with the Docker stack up, claude-1 reported `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadServiceSpec*'` and `./gradlew :jade-tipi:test` passing.
 
 ## TASK-004 Director Review
 

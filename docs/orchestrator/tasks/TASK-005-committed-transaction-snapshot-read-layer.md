@@ -2,8 +2,10 @@
 
 ID: TASK-005
 TYPE: implementation
-STATUS: READY_FOR_REVIEW
+STATUS: ACCEPTED
 OWNER: claude-1
+NEXT_TASK:
+  - TASK-006
 OWNED_PATHS:
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/controller/
@@ -42,32 +44,13 @@ DEPENDENCIES:
 - `TASK-004` is accepted and proves the Kafka listener can populate the `txn` collection through the documented local stack.
 
 LATEST_REPORT:
-Implementation re-submitted on 2026-04-30 addressing the director review's blocking finding on raw Mongo timestamp coercion. `TASK-005` flipped to `READY_FOR_REVIEW`.
-
-Fix for the blocking finding:
-
-- `CommittedTransactionReadService` no longer casts raw header/message timestamp fields directly with `as Instant`. A new `private static Instant toInstant(Object)` helper accepts `Instant`, `java.util.Date`, and `null`; any other type throws `IllegalStateException` so a future schema change does not silently degrade to `null`. The helper is applied to header `opened_at`, header `committed_at`, and message `received_at`.
-- Null tolerance is preserved: passing `null` returns `null` (verified by the existing null-payload feature).
-- No write-side or schema change. The writer in `TransactionMessagePersistenceService` continues to set `Instant` values; the read service now tolerates whichever representation the Mongo driver surfaces when the document round-trips through a raw `Map`.
-
-New unit coverage (per directive):
-
-- `CommittedTransactionReadServiceSpec` adds the feature `'java.util.Date timestamps from raw Mongo documents are coerced to Instant'`. The header is seeded with `Date.from(...)` for `opened_at` and `committed_at`, and the message row is seeded with `Date.from(...)` for `received_at`. The spec asserts that `snapshot.openedAt`, `snapshot.committedAt`, and `snapshot.messages[0].receivedAt` are all `instanceof Instant` and equal the original `Instant` values.
-- All previously-required features are retained: committed snapshot returns header + messages, open/uncommitted is hidden, missing-`commit_id` partial-write is hidden, blank `commit_id` is hidden, missing header returns empty, older `TransactionService`-shape (no `record_type`) is hidden, blank/null/whitespace `txnId` raises `IllegalArgumentException`, null payload fields tolerated, and the Mongo query is asserted to carry `Sort.by(ASC, '_id')` (the directive-required assertion that the database is doing the sort).
-
-Verification (Docker stack already up: `jade-tipi-mongo`, `jade-tipi-kafka`, `jade-tipi-keycloak`):
-
-- `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadServiceSpec*'` — BUILD SUCCESSFUL. Spec report: `tests=12, skipped=0, failures=0, errors=0` (was 11; +1 new Date-coercion feature).
-- `./gradlew :jade-tipi:test` — BUILD SUCCESSFUL. 49 unit tests across:
-  - `JadetipiApplicationTests` (1)
-  - `TransactionMessageListenerSpec` (4)
-  - `DocumentServiceMongoDbImplSpec` (9)
-  - `CommittedTransactionReadServiceSpec` (12) — was 11
-  - `TransactionMessagePersistenceServiceSpec` (11)
-  - `TransactionServiceSpec` (12)
-- If Docker is not up locally, run `docker compose -f docker/docker-compose.yml up -d` (only Mongo is strictly required for the unit suite because `JadetipiApplicationTests.contextLoads` opens a Mongo connection).
-
-Scope:
-
-- Changed only `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionReadService.groovy`, `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionReadServiceSpec.groovy`, this task file, and `docs/agents/claude-1-changes.md`. All inside the implementation scope explicitly expanded by `DIRECTIVES.md` for `TASK-005`.
-- No write-side persistence, controller, DTO-package, integration-test, build, or resource files changed. The `txn` write-ahead log shape from `TASK-003` is preserved.
+Director implementation review on 2026-04-30:
+- Accepted claude-1 implementation commit `788ef68`.
+- Acceptance criteria are satisfied. The backend now has a Kafka-free and HTTP-free `CommittedTransactionReadService` over the accepted `txn` write-ahead log. It returns a committed snapshot only when the transaction header is WAL-shaped (`record_type=transaction`), has `state=committed`, and has a non-blank backend-generated `commit_id`; missing, open, missing-commit, blank-commit, and older `TransactionService`-shape rows are hidden as empty/not-found results.
+- The read result includes the transaction header plus staged message records with `collection`, `action`, `data`, `msg_uuid`, `received_at`, and service-local Kafka provenance. No materialization into long-term collections was added.
+- The previous director-blocking timestamp conversion issue is resolved. Header `opened_at`, header `committed_at`, and message `received_at` now coerce `Instant`, `java.util.Date`, and `null`; unexpected timestamp types fail loudly.
+- Required assertions are present in `CommittedTransactionReadServiceSpec`: committed header + messages, open/uncommitted hidden, missing and blank `commit_id` hidden, missing header empty, older shape ignored, blank/null/whitespace `txnId` rejected, null payload fields tolerated, `_id` ASC query sort asserted, and `java.util.Date` timestamp rows coerced to `Instant`.
+- Scope check passed. The latest rework changed only `docs/agents/claude-1-changes.md`, this task file, `CommittedTransactionReadService.groovy`, and `CommittedTransactionReadServiceSpec.groovy`, all within the active task expansion plus the developer report path. The full `TASK-005` implementation stayed within `service/`, `src/test/`, and this task file; no controller, DTO-package, integration-test, build, resource, write-side persistence, Kafka, or envelope semantics changes were made.
+- Director local verification was blocked before product tests by sandbox/tooling permissions, not by an observed product failure. `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadServiceSpec*'` failed opening `/Users/duncanscott/.gradle/wrapper/dists/gradle-8.14.3-bin/.../gradle-8.14.3-bin.zip.lck` (`Operation not permitted`), `gradle --version` failed loading the native-platform dylib, and `docker compose -f docker/docker-compose.yml ps` could not access the Docker socket. In a normal developer shell, use the documented setup and verification sequence: `docker compose -f docker/docker-compose.yml up -d`, `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadServiceSpec*'`, and `./gradlew :jade-tipi:test`.
+- Credited developer verification: with the Docker stack up, claude-1 reported `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadServiceSpec*'` passing with `tests=12, skipped=0, failures=0, errors=0`, and `./gradlew :jade-tipi:test` passing with 49 unit tests.
+- Follow-up: `TASK-006` was created for pre-work on a thin HTTP read adapter over the accepted service.
