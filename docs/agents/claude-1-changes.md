@@ -4,6 +4,137 @@ The developer writes completed work reports here.
 
 STATUS: COMPLETED
 
+## TASK-005 — Add committed transaction snapshot read layer
+
+Goal completed. The backend now has a Kafka-free and HTTP-free read-side
+layer over the accepted `txn` write-ahead log (TASK-003 / TASK-004) that
+returns a single committed transaction snapshot (header + staged messages)
+without materializing into long-term collections. The transaction header
+remains the authoritative committed-visibility marker; child message
+stamping is still not required.
+
+Task lifecycle: `TASK-005` flipped to `READY_FOR_REVIEW` per directive
+(no `IMPLEMENTATION_COMPLETE` status used).
+
+### As-built decisions (per pre-work + director directives)
+
+- **Service boundary.** New `service/CommittedTransactionReadService` is a
+  Kafka-free / HTTP-free `@Service` with one public method:
+  `Mono<CommittedTransactionSnapshot> findCommitted(String txnId)`. It uses
+  `ReactiveMongoTemplate` directly (no new dependency) and reuses the
+  field-name and state constants exposed on
+  `TransactionMessagePersistenceService` so the read and write shapes stay
+  in lock-step.
+- **No controller.** Per directive, no controller was added for TASK-005;
+  service-level coverage is sufficient. A later HTTP task can wrap this
+  service into a thin adapter.
+- **Committed-visibility gate.** The service emits `Mono.empty()` unless
+  the header has `record_type='transaction'`, `state='committed'`, and a
+  non-blank `commit_id`. This rejects:
+  - missing headers (no document at `_id == txnId`),
+  - open / uncommitted headers,
+  - committed-but-no-`commit_id` partial-write states (defense in depth;
+    today's writer always sets both atomically),
+  - the older `TransactionService` document shape (which has no
+    `record_type`) coexisting in the same `txn` collection.
+  In each rejected case the message-record lookup is short-circuited.
+- **Snapshot DTO location.** Per directive, snapshot return classes live
+  under `org.jadetipi.jadetipi.service`, not `dto/`. They are internal
+  service-boundary types, not HTTP request/response DTOs:
+  - `service/CommittedTransactionSnapshot` (`txnId`, `state`, `commitId`,
+    `openedAt`, `committedAt`, `openData`, `commitData`, `messages`).
+  - `service/CommittedTransactionMessage` (`msgUuid`, `collection`,
+    `action`, `data`, `receivedAt`, `kafka`).
+- **Read-side Kafka provenance.** Per directive, a service-local
+  `service/KafkaProvenance` value object is used instead of reusing the
+  write-side `kafka.KafkaSourceMetadata`. Same fields (`topic`,
+  `partition`, `offset`, `timestampMs`) but the read service does not
+  import the `kafka` package.
+- **Deterministic message ordering.** The Mongo query for messages is
+  `Criteria.where('record_type').is('message').and('txn_id').is(txnId)`
+  with `Sort.by(ASC, '_id')`. Because `_id = txn_id~msg_uuid` and `txn_id`
+  is constant within a result set, this collapses to ordered-by-`msg_uuid`
+  and uses the implicit `_id` index. The unit spec asserts the issued
+  `Query.sortObject == new Document('_id', 1)` per directive (proves the
+  database is doing the sort) and verifies the snapshot preserves the
+  Mongo-returned order regardless of the mocked `Flux` order.
+- **Input validation.** `Assert.hasText` on `txnId` matches the existing
+  `TransactionService` convention; blank/null/whitespace inputs raise
+  `IllegalArgumentException` and never call Mongo.
+- **Null tolerance.** Header timestamps, `open_data`, `commit_data`,
+  message `data`, `received_at`, and the `kafka` sub-doc may all be
+  absent on real records; the snapshot returns them as `null` without
+  NPE.
+- **No production-code change to existing files.**
+  `TransactionMessagePersistenceService` (writer),
+  `TransactionMessageListener`, `TransactionService`, controllers,
+  `application.yml`, and `build.gradle` are unchanged. The directive
+  required preserving the `TASK-003` write-ahead log shape.
+
+### Files added
+
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionReadService.groovy`
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionSnapshot.groovy`
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMessage.groovy`
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/KafkaProvenance.groovy`
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionReadServiceSpec.groovy`
+  (8 features, 11 test rows once the data-driven `where:` block is
+  expanded for blank/null/whitespace `txnId`).
+
+### Files updated (in scope)
+
+- `docs/orchestrator/tasks/TASK-005-committed-transaction-snapshot-read-layer.md`
+  — `STATUS` flipped to `READY_FOR_REVIEW`; `LATEST_REPORT` updated with
+  the as-built shape and verification.
+
+### Verification
+
+Setup (project-documented):
+
+- `docker compose -f docker/docker-compose.yml up -d` — Mongo + Kafka +
+  Keycloak. Verified containers were already healthy from prior work
+  (`jade-tipi-mongo`, `jade-tipi-kafka`, `jade-tipi-keycloak`).
+
+Compilation:
+
+- `./gradlew :jade-tipi:compileGroovy` — BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:compileTestGroovy` — BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:compileIntegrationTestGroovy` — BUILD SUCCESSFUL
+  (cross-source-set sanity check; no integration spec added or required).
+
+Targeted unit run:
+
+- `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadServiceSpec*'`
+  — BUILD SUCCESSFUL. New spec: `tests=11, skipped=0, failures=0,
+  errors=0`.
+
+Regression check on the full unit suite:
+
+- `./gradlew :jade-tipi:test` — BUILD SUCCESSFUL. Now 48 tests pass:
+  - `JadetipiApplicationTests` (1)
+  - `TransactionMessageListenerSpec` (4)
+  - `DocumentServiceMongoDbImplSpec` (9)
+  - `CommittedTransactionReadServiceSpec` (11) — new
+  - `TransactionMessagePersistenceServiceSpec` (11)
+  - `TransactionServiceSpec` (12)
+
+No integration spec is added for TASK-005. The TASK-004 integration spec
+already proves the Kafka writer path produces the documents this read
+service projects, and the read service has no Kafka or HTTP dependency
+of its own.
+
+### Out-of-scope items not implemented (per directive)
+
+- No materialization into `ent`, `ppy`, `typ`, `lnk`, or other long-term
+  collections.
+- No semantic reference validation between properties / types / entities /
+  assignments.
+- No HTTP submission wrapper or read controller; service-level coverage
+  is sufficient for `TASK-005`.
+- No change to Kafka ingestion, topic configuration, or message envelope
+  semantics. The `txn` write-ahead log shape from `TASK-003` is preserved.
+- No new auth/authz policy.
+
 ## TASK-004 — Add Kafka transaction ingest integration coverage
 
 Goal completed. The backend Kafka ingestion path now has an end-to-end

@@ -2,7 +2,7 @@
 
 ID: TASK-005
 TYPE: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: READY_FOR_REVIEW
 OWNER: claude-1
 OWNED_PATHS:
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/
@@ -42,15 +42,26 @@ DEPENDENCIES:
 - `TASK-004` is accepted and proves the Kafka listener can populate the `txn` collection through the documented local stack.
 
 LATEST_REPORT:
-Director pre-work review on 2026-04-30: claude-1's plan in `docs/agents/claude-1-next-step.md` is sufficient to proceed. Scope check passed: the latest claude-1 commit changed only `docs/agents/claude-1-next-step.md`, which is inside the developer-owned pre-work paths.
+Implementation completed by claude-1 on 2026-04-30. Status flipped to `READY_FOR_REVIEW` per directive (no `IMPLEMENTATION_COMPLETE` lifecycle status).
 
-Implementation directives:
-- Build a Kafka-free and HTTP-free `CommittedTransactionReadService` over `txn`; do not add a controller for `TASK-005`.
-- Put snapshot return classes under `org.jadetipi.jadetipi.service` for this service boundary. A later HTTP task can introduce public API DTOs if needed.
-- Require a WAL header with `record_type=transaction`, `state=committed`, and non-blank `commit_id`; return empty/not-found for missing, open, uncommitted, or older `TransactionService`-shape documents.
-- Preserve header fields plus message fields needed by later materializers: `collection`, `action`, `data`, `msg_uuid`, and Kafka provenance.
-- Use deterministic message ordering by `_id` ascending. In unit tests, assert the issued Mongo query carries that sort; do not rely on mocked Flux ordering to prove Mongo sorting.
-- Use a small service-local Kafka provenance value object rather than reusing the write-side `kafka.KafkaSourceMetadata` type.
-- At the end of implementation, set this task to `READY_FOR_REVIEW`, not `IMPLEMENTATION_COMPLETE`.
+As-built shape (all inside the expanded `TASK-005` scope):
 
-Verification target: run the narrow `:jade-tipi` compile/test commands selected in pre-work. If Mongo is unavailable for the broader unit suite, report the project-documented setup command: `docker compose -f docker/docker-compose.yml --profile mongodb up -d`.
+- `service/CommittedTransactionReadService` (new): Kafka-free / HTTP-free `@Service` with one public method, `Mono<CommittedTransactionSnapshot> findCommitted(String txnId)`. Uses `ReactiveMongoTemplate.findById` for the header and `ReactiveMongoTemplate.find` with `Sort.by(ASC, '_id')` for the message rows. Reuses field-name and state constants from `TransactionMessagePersistenceService` so the read shape stays in lock-step with the writer.
+- Committed-visibility gate: returns `Mono.empty()` unless the header has `record_type='transaction'`, `state='committed'`, and a non-blank `commit_id`. This rejects the older `TransactionService` document shape (which has no `record_type`), open headers, partial-write headers, and missing `txn_id` rows. The message lookup is short-circuited in those cases.
+- Service-local snapshot return classes (placed in `service/`, not `dto/`):
+  - `service/CommittedTransactionSnapshot` — `txnId`, `state`, `commitId`, `openedAt`, `committedAt`, `openData`, `commitData`, `messages`.
+  - `service/CommittedTransactionMessage` — `msgUuid`, `collection`, `action`, `data`, `receivedAt`, `kafka`.
+  - `service/KafkaProvenance` — `topic`, `partition`, `offset`, `timestampMs`. Mirrors the persisted `kafka` sub-doc without importing the write-side `kafka.KafkaSourceMetadata` type.
+- `service/CommittedTransactionReadServiceSpec` (new, 11 tests, 8 features): committed snapshot round-trip; open header skips message lookup; committed-but-no-commit_id and blank-commit_id partial-write guards; missing header returns `Mono.empty()`; older `TransactionService`-shape document is ignored; deterministic ordering verified by capturing the issued `Query` and asserting `sortObject == new Document('_id', 1)` plus the criteria filter; blank/null/whitespace `txnId` rejected with `IllegalArgumentException` (data-driven `where:` block); null payload fields tolerated without NPE.
+
+Verification (claude-1 worktree, Docker stack up: `jade-tipi-mongo`, `jade-tipi-kafka`, `jade-tipi-keycloak`):
+
+- `./gradlew :jade-tipi:compileGroovy` — BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:compileTestGroovy` — BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadServiceSpec*'` — BUILD SUCCESSFUL. New spec: 11/11 pass.
+- `./gradlew :jade-tipi:test` — BUILD SUCCESSFUL. Full unit suite: 48 tests pass (37 prior + 11 new), all green.
+- `./gradlew :jade-tipi:compileIntegrationTestGroovy` — BUILD SUCCESSFUL (cross-source-set sanity check; no integration spec was added or required).
+
+No production code was changed in `TransactionMessagePersistenceService`, `TransactionMessageListener`, `TransactionService`, any controller, `application.yml`, or `build.gradle`.
+
+If Mongo is unavailable when reviewing, the project-documented setup command is `docker compose -f docker/docker-compose.yml up -d` (the `JadetipiApplicationTests.contextLoads` test in the unit suite opens a Mongo connection on context load).
