@@ -4,464 +4,370 @@ The developer writes pre-work plans here before implementation begins.
 
 STATUS: PRESENT
 
-## TASK-003 — Persist Kafka transaction messages to txn (pre-work)
+## TASK-004 — Add Kafka transaction ingest integration coverage (pre-work)
 
 ### Directive summary
 
 Per `DIRECTIVES.md` (signal `REQUEST_NEXT_STEP`) and
-`docs/orchestrator/tasks/TASK-003-persist-kafka-transaction-messages.md`
-(status `READY_FOR_PREWORK`), build the first backend Kafka ingestion
-path. The Spring Boot application should consume canonical
-`org.jadetipi.dto.message.Message` records from a configurable Kafka
-topic pattern, validate them at the envelope/schema level, and persist
-them into MongoDB's `txn` collection as the durable transaction
-write-ahead log. Two record kinds live in `txn`:
+`docs/orchestrator/tasks/TASK-004-kafka-transaction-ingest-integration-test.md`
+(status `READY_FOR_PREWORK`), add a practical integration test that
+exercises the accepted Kafka-first transaction ingestion path
+end-to-end:
 
-- A header document keyed by `txn_id` (`record_type=transaction`).
-- One message document per received `Message` keyed by
-  `txn_id~msg_uuid` (`record_type=message`).
+- Publish canonical `org.jadetipi.dto.message.Message` records (a
+  transaction `open`, one data message, and a `commit`) to Kafka.
+- Let the existing `TransactionMessageListener` consume them.
+- Assert the resulting `txn` collection in MongoDB contains the
+  expected header (`record_type=transaction`, `state=committed`,
+  `commit_id` populated) plus one message document
+  (`record_type=message`, `_id = txnId~msgUuid`).
 
-`collection=txn/action=open` opens the header. `collection=txn/action=commit`
-stamps the header with a backend-generated orderable `commit_id` and
-marks it committed. All other valid `(collection, action)` pairs append
-data messages idempotently.
+Director constraints to respect:
 
-This is pre-work only. No backend, build, or test code may change until
-the director moves `TASK-003` to `READY_FOR_IMPLEMENTATION` (or sets the
-global signal to `PROCEED_TO_IMPLEMENTATION`).
+- Prefer the documented Docker Compose services and the existing
+  Gradle `integrationTest` wiring over adding Testcontainers, unless
+  pre-work shows the documented setup cannot make the test reliable.
+- Kafka auto-topic creation is **disabled** in
+  `docker/docker-compose.yml` (`KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"`).
+  Pre-work must decide whether to use the existing `jdtp_cli_kli` topic
+  or create a per-test topic via a documented/admin-client path.
+- The test must be opt-in or environment-gated when the Docker stack
+  is not available, with the skip/run conditions explicit in the test.
+- Do not change production Kafka ingestion behavior unless the test
+  exposes a real bug in the accepted implementation.
+
+This is pre-work only. No backend, build, test, or doc edits beyond
+this file until the director moves `TASK-004` to
+`READY_FOR_IMPLEMENTATION` (or sets the global signal to
+`PROCEED_TO_IMPLEMENTATION`).
 
 ### Current baseline (read, not yet changed)
 
-- `jade-tipi/build.gradle` has no Kafka dependency. It pulls
-  `spring-boot-starter-webflux`, `spring-boot-starter-data-mongodb-reactive`,
-  the project DTO/id libraries, Spock, and reactor-test. No
-  `spring-kafka`, no `reactor-kafka`, no Testcontainers.
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/` does not contain a
-  `kafka/` package yet. Existing leaf packages are
-  `config`, `controller`, `dto`, `endpoints`, `exception`, `filter`,
-  `mongo`, `service`, `util`.
-- `service/TransactionService.groovy` is the legacy HTTP-driven service.
-  It writes header documents into the `txn` collection with shape
-  `{ _id: <tipiId~org~grp>, grp:{organization,group}, txn:{id, secret, commit, open_seq, opened, commit_seq, committed} }`.
-  The legacy ID format (`tipiId~org~grp` produced by `IdGenerator.nextId()`
-  joined with org/grp) is structurally different from the canonical
-  `Transaction.getId()` (`uuid~org~grp~client`), so legacy headers and
-  new Kafka-produced headers will not collide on `_id`. The task says
-  do not refactor or delete this service.
-- `mongo/config/MongoDbInitializer.groovy` already creates the `txn`
-  collection (it iterates `Collection.values()` and creates each
-  abbreviation-named collection). No new collection creation needed.
-- `util/Constants.groovy` already exposes
-  `COLLECTION_TRANSACTIONS = 'txn'` and `TRANSACTION_ID_SEPARATOR = '~'`.
-  These are the only two constants new code needs from this file; the
-  others are document-collection-specific.
-- `application.yml` activates the `mongodb` profile by default and runs
-  on `${backendPort}`. There is no Kafka configuration block.
-- `application-mongodb.yml` configures the local Mongo connection
-  (`localhost:27017`, db `jdtp`). No Kafka section.
-- `docker/docker-compose.yml` defines a single Kafka broker
-  (`apache/kafka:4.1.1`) on `localhost:9092` with
-  `KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"`. The `kafka-init` sidecar
-  pre-creates exactly one topic: `jdtp_cli_kli` (single underscore form,
-  one partition). No `jdtp-txn-*` topic is pre-created locally.
-- `clients/kafka-kli/src/main/groovy/org/jadetipi/kafka/cli/KafkaCli.groovy`
-  publishes to `DEFAULT_TOPIC = 'jdtp_cli_kli'`. This is the only Kafka
-  producer in the repo. Any local end-to-end test that uses `kli` to
-  produce will land messages on `jdtp_cli_kli` unless a different
-  `--topic` is passed.
-- `Message` is `(txn, uuid, collection, action, data)`. `Message.getId()`
-  returns `<txn.getId()>~<uuid>~<action>` (annotated `@JsonIgnore`).
-  `Message.validate()` runs JSON Schema validation against
-  `/schema/message.schema.json`.
-- `Transaction.getId()` is `<uuid>~<org>~<grp>~<client>` and is also
-  `@JsonIgnore`. This is the value the task calls `txn_id`.
-- Existing Mongo persistence patterns use `ReactiveMongoTemplate`
-  (`DocumentServiceMongoDbImpl`, `TransactionService`). The codebase is
-  WebFlux/reactive end-to-end.
-- `JadetipiApplicationTests.contextLoads` opens a Mongo connection, so
-  any new Spring-context test will require the Docker stack.
+- `jade-tipi/build.gradle` already pulls `org.springframework.kafka:spring-kafka`
+  (added in TASK-003), which transitively brings `org.apache.kafka:kafka-clients`
+  on the test classpath. There is no `spring-kafka-test`, no Testcontainers,
+  and no `awaitility` dependency.
+- `gradle/scripts/integration-test.gradle` is applied via
+  `spring-boot.gradle` and registers an `integrationTest` task with the
+  source set rooted at `src/integrationTest/`. The Groovy plugin is
+  applied at the project level, so `src/integrationTest/groovy` is a
+  recognized source dir even though the script only declares
+  `java.srcDir 'src/integrationTest/java'` (existing
+  `DocumentServiceIntegrationSpec` and `TransactionServiceIntegrationSpec`
+  live under `src/integrationTest/groovy/...` and compile fine).
+  `src/integrationTest/resources/` does not exist yet but is in scope.
+- The `integrationTest` source set declares
+  `resources.srcDirs = ['src/integrationTest/resources', 'src/test/resources']`,
+  so `src/test/resources/application-test.yml` is on the classpath of
+  integration tests by default.
+- `src/test/resources/application-test.yml` currently sets
+  `jadetipi.kafka.enabled: false` so `JadetipiApplicationTests.contextLoads`
+  does not start a Kafka listener. The integration test must override
+  this to `true` so the listener actually consumes.
+- `KafkaIngestProperties.txnTopicPattern` defaults to
+  `jdtp-txn-.*|jdtp_cli_kli`. The default pattern already matches both
+  the design topic family and the docker-pre-created `jdtp_cli_kli`
+  topic.
+- The listener consumer-group default (`jadetipi-txn-ingest`) and
+  `auto-offset-reset=earliest` mean a fresh group will read all
+  retained records on the topic. To prevent test-to-test offset
+  carry-over and to stay isolated from the running dev backend (if any),
+  the test must override `spring.kafka.consumer.group-id` to a unique
+  value per run.
+- `JadetipiApplicationTests.contextLoads` already starts a full
+  `@SpringBootTest` context against MongoDB on `localhost:27017`. The
+  same context-load mechanism is what the new integration spec will
+  reuse.
+- The existing integration specs (`TransactionServiceIntegrationSpec`,
+  `DocumentServiceIntegrationSpec`, `DocumentCreationIntegrationTest`)
+  all rely on the docker Mongo and Keycloak stack being up. None of
+  them currently exercise Kafka.
+- `clients/kafka-kli` publishes to `jdtp_cli_kli` and is the only
+  in-repo Kafka producer. The integration test will produce directly
+  via `kafka-clients` (`KafkaProducer`) rather than depend on the kli
+  binary.
 
-### Proposed plan
+### Director decision points (proposal + rationale)
 
-The minimum implementation to satisfy acceptance criteria has four
-seams: build dependency, configuration, Kafka listener, and
-persistence service (plus tests). I propose the layout below.
+The task explicitly asks pre-work to decide each of these. I am
+proposing a default for each and listing the alternative for the
+director to override before implementation.
 
-#### 1. Build & dependency (`jade-tipi/build.gradle`)
+#### D1. Topic strategy — proposal: per-test topic via AdminClient
 
-- Add a single new runtime/compile dependency:
-  `implementation 'org.springframework.kafka:spring-kafka'`. Spring
-  Boot's BOM (3.5.6) pins a compatible version, so no explicit version
-  is needed. Spring Kafka brings the `kafka-clients` it needs.
-- Reason for `spring-kafka` (not `reactor-kafka`): the rest of the
-  codebase already uses Spring annotations (`@Service`, `@Component`,
-  `@KafkaListener` is the natural counterpart). The listener thread can
-  call `ReactiveMongoTemplate` operations and `.block()` to integrate
-  with the reactive persistence layer, since the Spring Kafka container
-  thread is not a Reactor Netty event loop. This keeps the surface
-  small and matches existing Spock-with-mocks test style. I will
-  surface `reactor-kafka` as an alternative in the open questions.
-- No test dependency on Testcontainers or `spring-kafka-test` for this
-  task — see verification section.
+**Proposal.** Create a unique per-test topic at the start of each spec
+using `org.apache.kafka.clients.admin.AdminClient.createTopics(...)`
+with name `jdtp-txn-itest-${shortUuid}` (1 partition, 1 replica), and
+delete it in `cleanupSpec` via `AdminClient.deleteTopics(...)`. The
+default `txnTopicPattern` (`jdtp-txn-.*|jdtp_cli_kli`) already matches
+this naming, so the listener subscribes without any property override.
 
-#### 2. Configuration
+**Why over `jdtp_cli_kli`.**
 
-- Add a new `application.yml` block:
+- Test isolation: the existing `jdtp_cli_kli` topic is shared with the
+  `kli` CLI. Records sitting there from prior dev usage would be
+  re-consumed on every test run (because `auto-offset-reset=earliest`
+  with a fresh group), producing unbounded extra documents in `txn`
+  and noisy assertions.
+- Hygiene: a per-test topic is dropped at the end of the spec, leaving
+  no residue across runs and not interfering with manual `kli`
+  experimentation.
+- Consumer-group isolation: combined with a per-run group id (D3),
+  every test run starts from a deterministic empty state.
+- Documented path: AdminClient is part of `kafka-clients`, which is
+  already on the test classpath via `spring-kafka`. No new dependency.
 
-  ```yaml
-  spring:
-    kafka:
-      bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-      consumer:
-        group-id: ${KAFKA_CONSUMER_GROUP:jadetipi-txn-ingest}
-        auto-offset-reset: earliest
-        enable-auto-commit: false
-        key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-        value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
-      listener:
-        ack-mode: RECORD
-  jadetipi:
-    kafka:
-      txn-topic-pattern: ${KAFKA_TXN_TOPIC_PATTERN:jdtp-txn-.*|jdtp_cli_kli}
-      enabled: ${KAFKA_INGEST_ENABLED:true}
-  ```
+**Alternative.** Reuse `jdtp_cli_kli`. Cheaper (no AdminClient calls)
+but couples the test to whatever else is on the topic. To make this
+reliable I would need to consume-and-discard everything currently on
+the topic before producing test messages, which is more code than the
+AdminClient approach. I recommend declining this alternative unless
+the director wants zero changes outside of property overrides.
 
-  - Default pattern accepts the design target (`jdtp-txn-.*`) **and**
-    the only topic the local docker stack creates (`jdtp_cli_kli`).
-    This is the explicit "account for current Docker/local topic
-    naming" call from the acceptance criteria. The pattern can be
-    narrowed in production via env var.
-  - `enabled` is a kill switch so the existing
-    `JadetipiApplicationTests.contextLoads` test (which already needs
-    Mongo running) does not also start hitting Kafka. The test profile
-    will set `jadetipi.kafka.enabled=false` (see §6).
-  - `ack-mode: RECORD` plus `enable-auto-commit: false` means the
-    listener container only commits the offset after the listener
-    method returns successfully, giving us at-least-once semantics
-    paired with idempotent Mongo writes.
-  - Manual offset commit on a per-record basis is the simplest model
-    that satisfies "duplicate Kafka delivery with the same message
-    content should be treated as success" without exactly-once.
-- New file
-  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/kafka/KafkaIngestProperties.groovy`
-  (`@ConfigurationProperties("jadetipi.kafka")`) with two fields:
-  `String txnTopicPattern` and `boolean enabled` (default true). This
-  binds cleanly with `@EnableConfigurationProperties` and avoids
-  `@Value` strings sprinkled in the listener.
+#### D2. Test gating — proposal: env-flag plus fast broker probe
 
-#### 3. Kafka listener (`jade-tipi/.../kafka/`)
+**Proposal.** Gate the new spec with Spock's `@IgnoreIf` (or a JUnit 5
+`@EnabledIfEnvironmentVariable`-equivalent on Spock via
+`@Requires`) that checks two things:
 
-New package
-`jade-tipi/src/main/groovy/org/jadetipi/jadetipi/kafka/`:
+1. Env var `JADETIPI_IT_KAFKA` is set to a truthy value (`1`, `true`).
+2. A 2-second `AdminClient.describeCluster()` probe to
+   `localhost:9092` (or `KAFKA_BOOTSTRAP_SERVERS` if set) succeeds.
 
-- `TransactionMessageListener.groovy` — `@Component` with a single
-  `@KafkaListener(topicPattern = "#{jadetipiKafkaProperties.txnTopicPattern}", autoStartup = "#{jadetipiKafkaProperties.enabled}")`
-  method. Signature:
+If either check fails, the spec is skipped with a clear message
+("Kafka integration test skipped: set JADETIPI_IT_KAFKA=1 and start
+docker compose -f docker/docker-compose.yml up -d to run").
 
-  ```groovy
-  void onMessage(ConsumerRecord<String, byte[]> record, Acknowledgment ack)
-  ```
+**Why both.** The env flag matches the project pattern of opt-in
+heavy tests (consistent with how integration tests are already not run
+by `./gradlew test`) and avoids surprising a developer who runs
+`./gradlew check`. The broker probe protects against the case where
+the env flag is set but the docker stack happens to be down — instead
+of a 30s consumer-startup timeout we report skip immediately.
 
-  Steps:
-  1. Deserialize `record.value()` to `Message` via the project's
-     `org.jadetipi.dto.util.JsonMapper`. On parse failure, log error
-     with topic/partition/offset/key, ack the record (poison-pill
-     skip), and return. This avoids stalling the consumer on a single
-     bad message; alternative behavior — DLQ or fail-stop — is an open
-     question for the director.
-  2. Call `message.validate()`. On `ValidationException`, log the
-     validation result and ack-skip the record (same rationale).
-  3. Build a `KafkaSourceMetadata` value object
-     (`{ topic, partition, offset, timestamp }`).
-  4. Call `transactionMessagePersistenceService.persist(message, metadata)`
-     and `.block(Duration)` for the result. The block timeout
-     (`txn.persist.timeout`, default 30s) is configurable.
-  5. On success, `ack.acknowledge()`.
-  6. On failure, log and **do not** ack; let the listener container
-     re-deliver. (Spring Kafka with `ack-mode: RECORD` and a thrown
-     exception triggers default error handler retries; we will rely on
-     Spring's `DefaultErrorHandler` in this first cut and not customize
-     the back-off in this task.)
-- `KafkaSourceMetadata.groovy` — small Groovy record-style class
-  capturing `topic`, `partition`, `offset`, `timestampMs`. Lives next
-  to the listener so the persistence service does not depend on Kafka
-  client classes.
+**Alternative A.** Skip the broker probe and rely on the env flag
+alone. Simpler but loses the helpful skip-on-broker-down behavior.
 
-The listener is the only file in `kafka/` that imports
-`org.apache.kafka.*` or `org.springframework.kafka.*`. The persistence
-service stays Kafka-free, satisfying the design note: "Prefer a small
-service boundary with no Kafka or HTTP imports".
+**Alternative B.** Always run when docker is detected (no env flag).
+Risks slowing down unrelated `./gradlew :jade-tipi:integrationTest`
+runs and conflicts with the director's "opt-in or environment-gated"
+acceptance criterion.
 
-#### 4. Persistence service (`jade-tipi/.../service/`)
+#### D3. Consumer-group strategy — proposal: per-run unique group id
 
-New `service/TransactionMessagePersistenceService.groovy`. Public API:
+**Proposal.** Use `@DynamicPropertySource` (or
+`@TestPropertySource(properties = "spring.kafka.consumer.group-id=jadetipi-itest-${random.uuid}")`)
+to set a fresh group id on every test run. With
+`auto-offset-reset=earliest` (already the default) the listener will
+read every record on the per-test topic from offset 0.
+
+**Why.** A fixed group id would either (a) skip already-consumed
+records on a re-run if the test left committed offsets (we use
+`MANUAL_IMMEDIATE` ack so this is real), or (b) collide with a
+running dev backend that uses the same group id and steal its
+partitions.
+
+#### D4. Wait strategy — proposal: bounded reactive polling on `txn`
+
+**Proposal.** After producing the three records and `flush()`-ing the
+producer, poll MongoDB for the expected header and message documents
+using a small reactive helper:
 
 ```groovy
-Mono<PersistResult> persist(Message message, KafkaSourceMetadata source)
+private static <T> T awaitNonNull(Mono<T> mono, Duration timeout) {
+    return mono.repeatWhenEmpty { Flux.range(1, 60).delayElements(Duration.ofMillis(250)) }
+            .blockOptional(timeout)
+            .orElseThrow { new AssertionError("did not appear within ${timeout}") }
+}
 ```
 
-`PersistResult` enum: `OPENED`, `OPEN_CONFIRMED_DUPLICATE`, `APPENDED`,
-`APPEND_DUPLICATE`, `COMMITTED`, `COMMIT_DUPLICATE`. (Plain enum, no
-Kafka/HTTP types.)
+Used as `awaitNonNull(mongoTemplate.findById(txnId, Map, 'txn').filter { ... committed }, Duration.ofSeconds(20))`.
 
-Internal flow:
+**Why this approach.**
 
-- Compute `txnId = message.txn().getId()`.
-- Compute `recordId = txnId + "~" + message.uuid()` for data messages.
-- Branch by `(collection, action)`:
-  - **`txn`/`open`**: upsert a header document with `_id = txnId`,
-    `record_type = "transaction"`, `txn_id = txnId`, `state = "open"`,
-    `opened_at = now()` (server time on insert), and the same
-    `data` payload from the open message under `data`. Use
-    `mongoTemplate.upsert(query, update, COLLECTION_TXN)` with
-    `setOnInsert` for `opened_at` so a re-delivered open does not
-    rewrite the original timestamp. If a header already has
-    `state = "committed"`, return `OPEN_CONFIRMED_DUPLICATE` (no
-    error — operator already saw a commit) and log a warning.
-    Otherwise return `OPENED` for first-write or
-    `OPEN_CONFIRMED_DUPLICATE` for an existing open header.
-  - **`txn`/`commit`**: read existing header by `_id = txnId`. If
-    missing, return error (commit before open is a hard envelope-level
-    failure that should be reported). If `state == "committed"`,
-    treat as duplicate — return `COMMIT_DUPLICATE` and reuse the
-    stored `commit_id`. Otherwise generate a new `commit_id` via
-    `idGenerator.nextId()` (already a Spring bean in
-    `IdGeneratorConfig`; it produces an orderable, sortable ID — same
-    approach the legacy `TransactionService` uses for its commit_seq).
-    Update the header in one Mongo call with `state = "committed"`,
-    `commit_id`, `committed_at`, and the commit message's `data`
-    payload under `commit_data`. Return `COMMITTED`.
-  - **`txn`/`rollback`**: explicitly out of the acceptance criteria.
-    For first cut: log info, write nothing, return a new
-    `ROLLBACK_NOT_PERSISTED` result. Acknowledged in OOS already; I
-    will not invent rollback semantics here.
-  - **All non-`txn` collections** (`ent`, `ppy`, `typ`, `lnk`, `uni`,
-    `grp`, `vdn` × `create|update|delete`): build a message document
-    with `_id = recordId`, `record_type = "message"`, `txn_id`,
-    `msg_uuid`, `collection`, `action`, `data`, `received_at`, and
-    a `kafka` sub-doc `{ topic, partition, offset, timestamp_ms }`.
-    Insert with `mongoTemplate.insert(...)`. On
-    `DuplicateKeyException`:
-      1. `findById(recordId)` to retrieve the existing document.
-      2. Compare `collection`, `action`, and `data` against incoming
-         values. If equal, return `APPEND_DUPLICATE` (success).
-      3. If different, return error `ConflictingDuplicateException`
-         with both stored and incoming summaries in the message. The
-         listener will surface this clearly in the log; we do not
-         ack-skip on conflicts.
-- The service does **not** call `IdGenerator` for `txn_id` (per design
-  note), only for `commit_id`.
+- No new dependency. Awaitility would be cleaner but adds a library.
+- The 20s ceiling is a generous upper bound on Kafka consumer startup
+  + first-poll latency; in practice the listener container produces
+  records within ~2–3s of test start.
+- Per-record polling on `_id` lookup is cheap (single Mongo read).
 
-Reactive shape: every step returns `Mono`, no `.block()` inside the
-service. The listener does the single bounded `.block()` so we do not
-mix Reactor and Spring-Kafka threading models inside the service.
+**Alternative.** Add `org.awaitility:awaitility` to
+`testImplementation` (also picked up by `integrationTestImplementation`
+via `extendsFrom`). Cleaner DSL, but a new dep just for one spec.
+Open question for the director.
 
-#### 5. Tests (mocked, no Docker, no live Kafka)
+#### D5. Producer wiring — proposal: raw `KafkaProducer<String, byte[]>`
 
-`jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/TransactionMessagePersistenceServiceSpec.groovy`
-— Spock spec with mocked `ReactiveMongoTemplate` and mocked
-`IdGenerator`. Cases (matches acceptance criteria one-for-one):
+**Proposal.** Construct a `KafkaProducer<String, byte[]>` directly in
+the spec (with `StringSerializer` for keys and `ByteArraySerializer`
+for values) and serialize each `Message` with the project's
+`org.jadetipi.dto.util.JsonMapper.toBytes(...)`. Produce in order:
+open → data → commit, all to the same partition (key set to the
+`txn_id` so they hash to the same partition; the topic has a single
+partition anyway).
 
-1. `txn/open` first time → `OPENED`, upsert called with insert-only
-   `opened_at`, `state=open`.
-2. `txn/open` re-delivery on existing open header →
-   `OPEN_CONFIRMED_DUPLICATE`, no `opened_at` rewrite.
-3. `txn/open` after commit → `OPEN_CONFIRMED_DUPLICATE` with
-   warning-level log assertion (optional).
-4. Data message first time → `APPENDED`, insert called with
-   `record_type=message`, `_id = txnId~msgUuid`, kafka metadata.
-5. Data message duplicate, equal payload → `APPEND_DUPLICATE` (no
-   error).
-6. Data message duplicate, different payload → fails the `Mono` with
-   `ConflictingDuplicateException`.
-7. `txn/commit` first time → `COMMITTED`, header updated with
-   `commit_id` from mocked `IdGenerator.nextId()`, `state=committed`,
-   `committed_at`.
-8. `txn/commit` duplicate → `COMMIT_DUPLICATE`, no second
-   `idGenerator.nextId()` call.
-9. `txn/commit` before open → `Mono.error(IllegalStateException)`.
+**Why.** Mirrors what production producers will do (kli already uses
+`KafkaProducer`). Avoids needing to import Spring's `KafkaTemplate` or
+auto-configuring a producer factory at test time. No need for
+`spring-kafka-test`'s embedded broker — we use the real docker broker.
 
-Listener-level test (lighter):
-`jade-tipi/src/test/groovy/org/jadetipi/jadetipi/kafka/TransactionMessageListenerSpec.groovy`
-— mocks the persistence service and the `Acknowledgment`, feeds
-synthetic `ConsumerRecord<String, byte[]>` instances. Cases:
+**Alternative.** Use the already-auto-configured `KafkaTemplate`. Also
+fine, but requires wiring (`spring.kafka.producer.*` properties) that
+are not currently set.
 
-1. Valid message → service called with parsed `Message` plus
-   metadata, ack acknowledged once, no exception.
-2. Unparseable bytes → service not called, ack acknowledged
-   (poison-pill skip), warning logged.
-3. Schema-invalid message → service not called, ack acknowledged.
-4. Service returns error → ack **not** called; exception propagates.
+#### D6. Cleanup — proposal: drop test topic + scoped Mongo cleanup
 
-No Kafka broker, no embedded Kafka, no `spring-kafka-test`. These are
-unit-style Spock specs constructing `ConsumerRecord` directly.
+**Proposal.** In `cleanupSpec`:
 
-#### 6. Test-profile behavior
+1. Stop the consumer container for the test topic (or simply close it
+   indirectly by ending the Spring context — the framework handles
+   this).
+2. Delete the per-test topic via `AdminClient.deleteTopics(...)`.
+3. Drop only the documents created by the test from `txn`:
+   `mongoTemplate.remove(Query.query(Criteria.where('txn_id').is(txnId)), 'txn').block()`,
+   plus the header by `_id`.
 
-The existing `application-test.*` profile is implicit (no file). To
-prevent `JadetipiApplicationTests.contextLoads` from booting a
-listener that immediately fails on a missing broker:
+**Why scoped.** Other integration specs (`TransactionServiceIntegrationSpec`)
+also write to `txn` with their own ID format and would break if the
+new spec dropped the whole collection. A targeted delete by `txn_id`
+keeps them coexistable.
 
-- Add `jade-tipi/src/test/resources/application-test.yml` with:
+#### D7. Number of test cases — proposal: one happy-path spec, one structural sanity check
 
-  ```yaml
-  jadetipi:
-    kafka:
-      enabled: false
-  spring:
-    kafka:
-      bootstrap-servers: localhost:9092
-  ```
+**Proposal.** Two `Specification` features in one new spec file:
 
-  The `enabled=false` flag flips `autoStartup` on the `@KafkaListener`,
-  so the consumer container is created but does not poll. The Mongo
-  context-load behavior of the test stays unchanged.
-- Confirm `@ActiveProfiles("test")` is already on
-  `JadetipiApplicationTests` (it is). This is the only change needed.
+1. **Happy path (required by acceptance criteria).** Produce open +
+   data + commit to a per-test topic, await the `txn` header
+   reaching `state=committed` with `commit_id` populated, then assert:
+   - Header `_id` matches the canonical `txn_id` (`uuid~org~grp~client`).
+   - Header `record_type == 'transaction'`, `state == 'committed'`,
+     `opened_at` and `committed_at` present, `commit_id` non-null,
+     `open_data` and `commit_data` round-tripped.
+   - Exactly one message document with
+     `_id == "${txnId}~${msgUuid}"`,
+     `record_type == 'message'`,
+     `collection == 'ppy'` (or whichever non-`txn` collection we pick),
+     `kafka.topic`, `kafka.partition`, `kafka.offset`, and
+     `kafka.timestamp_ms` populated.
+2. **Idempotency sanity check (small extra confidence).** Re-publish
+   the same data message a second time and assert the `txn` document
+   count for that `txn_id` does not grow (still exactly one message
+   document).
 
-#### 7. Optional: Kafka integration test
-
-The acceptance criteria say a Kafka integration test should be added
-"only if it is practical with the existing Docker/Testcontainers
-setup." The repo has no Testcontainers wiring and the docker stack is
-operator-launched. I will add an opt-in integration test under
-`jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/TransactionMessageIngestIntegrationSpec.groovy`
-that:
-
-- Is annotated `@EnabledIfEnvironmentVariable(named = "KAFKA_BOOTSTRAP_SERVERS", matches = ".+")`
-  so it stays skipped in CI / on developer machines without the docker
-  stack up.
-- Produces synthetic open + data + commit messages to a per-test
-  topic name (`jdtp-txn-itest-${uuid}`) using the
-  `kafka-clients` `KafkaProducer` directly.
-- Asserts the resulting `txn` collection contains the expected header
-  and message documents using `ReactiveMongoTemplate`.
-
-This single optional integration test is the only file I plan to add
-under `integrationTest/`. If the director would prefer to defer the
-integration test entirely until a Testcontainers wiring exists, I will
-drop it.
-
-#### 8. Documentation
-
-- Update
-  `docs/orchestrator/tasks/TASK-003-persist-kafka-transaction-messages.md`
-  `LATEST_REPORT` (allowed by the task's own `OWNED_PATHS`) at the end
-  of the implementation turn to record the as-built shape, the
-  effective topic pattern default, and any deferred items.
+I propose deferring conflict-detection and rollback scenarios to unit
+tests (already covered in `TransactionMessagePersistenceServiceSpec`)
+to keep the integration test fast and focused.
 
 ### Proposed file changes (all inside expanded scope)
 
-- `jade-tipi/build.gradle` — add `spring-kafka` dependency.
-- `jade-tipi/src/main/resources/application.yml` — add `spring.kafka`
-  block and `jadetipi.kafka.*` properties.
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/kafka/KafkaIngestProperties.groovy`
-  (new).
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/kafka/KafkaSourceMetadata.groovy`
-  (new).
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/kafka/TransactionMessageListener.groovy`
-  (new).
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/TransactionMessagePersistenceService.groovy`
-  (new).
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/PersistResult.groovy`
-  (new enum) and a small
-  `ConflictingDuplicateException.groovy` under `service/` or
-  `exception/`. (Will pick `exception/` if the existing convention
-  goes there — to confirm during implementation, no scope question.)
-- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/TransactionMessagePersistenceServiceSpec.groovy`
-  (new).
-- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/kafka/TransactionMessageListenerSpec.groovy`
-  (new).
-- `jade-tipi/src/test/resources/application-test.yml` (new, only sets
-  `jadetipi.kafka.enabled=false`).
-- `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/TransactionMessageIngestIntegrationSpec.groovy`
-  (new, env-gated; optional and droppable).
-- `docs/orchestrator/tasks/TASK-003-persist-kafka-transaction-messages.md`
-  — update `LATEST_REPORT` only at end of implementation.
+- `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/TransactionMessageKafkaIngestIntegrationSpec.groovy`
+  (new) — the spec described in D1–D7.
+- `jade-tipi/src/integrationTest/resources/application-integration-test.yml`
+  (new, optional) — sets `jadetipi.kafka.enabled: true` for the
+  integration profile so the listener actually starts. If the director
+  prefers `@TestPropertySource` over a profile file, I will use that
+  instead and not add this file.
+- `jade-tipi/src/integrationTest/resources/logback-test.xml`
+  (new, optional) — quiet down `org.apache.kafka` and
+  `org.springframework.kafka` to WARN so test output is readable. Only
+  if logs are noisy enough to matter; otherwise drop.
+- `jade-tipi/build.gradle` — only if D4-Alternative is chosen by the
+  director: add `testImplementation 'org.awaitility:awaitility'`.
+  Otherwise no change.
+- `docs/orchestrator/tasks/TASK-004-kafka-transaction-ingest-integration-test.md`
+  — update `LATEST_REPORT` and `STATUS` only at the end of the
+  implementation turn.
 
-No legacy code is touched: `TransactionService`, `TransactionController`,
-`IdGenerator`, and the rest of the existing service/mongo packages are
-left exactly as-is.
+No production code change is planned. `TransactionMessageListener`,
+`TransactionMessagePersistenceService`, `KafkaIngestProperties`,
+`KafkaIngestConfig`, and `application.yml` are left as-is unless the
+test exposes a bug.
 
 ### Verification I plan to run after implementation
 
-- `./gradlew :jade-tipi:compileGroovy` (acceptance-criterion-required)
-  — must pass.
-- `./gradlew :jade-tipi:test` — must pass. This will run the new Spock
-  specs **and** `JadetipiApplicationTests.contextLoads`. The
-  `contextLoads` test still requires `docker compose -f
-  docker/docker-compose.yml up` (Mongo); I will start the docker stack
-  before running it, per `DIRECTIVES.md` and `CLAUDE.md`. If the
-  director would prefer that I run only the new specs (e.g.
-  `./gradlew :jade-tipi:test --tests '*TransactionMessage*'`) to avoid
-  the Mongo dependency for the verification report, please say so.
-- `./gradlew :jade-tipi:integrationTest` — only if the Kafka
-  integration test is kept and the docker stack is up. The new test is
-  env-gated so it skips silently when `KAFKA_BOOTSTRAP_SERVERS` is
-  unset.
-- A short manual end-to-end check using the existing `kli` CLI: open
-  → create message → commit against a local broker, then inspect the
-  `txn` collection to confirm the documents (`record_type=transaction`
-  header with `state=committed` and a `commit_id`, plus one
-  `record_type=message` document with kafka metadata). This is for my
-  own verification — I will not require it to be reproducible by the
-  director and I will skip it if the local stack is not available.
+Pre-req setup (documented project commands):
+
+- `docker compose -f docker/docker-compose.yml up -d` from the project
+  checkout. Brings up `mongodb`, `keycloak`, `kafka`, and the
+  `kafka-init` sidecar (which we do not depend on for this test, but
+  it is part of the documented stack).
+
+Targeted commands:
+
+- `./gradlew :jade-tipi:compileGroovy` — must pass.
+- `./gradlew :jade-tipi:compileIntegrationTestGroovy` — must compile
+  the new spec (verifies the integration source set picks up Groovy
+  files, which existing specs already prove).
+- `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*TransactionMessageKafkaIngestIntegrationSpec*'`
+  — runs only the new spec end-to-end.
+- `./gradlew :jade-tipi:integrationTest` — full integration suite,
+  including the new spec when the env flag is set, otherwise
+  documented as skipped. I will run this at least once to confirm the
+  spec coexists with the existing Mongo/Keycloak-backed integration
+  specs.
+- `./gradlew :jade-tipi:test` — must still pass (the new spec is in
+  the integration source set, not the unit source set, so this is a
+  regression check only).
+
+If any of these fail because docker, the gradle wrapper, or the
+keycloak/mongo containers are unavailable in my sandbox, I will report
+the exact documented setup command rather than treating it as a
+product blocker, per `DIRECTIVES.md`.
 
 ### Blockers / open questions for the director
 
-1. **Topic pattern default.** I propose
-   `jdtp-txn-.*|jdtp_cli_kli` so the existing `kli`-produced traffic
-   on `jdtp_cli_kli` flows into the consumer without any docker
-   change. The alternative is to leave the default as the strict
-   design target `jdtp-txn-.*` and update the docker `kafka-init`
-   sidecar to also pre-create `jdtp-txn-default`. The docker
-   directory is **not** in TASK-003's owned paths, so I cannot do the
-   second approach unilaterally. Confirm whether the
-   "include `jdtp_cli_kli` in the default pattern" approach is
-   acceptable, or expand scope to let me touch
-   `docker/docker-compose.yml`.
-
-2. **`spring-kafka` vs `reactor-kafka`.** I default to `spring-kafka`
-   for the reasons in §3. `reactor-kafka` would let us stay
-   non-blocking end-to-end (no `.block()` between listener and
-   persistence service) but adds a dependency the project has never
-   used and a steeper learning curve in tests. Confirm the choice
-   before implementation.
-
-3. **`commit_id` generator.** The task says transaction IDs are
-   client-composed and "do not call `IdGenerator` for transaction
-   IDs". I read that as scoped to `txn_id`. For the backend-generated,
-   orderable `commit_id` I plan to call `IdGenerator.nextId()` (the
-   same orderable IDs the legacy `TransactionService` uses for
-   commit_seq). Please confirm; if the director wants a different
-   commit-id strategy (e.g. a monotonic Mongo `findAndModify` counter
-   or a UUIDv7), I will switch.
-
-4. **Poison-pill behavior on parse/validate failure.** I propose
-   ack-and-skip with a warning log. The alternative — fail-stop the
-   consumer or DLQ — is more conservative but more code and not
-   requested by acceptance criteria. Confirm ack-and-skip.
-
-5. **Conflicting duplicate behavior.** When a Mongo `_id` collision
-   carries a different payload than the existing record, I propose
-   surfacing a `ConflictingDuplicateException` and leaving the record
-   un-acked (so the listener container retries). The alternative —
-   ack and only log — silently accepts data loss. Confirm error-out
-   semantics.
-
-6. **`txn/commit` arriving before `txn/open`.** I propose erroring
-   out (the listener does not ack, retries kick in). The alternative
-   — open the header lazily on commit — masks ordering bugs. Confirm
-   error-out.
-
-7. **`txn/rollback`.** Acceptance criteria do not mention rollback.
-   I plan to log+ignore (return `ROLLBACK_NOT_PERSISTED`) rather than
-   delete or mark the header. Confirm log-and-ignore is acceptable.
-
-8. **Optional Kafka integration test under `integrationTest/`.**
-   Should I include the env-gated Kafka integration spec described in
-   §7, or defer all integration coverage until Testcontainers wiring
-   is added in a later task?
+1. **D1 — Topic strategy.** Confirm I should create a per-test topic
+   via `AdminClient` (default proposal). Alternative: reuse
+   `jdtp_cli_kli` and consume-and-discard pre-existing records first.
+2. **D2 — Gating mechanism.** Confirm env var
+   `JADETIPI_IT_KAFKA=1` plus a 2-second `AdminClient` probe is
+   acceptable. Alternative names for the env var (e.g. `IT_KAFKA`,
+   `JADETIPI_KAFKA_IT`) are fine — please name your preference.
+3. **D3 — Consumer-group strategy.** Confirm a per-run unique group
+   id (`jadetipi-itest-${uuid}`) is acceptable. The alternative is to
+   keep the default `jadetipi-txn-ingest` and rely solely on the
+   per-test topic for isolation.
+4. **D4 — Awaitility dependency.** Should I add
+   `org.awaitility:awaitility` to `testImplementation` for cleaner
+   polling, or roll the small reactive polling helper inline (no new
+   dep)? I default to inline.
+5. **D5 — Producer wiring.** Confirm a raw `KafkaProducer` over an
+   auto-configured `KafkaTemplate`. The latter would need new
+   `spring.kafka.producer.*` defaults in `application.yml`.
+6. **D6 — Mongo cleanup scope.** Confirm scoped delete by `txn_id`
+   over `dropCollection('txn')`. The latter would conflict with
+   `TransactionServiceIntegrationSpec` if the two are ever interleaved
+   in the same JVM.
+7. **D7 — Number of features.** Confirm one happy-path feature plus
+   one idempotency feature is the right size, or ask for additional
+   end-to-end cases (e.g. conflicting duplicate, commit-before-open
+   propagated as a Kafka retry).
+8. **Integration profile vs `@TestPropertySource`.** Should the
+   `jadetipi.kafka.enabled=true` override come from a new
+   `application-integration-test.yml` (and `@ActiveProfiles("integration-test")`)
+   or inline via `@TestPropertySource(properties = ...)`? Both are
+   in-scope; I default to the inline `@TestPropertySource` to avoid
+   adding a new profile.
+9. **Spring Kafka container start-up.** The default
+   `concurrency=1` and the Spring Kafka container will subscribe to
+   the topic-pattern by polling Kafka's metadata at a 5-minute
+   interval (`metadata.max.age.ms`). For a per-test topic created
+   *after* the consumer container starts, the consumer may not see
+   the topic for several minutes. Two mitigations:
+   (a) create the test topic **before** the Spring context loads
+   (e.g. in a static `setupSpec` that runs prior to `@SpringBootTest`
+   bootstrapping — possible by keying on a `@DynamicPropertySource`
+   that triggers topic creation), or
+   (b) override `spring.kafka.consumer.properties.metadata.max.age.ms`
+   to ~2000ms in the integration test profile so the consumer notices
+   the new topic quickly.
+   I default to **both**: create the topic in a static
+   `setupSpec`-equivalent ordering hook *and* shorten
+   `metadata.max.age.ms` to 2s. Confirm this combined approach is
+   acceptable — if not, we may need to switch to a fixed topic name
+   (`jdtp-txn-itest`) created by `kafka-init` in
+   `docker/docker-compose.yml`, but that would expand scope to
+   `docker/`.
 
 STOPPING here per orchestrator pre-work protocol — no implementation,
-no build/config/source/test edits, no doc edits beyond this file.
+no build/config/source/test/doc edits beyond this file.
