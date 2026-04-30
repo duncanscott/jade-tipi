@@ -11,10 +11,12 @@ Report file: docs/agents/claude-1-changes.md
 
 ## Current Assignment
 
-- Active task: `TASK-002 - Define Kafka transaction message vocabulary`.
-- Current phase: accepted. Do not continue implementation for `TASK-002`;
-  wait for new director instructions before taking another task.
-- Use `docs/orchestrator/tasks/TASK-002-kafka-transaction-message-vocabulary.md`
+- Active task: `TASK-003 - Persist Kafka transaction messages to txn`.
+- Current phase: pre-work. Read `DIRECTIVES.md` and the task file, then write
+  a concise implementation plan in `docs/agents/claude-1-next-step.md`.
+- Do not begin implementation until the director changes `TASK-003` to
+  `READY_FOR_IMPLEMENTATION`.
+- Use `docs/orchestrator/tasks/TASK-003-persist-kafka-transaction-messages.md`
   as the task-specific source of truth for implementation paths and acceptance
   criteria.
 
