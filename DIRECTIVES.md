@@ -1,16 +1,16 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
-Continue the backend Kafka-first ingestion path by adding practical integration coverage for the accepted Kafka-to-Mongo transaction write-ahead log. `TASK-004` is ready for pre-work: decide the lowest-friction Docker-backed integration strategy, then stop for director review before implementation.
+Continue the backend Kafka-first ingestion path by adding practical integration coverage for the accepted Kafka-to-Mongo transaction write-ahead log. `TASK-004` pre-work has been reviewed and is approved for implementation.
 
 ## Active Task
 
 - `TASK-004`: Add Kafka transaction ingest integration coverage
 - Owner: `claude-1`
-- Current status: `READY_FOR_PREWORK`
+- Current status: `READY_FOR_IMPLEMENTATION`
 
 ## Scope Expansion
 
@@ -27,7 +27,7 @@ For `TASK-004`, `claude-1` may inspect and propose changes within:
 - `jade-tipi/src/integrationTest/resources/`
 - `docs/orchestrator/tasks/TASK-004-kafka-transaction-ingest-integration-test.md`
 
-Pre-work only: identify the smallest reliable integration-test strategy for the accepted Kafka ingestion path. Keep changes inside the scope expansion above and record the proposed implementation plan in `docs/agents/claude-1-next-step.md`.
+Implementation is approved. Keep changes inside the scope expansion above and record implementation outcomes in `docs/agents/claude-1-changes.md`.
 
 ## TASK-004 Director Decisions
 
@@ -35,6 +35,8 @@ Pre-work only: identify the smallest reliable integration-test strategy for the 
 - Kafka auto-topic creation is disabled. Pre-work must decide whether to use the existing `jdtp_cli_kli` topic or create a per-test topic through a reliable documented/admin-client path.
 - The integration test should publish canonical open, data, and commit messages, then assert the `txn` header and message documents in MongoDB.
 - If Docker or local Gradle tooling is unavailable during verification, report the exact documented setup command rather than treating it as a product blocker.
+- Director approved the claude-1 pre-work defaults on 2026-04-30: use an AdminClient-created per-test topic, gate with `JADETIPI_IT_KAFKA=1` and a fast broker probe, use a unique consumer group, use a raw `KafkaProducer<String, byte[]>`, poll MongoDB with an inline bounded helper, and clean up only the test topic/documents. Do not add Awaitility, a new profile file, or logback noise controls unless implementation shows they are needed.
+- Create the test topic before Spring's topic-pattern listener needs to discover it where possible, and shorten `spring.kafka.consumer.properties.metadata.max.age.ms` for this spec to avoid a long metadata-refresh wait.
 
 ## TASK-003 Director Review
 
