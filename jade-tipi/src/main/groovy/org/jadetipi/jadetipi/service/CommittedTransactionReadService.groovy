@@ -23,6 +23,7 @@ import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 
 import java.time.Instant
+import java.util.Date
 
 import static org.jadetipi.jadetipi.service.TransactionMessagePersistenceService.FIELD_ACTION
 import static org.jadetipi.jadetipi.service.TransactionMessagePersistenceService.FIELD_COLLECTION
@@ -127,8 +128,8 @@ class CommittedTransactionReadService {
                 txnId: header.get(FIELD_TXN_ID) as String,
                 state: header.get(FIELD_STATE) as String,
                 commitId: header.get(FIELD_COMMIT_ID) as String,
-                openedAt: header.get(FIELD_OPENED_AT) as Instant,
-                committedAt: header.get(FIELD_COMMITTED_AT) as Instant,
+                openedAt: toInstant(header.get(FIELD_OPENED_AT)),
+                committedAt: toInstant(header.get(FIELD_COMMITTED_AT)),
                 openData: header.get(FIELD_OPEN_DATA) as Map<String, Object>,
                 commitData: header.get(FIELD_COMMIT_DATA) as Map<String, Object>,
                 messages: messages
@@ -141,9 +142,31 @@ class CommittedTransactionReadService {
                 collection: row.get(FIELD_COLLECTION) as String,
                 action: row.get(FIELD_ACTION) as String,
                 data: row.get(FIELD_DATA) as Map<String, Object>,
-                receivedAt: row.get(FIELD_RECEIVED_AT) as Instant,
+                receivedAt: toInstant(row.get(FIELD_RECEIVED_AT)),
                 kafka: toKafkaProvenance(row.get(FIELD_KAFKA))
         )
+    }
+
+    /**
+     * Coerce a raw Mongo date value into {@link Instant}. Spring Data writes
+     * {@link Instant} values as BSON dates; when those documents are read back
+     * into a raw {@link Map}, the driver may surface them as
+     * {@link java.util.Date} rather than {@link Instant}. Tolerate either
+     * representation (and {@code null}); reject unrecognised types loudly so a
+     * future schema change does not silently degrade to {@code null}.
+     */
+    private static Instant toInstant(Object value) {
+        if (value == null) {
+            return null
+        }
+        if (value instanceof Instant) {
+            return (Instant) value
+        }
+        if (value instanceof Date) {
+            return ((Date) value).toInstant()
+        }
+        throw new IllegalStateException(
+                "Unsupported timestamp type in txn record: ${value.getClass().name}")
     }
 
     private static KafkaProvenance toKafkaProvenance(Object kafkaSubDoc) {

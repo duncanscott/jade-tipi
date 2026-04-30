@@ -2,7 +2,7 @@
 
 ID: TASK-005
 TYPE: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: READY_FOR_REVIEW
 OWNER: claude-1
 OWNED_PATHS:
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/
@@ -42,26 +42,32 @@ DEPENDENCIES:
 - `TASK-004` is accepted and proves the Kafka listener can populate the `txn` collection through the documented local stack.
 
 LATEST_REPORT:
-Director implementation review failed on 2026-04-30; keep `TASK-005` in `READY_FOR_IMPLEMENTATION`.
+Implementation re-submitted on 2026-04-30 addressing the director review's blocking finding on raw Mongo timestamp coercion. `TASK-005` flipped to `READY_FOR_REVIEW`.
 
-Blocking finding:
+Fix for the blocking finding:
 
-- `CommittedTransactionReadService` reads persisted `txn` documents as raw `Map` values and casts timestamp fields directly with `as Instant` (`opened_at`, `committed_at`, and message `received_at`). The writer stores `Instant` values through Spring Data Mongo, but when BSON date values are read back into a raw `Map`, they may be `java.util.Date`/driver-native date values rather than `Instant`. In that case a real committed snapshot can fail with `GroovyCastException` before returning, even though the mocked unit tests pass because they inject `Instant` values directly. Fix by coercing supported date representations to `Instant` (while preserving null tolerance), or by reading through typed projection classes that let Spring perform the conversion.
+- `CommittedTransactionReadService` no longer casts raw header/message timestamp fields directly with `as Instant`. A new `private static Instant toInstant(Object)` helper accepts `Instant`, `java.util.Date`, and `null`; any other type throws `IllegalStateException` so a future schema change does not silently degrade to `null`. The helper is applied to header `opened_at`, header `committed_at`, and message `received_at`.
+- Null tolerance is preserved: passing `null` returns `null` (verified by the existing null-payload feature).
+- No write-side or schema change. The writer in `TransactionMessagePersistenceService` continues to set `Instant` values; the read service now tolerates whichever representation the Mongo driver surfaces when the document round-trips through a raw `Map`.
 
-Required follow-up before acceptance:
+New unit coverage (per directive):
 
-- Add coverage that exercises non-`Instant` timestamp values representative of raw Mongo `Map` reads, at minimum `java.util.Date` for `opened_at`, `committed_at`, and `received_at`.
-- Keep the existing committed-visibility, missing/open transaction, old-shape rejection, and `_id` ascending sort assertions.
-- Re-run the selected narrow verification command: `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadServiceSpec*'`. If the full unit suite is run, start the documented local stack first with `docker compose -f docker/docker-compose.yml up -d` because `JadetipiApplicationTests.contextLoads` opens a Mongo connection.
+- `CommittedTransactionReadServiceSpec` adds the feature `'java.util.Date timestamps from raw Mongo documents are coerced to Instant'`. The header is seeded with `Date.from(...)` for `opened_at` and `committed_at`, and the message row is seeded with `Date.from(...)` for `received_at`. The spec asserts that `snapshot.openedAt`, `snapshot.committedAt`, and `snapshot.messages[0].receivedAt` are all `instanceof Instant` and equal the original `Instant` values.
+- All previously-required features are retained: committed snapshot returns header + messages, open/uncommitted is hidden, missing-`commit_id` partial-write is hidden, blank `commit_id` is hidden, missing header returns empty, older `TransactionService`-shape (no `record_type`) is hidden, blank/null/whitespace `txnId` raises `IllegalArgumentException`, null payload fields tolerated, and the Mongo query is asserted to carry `Sort.by(ASC, '_id')` (the directive-required assertion that the database is doing the sort).
 
-Scope review:
+Verification (Docker stack already up: `jade-tipi-mongo`, `jade-tipi-kafka`, `jade-tipi-keycloak`):
 
-- The merge touched `docs/agents/claude-1-changes.md`, this task file, and new files under `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/` and `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/`.
-- Those production/test paths are outside the base assignment-owned docs paths listed in `docs/agents/claude-1.md`, but they are inside the implementation scope explicitly expanded by this task file and `DIRECTIVES.md`.
-- No controller, DTO, integration-test, build, resource, Kafka, or write-side persistence files were changed.
+- `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadServiceSpec*'` — BUILD SUCCESSFUL. Spec report: `tests=12, skipped=0, failures=0, errors=0` (was 11; +1 new Date-coercion feature).
+- `./gradlew :jade-tipi:test` — BUILD SUCCESSFUL. 49 unit tests across:
+  - `JadetipiApplicationTests` (1)
+  - `TransactionMessageListenerSpec` (4)
+  - `DocumentServiceMongoDbImplSpec` (9)
+  - `CommittedTransactionReadServiceSpec` (12) — was 11
+  - `TransactionMessagePersistenceServiceSpec` (11)
+  - `TransactionServiceSpec` (12)
+- If Docker is not up locally, run `docker compose -f docker/docker-compose.yml up -d` (only Mongo is strictly required for the unit suite because `JadetipiApplicationTests.contextLoads` opens a Mongo connection).
 
-Director verification notes:
+Scope:
 
-- `git diff --check HEAD^ HEAD` passed.
-- Direct local Gradle verification was blocked before project code loaded: the wrapper could not open `/Users/duncanscott/.gradle/wrapper/.../gradle-8.14.3-bin.zip.lck` inside the sandbox; retrying with `GRADLE_USER_HOME=/tmp/jade-tipi-gradle-home` required network access to `services.gradle.org`; local Gradle 9.4.1 failed to create its file-lock socket with `Operation not permitted`. This is local tooling/sandbox friction, not an observed product failure.
-- claude-1 reported successful verification in its worktree for `./gradlew :jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`, `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadServiceSpec*'`, `./gradlew :jade-tipi:test`, and `./gradlew :jade-tipi:compileIntegrationTestGroovy`, but those runs did not cover raw Mongo date value conversion.
+- Changed only `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionReadService.groovy`, `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionReadServiceSpec.groovy`, this task file, and `docs/agents/claude-1-changes.md`. All inside the implementation scope explicitly expanded by `DIRECTIVES.md` for `TASK-005`.
+- No write-side persistence, controller, DTO-package, integration-test, build, or resource files changed. The `txn` write-ahead log shape from `TASK-003` is preserved.

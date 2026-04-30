@@ -4,6 +4,92 @@ The developer writes completed work reports here.
 
 STATUS: COMPLETED
 
+## TASK-005 — Director-review fix: coerce raw Mongo timestamps to Instant
+
+Director implementation review on 2026-04-30 returned `TASK-005` to
+`READY_FOR_IMPLEMENTATION` with one blocking finding:
+`CommittedTransactionReadService` cast raw Mongo `Map` timestamp fields
+directly to `Instant`, but BSON dates read into raw maps may surface as
+`java.util.Date`, so a real committed snapshot could fail with
+`GroovyCastException` even though the mocked unit tests passed by
+injecting `Instant` fixtures.
+
+Resolved on 2026-04-30. `TASK-005` flipped back to `READY_FOR_REVIEW`.
+
+### Fix
+
+- `CommittedTransactionReadService` now routes header `opened_at`,
+  header `committed_at`, and message `received_at` through a new
+  `private static Instant toInstant(Object)` helper.
+- The helper accepts `null` (returns `null`), `Instant` (returned as-is),
+  and `java.util.Date` (`.toInstant()`); any other type raises
+  `IllegalStateException` so a future schema change cannot silently
+  degrade timestamps to `null`.
+- The `_id` ASC sort, the committed-visibility gate (`record_type =
+  transaction` + `state = committed` + non-blank `commit_id`), and the
+  short-circuit on missing/open/old-shape headers are unchanged.
+- No write-side change. `TransactionMessagePersistenceService` continues
+  to set `Instant` values; the read service now tolerates whichever
+  representation the Mongo driver surfaces when documents round-trip
+  through a raw `Map`.
+
+### New unit coverage
+
+- New feature in `CommittedTransactionReadServiceSpec`:
+  `'java.util.Date timestamps from raw Mongo documents are coerced to
+  Instant'`. Seeds the header with `Date.from(Instant.parse(...))` for
+  `opened_at` and `committed_at` and the message row with `Date.from(...)`
+  for `received_at`, then asserts that `snapshot.openedAt`,
+  `snapshot.committedAt`, and `snapshot.messages[0].receivedAt` are all
+  `instanceof Instant` and equal the original `Instant` values.
+- All previously-required features are retained: committed snapshot
+  returns header + messages, open/uncommitted is hidden, missing or
+  blank `commit_id` partial-write is hidden, missing header returns
+  empty, older `TransactionService`-shape (no `record_type`) is
+  hidden, blank/null/whitespace `txnId` raises
+  `IllegalArgumentException`, null payload fields are tolerated, and
+  the Mongo query is asserted to carry `Sort.by(ASC, '_id')` (proves
+  the database is doing the sort).
+
+### Files changed in this turn
+
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionReadService.groovy`
+  — added `import java.util.Date`, added `private static Instant
+  toInstant(Object)`, and switched the three timestamp reads to use it.
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionReadServiceSpec.groovy`
+  — added the `Date`-coercion feature.
+- `docs/orchestrator/tasks/TASK-005-committed-transaction-snapshot-read-layer.md`
+  — `STATUS` flipped to `READY_FOR_REVIEW`; `LATEST_REPORT` rewritten
+  for the re-submission.
+
+No write-side persistence, controller, DTO-package, integration-test,
+build, or resource files changed. The `txn` write-ahead log shape from
+`TASK-003` is preserved.
+
+### Verification
+
+Setup (project-documented; already up locally): `docker compose -f
+docker/docker-compose.yml up -d`. Containers verified up:
+`jade-tipi-mongo`, `jade-tipi-kafka`, `jade-tipi-keycloak`.
+
+- `./gradlew :jade-tipi:test --tests
+  '*CommittedTransactionReadServiceSpec*'` — BUILD SUCCESSFUL.
+  Spec report: `tests=12, skipped=0, failures=0, errors=0` (was 11; +1
+  new Date-coercion feature).
+- `./gradlew :jade-tipi:test` — BUILD SUCCESSFUL. 49 unit tests across:
+  - `JadetipiApplicationTests` (1)
+  - `TransactionMessageListenerSpec` (4)
+  - `DocumentServiceMongoDbImplSpec` (9)
+  - `CommittedTransactionReadServiceSpec` (12) — was 11
+  - `TransactionMessagePersistenceServiceSpec` (11)
+  - `TransactionServiceSpec` (12)
+
+If a future verification fails because Docker / Mongo is not running,
+the documented setup command is `docker compose -f
+docker/docker-compose.yml up -d` (only Mongo is strictly required for
+the unit suite because `JadetipiApplicationTests.contextLoads` opens a
+Mongo connection).
+
 ## TASK-005 — Add committed transaction snapshot read layer
 
 Goal completed. The backend now has a Kafka-free and HTTP-free read-side

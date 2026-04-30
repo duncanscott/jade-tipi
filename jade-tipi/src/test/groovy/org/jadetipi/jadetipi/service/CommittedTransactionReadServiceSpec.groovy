@@ -227,6 +227,36 @@ class CommittedTransactionReadServiceSpec extends Specification {
         input << [null, '', '   ']
     }
 
+    def 'java.util.Date timestamps from raw Mongo documents are coerced to Instant'() {
+        given: 'raw Mongo Map values where BSON dates surface as java.util.Date'
+        Instant openedAtInstant = Instant.parse('2026-01-01T00:00:00Z')
+        Instant committedAtInstant = Instant.parse('2026-01-01T00:00:05Z')
+        Instant receivedAtInstant = Instant.parse('2026-01-01T00:00:01Z')
+        Map header = committedHeader(
+                opened_at: Date.from(openedAtInstant),
+                committed_at: Date.from(committedAtInstant)
+        )
+        Map row = messageRow('11111111-1111-7111-8111-111111111111',
+                [received_at: Date.from(receivedAtInstant)])
+        mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just(header)
+        mongoTemplate.find(_ as Query, Map.class, COLLECTION) >> Flux.just(row)
+
+        when:
+        CommittedTransactionSnapshot snapshot = service.findCommitted(TXN_ID).block()
+
+        then: 'header timestamps are exposed as Instant'
+        snapshot != null
+        snapshot.openedAt instanceof Instant
+        snapshot.openedAt == openedAtInstant
+        snapshot.committedAt instanceof Instant
+        snapshot.committedAt == committedAtInstant
+
+        and: 'message timestamps are exposed as Instant'
+        snapshot.messages.size() == 1
+        snapshot.messages[0].receivedAt instanceof Instant
+        snapshot.messages[0].receivedAt == receivedAtInstant
+    }
+
     def 'null payload fields on header and messages do not NPE'() {
         given:
         Map header = committedHeader(opened_at: null, committed_at: null,
