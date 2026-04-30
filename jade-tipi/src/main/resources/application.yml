@@ -9,6 +9,22 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: http://localhost:8484/realms/jade-tipi
+  kafka:
+    bootstrap-servers: \${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: \${KAFKA_CONSUMER_GROUP:jadetipi-txn-ingest}
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+    listener:
+      ack-mode: MANUAL_IMMEDIATE
+
+jadetipi:
+  kafka:
+    txn-topic-pattern: \${KAFKA_TXN_TOPIC_PATTERN:jdtp-txn-.*|jdtp_cli_kli}
+    enabled: \${KAFKA_INGEST_ENABLED:true}
+    persist-timeout-seconds: \${KAFKA_PERSIST_TIMEOUT_SECONDS:30}
 
 server:
   port: ${backendPort}

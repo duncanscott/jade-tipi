@@ -14,6 +14,12 @@ spring:
         jwt:
           # Use a mock issuer for tests - the TestSecurityConfig provides a mock decoder
           issuer-uri: http://localhost:8484/realms/jade-tipi
+  kafka:
+    bootstrap-servers: localhost:9092
+
+jadetipi:
+  kafka:
+    enabled: false
 
 server:
   port: 0  # Random port for tests

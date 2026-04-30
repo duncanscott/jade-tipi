@@ -2,7 +2,7 @@
 
 ID: TASK-003
 TYPE: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: IMPLEMENTATION_COMPLETE
 OWNER: claude-1
 OWNED_PATHS:
   - jade-tipi/build.gradle
@@ -55,16 +55,26 @@ DEPENDENCIES:
 - Spring Boot app/integration-test work requires the Docker stack first: `docker compose -f docker/docker-compose.yml up` from the project checkout.
 
 LATEST_REPORT:
-Director pre-work review accepted the `claude-1` plan. Scope check passed: the pre-work commit changed only `docs/agents/claude-1-next-step.md`, which is inside the developer's pre-work ownership boundary.
+Implementation completed by `claude-1` on branch `claude-1`.
 
-Implementation is authorized with these decisions:
-- Use `spring-kafka` for the first listener path and keep Mongo persistence in a small service boundary with no Kafka or HTTP imports.
-- Default the configurable topic pattern to include both the design target and local Docker/KLI topic, for example `jdtp-txn-.*|jdtp_cli_kli`. Do not edit `docker/docker-compose.yml` in this task.
-- Use `IdGenerator.nextId()` only for the backend-generated `commit_id`, never for client-composed `txn_id`.
-- For malformed JSON or schema-invalid messages, log clearly and acknowledge the Kafka record so one poison message does not stall the consumer.
-- For conflicting duplicate message documents and `txn/commit` before `txn/open`, surface a clear error and do not acknowledge the Kafka record.
-- Treat `txn/rollback` as explicitly not persisted for this first cut; log it and return a distinct service result rather than inventing rollback semantics.
-- Update the existing `jade-tipi/src/test/resources/application-test.yml` to disable Kafka listener startup in tests; do not create a duplicate test profile file.
-- Defer the optional Kafka integration test unless it can use an already-created local topic or create its test topic reliably with the existing Docker setup. Service and listener unit tests plus compile/test verification are sufficient for this implementation turn.
+As-built shape:
+- Build dependency: `org.springframework.kafka:spring-kafka` added to `jade-tipi/build.gradle`. Spring Boot's BOM pins the version.
+- Kafka package (`jade-tipi/src/main/groovy/org/jadetipi/jadetipi/kafka/`):
+  - `KafkaIngestProperties` (`@ConfigurationProperties("jadetipi.kafka")`) with `txnTopicPattern`, `enabled`, and `persistTimeoutSeconds`. Registered via `config/KafkaIngestConfig.groovy` (`@EnableConfigurationProperties`).
+  - `KafkaSourceMetadata` is a small Groovy `@Immutable` value object holding `(topic, partition, offset, timestampMs)` so the persistence service stays Kafka-free.
+  - `TransactionMessageListener` (`@KafkaListener`) deserializes `byte[]` to `Message` via `JsonMapper.fromBytes`, calls `Message.validate()`, and delegates to the persistence service. Acks the record on success or on parse/validate failure (poison-pill skip per directive). Persistence errors propagate, leaving the record un-acked for retry.
+- Persistence service (`service/TransactionMessagePersistenceService`) is Kafka-free and HTTP-free:
+  - Header doc: `_id = txn.getId()`, `record_type = "transaction"`, `state`, `opened_at`, `open_data`; on commit, `state = "committed"`, `commit_id = idGenerator.nextId()`, `committed_at`, `commit_data`.
+  - Message doc: `_id = txnId~msgUuid`, `record_type = "message"`, `txn_id`, `msg_uuid`, `collection`, `action`, `data`, `received_at`, and a `kafka` sub-doc `(topic, partition, offset, timestamp_ms)`.
+  - Open uses upsert with `setOnInsert` for `opened_at` (re-delivered open does not rewrite the timestamp). Re-delivered open on an existing header (open or committed) returns `OPEN_CONFIRMED_DUPLICATE`.
+  - Data inserts are idempotent by natural `_id`. Duplicate-key with matching `(collection, action, data)` returns `APPEND_DUPLICATE`; conflicting payload raises `ConflictingDuplicateException` (record is not acked).
+  - Commit before open raises `IllegalStateException` (record is not acked). Commit duplicate returns `COMMIT_DUPLICATE` and does not call `idGenerator.nextId()` again.
+  - `txn/rollback` is logged and returns `ROLLBACK_NOT_PERSISTED` (no write).
+- Configuration:
+  - `application.yml` adds a `spring.kafka.*` block (group-id `jadetipi-txn-ingest`, byte-array value deserializer, `enable-auto-commit: false`, `listener.ack-mode: MANUAL_IMMEDIATE`) and a `jadetipi.kafka.*` block. `${...}` placeholders are escaped as `\${...}` because `processResources` runs `expand`.
+  - Default topic pattern is `jdtp-txn-.*|jdtp_cli_kli` so the existing local Docker/KLI traffic is consumed without changing `docker/docker-compose.yml`.
+  - `src/test/resources/application-test.yml` adds `jadetipi.kafka.enabled: false` so `JadetipiApplicationTests.contextLoads` does not start a listener that would attempt a broker connection.
 
-Verification expected after implementation: `./gradlew :jade-tipi:compileGroovy` and the most relevant `:jade-tipi` tests. Start the documented Docker stack first with `docker compose -f docker/docker-compose.yml up` before Spring Boot tests that need MongoDB/Kafka. If verification cannot run because local tooling is missing or stale, report the documented setup command and the blocker in the developer report rather than treating it as a product blocker.
+Verification:
+- `./gradlew :jade-tipi:compileGroovy` — BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:test` — BUILD SUCCESSFUL with `docker compose -f docker/docker-compose.yml up -d mongodb`. 37 tests pass, including the new `TransactionMessagePersistenceServiceSpec` (open/open-duplicate/append/append-duplicate/conflicting-duplicate/commit/commit-duplicate/commit-before-open/rollback/null-message) and `TransactionMessageListenerSpec` (parse-success/parse-failure/schema-invalid/persistence-error). The optional Kafka integration test was not added (Testcontainers not wired); deferred per directive.
