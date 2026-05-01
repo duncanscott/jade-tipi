@@ -3,71 +3,228 @@
 The developer writes completed work reports here.
 
 STATUS: READY_FOR_REVIEW
-TASK: TASK-010 — Plan contents location query reads
+TASK: TASK-011 — Plan contents location HTTP read adapter
 DATE: 2026-05-01
-SUMMARY: Implemented the smallest read/query path over the materialized
-`typ` and `lnk` collections so callers can answer the two `DIRECTION.md`
-contents questions. New
-`jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/ContentsLinkReadService.groovy`
-is a Kafka-free, HTTP-free `@Service` whose constructor takes only
-`ReactiveMongoTemplate`. It exposes
-`Flux<ContentsLinkRecord> findContents(String containerId)` (forward
-lookup over `lnk` where `left == containerId`) and
-`Flux<ContentsLinkRecord> findLocations(String objectId)` (reverse
-lookup over `lnk` where `right == objectId`). Both methods first resolve
-the canonical `contents` link type by querying `typ` for documents with
-`kind == "link_type"` and `name == "contents"`, then filter `lnk.type_id`
-with `$in` over every matching declaration; no type id is hardcoded and
-the caller is not required to supply one. When no canonical declaration
-exists yet, the service emits `Flux.empty()` and never queries `lnk`.
-Each emitted `ContentsLinkRecord` (new
-`jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/ContentsLinkRecord.groovy`,
-Groovy `@Immutable` matching the `CommittedTransactionMessage` precedent)
-preserves the materialized `lnk` document fields verbatim: `linkId`
-(Mongo `_id`), `typeId`, `left`, `right`, the verbatim `properties` map
-(including `properties.position` for plate-well placements), and the
-verbatim `_jt_provenance` sub-document. Endpoint id strings are returned
-as-is; the reader does not join `lnk` to `loc` or `ent`, does not
-deduplicate or group, and does not flag conflicting materialized rows
-(those remain a materializer concern). Results are sorted by `_id` ASC
-in Mongo (the `Query`'s `Sort` is asserted in tests, not the mock's
-iteration order). Blank or whitespace `containerId` / `objectId` is
-rejected at the service boundary with `IllegalArgumentException` via
-`Assert.hasText`; no controller is added in this task. The `txn`
-write-ahead log shape, the committed-snapshot read path
-(`CommittedTransactionReadService`), the materializer
-(`CommittedTransactionMaterializer`), the listener wiring, the JSON
-schema, the message examples, the DTO library, the build files, Docker
-Compose, the security policy, and `loc`/`parent_location_id` are all
-unchanged. New unit spec
-`jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/ContentsLinkReadServiceSpec.groovy`
-(pure Spock with `Mock(ReactiveMongoTemplate)`) covers 18 features:
-forward and reverse single-match round-trips with verbatim provenance;
-captured-`Query` proofs of the `kind=link_type AND name=contents` typ
-criteria, the `_id` ASC sort on both `typ` and `lnk`, the `type_id $in`
-filter (single and multiple resolved IDs), and the left-only / right-only
-endpoint clauses; `Flux.empty()` short-circuits with `0 *` `lnk` queries
-when no `contents` declaration exists; verbatim return of a `lnk` whose
-endpoint string would not resolve in `loc`/`ent`; tolerance for a
-materialized `lnk` missing `_jt_provenance` (returned with
-`provenance = null`); `IllegalArgumentException` for blank/whitespace
-inputs on both methods (data tables); and a no-write proof asserting
-zero `insert`/`save`/`updateFirst`/`updateMulti`/`remove` calls on
-either query path. A short "Reading `contents` Links" paragraph was
-added to `docs/architecture/kafka-transaction-message-vocabulary.md`.
-No controller, integration spec, semantic write-time validation,
-endpoint join, materializer change, snapshot/read-service change, DTO
-schema/example change, Kafka or build change is included in this task.
-VERIFICATION: docker compose stack already healthy
-(`jade-tipi-mongo`, `jade-tipi-kafka`, `jade-tipi-keycloak` all up;
-`docker ps` confirmed). `./gradlew :jade-tipi:compileGroovy` BUILD
-SUCCESSFUL. `./gradlew :jade-tipi:compileTestGroovy` BUILD SUCCESSFUL.
-`./gradlew :jade-tipi:test --tests '*ContentsLinkReadServiceSpec*'`
+SUMMARY: Implemented the smallest HTTP/WebFlux adapter over the accepted
+`ContentsLinkReadService` so callers can answer the two `DIRECTION.md`
+contents questions through the backend without changing materialization,
+write semantics, or service-level query behavior. New
+`jade-tipi/src/main/groovy/org/jadetipi/jadetipi/controller/ContentsLinkReadController.groovy`
+is a thin `@RestController` whose constructor takes only
+`ContentsLinkReadService` (no Mongo, no materializer, no write-side
+collaborators). It uses `@RequestMapping('/api/contents')` and exposes two
+`@GetMapping` methods returning `Flux<ContentsLinkRecord>` directly:
+`GET /api/contents/by-container/{id}` delegates to
+`ContentsLinkReadService.findContents(id)` (forward, `lnk.left == id`,
+"what are the contents of this container?") and
+`GET /api/contents/by-content/{id}` delegates to
+`ContentsLinkReadService.findLocations(id)` (reverse, `lnk.right == id`,
+"where is this object located?"). Both methods take
+`@PathVariable('id') String id` and an unused
+`@AuthenticationPrincipal Jwt jwt` parameter for parity with
+`CommittedTransactionReadController`; controller-side authorization,
+scoping policy, pagination, response envelope, and endpoint-resolution
+joins to `loc`/`ent` were all kept out. Empty service results map to
+HTTP 200 with body `[]` (the WebFlux default for `Flux<T>`); blank or
+whitespace-only ids surface the service `Assert.hasText(...)`
+`IllegalArgumentException` as a 400 `ErrorResponse` through the existing
+`GlobalExceptionHandler`, with `status=400`, `error="Bad Request"`, and
+the service's exact `containerId/objectId must not be blank` message.
+Neither route returns 404; the empty-array contract intentionally
+collapses "no canonical `contents` declaration", "no matching `lnk`
+rows", and "endpoint id absent in `loc`/`ent`" into one HTTP status so
+HTTP cannot lie about materialization timing or speak about
+`loc`/`ent` resolution. New unit spec
+`jade-tipi/src/test/groovy/org/jadetipi/jadetipi/controller/ContentsLinkReadControllerSpec.groovy`
+mirrors `CommittedTransactionReadControllerSpec`: it builds a
+`WebTestClient.bindToController(controller)` with the real
+`GlobalExceptionHandler` advice and the
+`AuthenticationPrincipalArgumentResolver` from
+`ReactiveAdapterRegistry.getSharedInstance()`, mocks only the
+`ContentsLinkReadService` collaborator, and runs 10 focused features.
+Forward coverage: 200 JSON serialization including `linkId`, `typeId`,
+`left`, `right`, nested `properties.position` (`kind`, `label`, `row`,
+`column`) for plate-well placements, and the full `_jt_provenance`
+sub-document (`txn_id`, `commit_id`, `msg_uuid`, `committed_at`,
+`materialized_at`); service-order preservation across two records;
+single-collaborator delegation with `1 * findContents(...)` and
+`0 * _`; 200 `[]` on `Flux.empty()`; whitespace-only id 400 path through
+the real `GlobalExceptionHandler` with the service's literal blank
+message. Reverse coverage mirrors all four. Structural coverage adds a
+reflection assertion that the only constructor argument is
+`ContentsLinkReadService` (matching the `CommittedTransactionReadController`
+precedent) and a literal route-path assertion that pins
+`/api/contents/by-container/{id}` and `/api/contents/by-content/{id}` so
+a rename in either direction breaks the spec. A short HTTP-route
+paragraph was appended to the existing "Reading `contents` Links"
+section of `docs/architecture/kafka-transaction-message-vocabulary.md`,
+documenting both routes, the empty-array success contract, and the 400
+path through `GlobalExceptionHandler`. No new HTTP DTO, no new exception
+handler, no `SecurityConfig` change, no `application.yml` change, no
+build-file change, no Docker Compose change, no
+DTO/schema/example/frontend change, no `ContentsLinkReadService`
+semantic change, no controller-side input validation, and no
+integration test were added. `OUT_OF_SCOPE` boundaries from the task
+file are preserved in full.
+VERIFICATION: docker compose stack already healthy (`jade-tipi-mongo`,
+`jade-tipi-kafka`, `jade-tipi-keycloak` all up; `docker compose ps`
+confirmed). `./gradlew :jade-tipi:compileGroovy` BUILD SUCCESSFUL.
+`./gradlew :jade-tipi:compileTestGroovy` BUILD SUCCESSFUL.
+`./gradlew :jade-tipi:test --tests '*ContentsLinkReadControllerSpec*'`
 BUILD SUCCESSFUL with the new spec at
-`tests=18, failures=0, errors=0, skipped=0`. `./gradlew :jade-tipi:test`
-BUILD SUCCESSFUL with the full unit suite at `tests=97, failures=0,
-errors=0, skipped=0` across 10 specs (was 79 across 9 specs in TASK-009;
-+18 new in `ContentsLinkReadServiceSpec`).
+`tests=10, failures=0, errors=0, skipped=0`. `./gradlew :jade-tipi:test`
+BUILD SUCCESSFUL with the full unit suite at `tests=107, failures=0,
+errors=0, skipped=0` across 11 specs (was 97 across 10 specs after
+TASK-010; +10 new in `ContentsLinkReadControllerSpec`), including
+`CommittedTransactionReadControllerSpec` (5),
+`ContentsLinkReadServiceSpec` (18),
+`CommittedTransactionMaterializerSpec` (19),
+`CommittedTransactionReadServiceSpec` (12),
+`TransactionMessagePersistenceServiceSpec` (15), and
+`JadetipiApplicationTests.contextLoads` (1).
+
+## TASK-011 — Plan contents location HTTP read adapter
+
+Director moved `TASK-011` to `READY_FOR_IMPLEMENTATION` on 2026-05-01
+with implementation directives recorded in the
+`TASK-011 Director Pre-work Review` block of `DIRECTIVES.md` (signal
+`PROCEED_TO_IMPLEMENTATION`) and reflected in the
+`docs/orchestrator/tasks/TASK-011-contents-location-http-read-adapter-prework.md`
+`LATEST_REPORT`. Implementation done on 2026-05-01.
+
+### Production source changes
+
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/controller/ContentsLinkReadController.groovy`
+  (new) — thin WebFlux read adapter over `ContentsLinkReadService`.
+  - `@Slf4j @RestController @RequestMapping('/api/contents')`.
+  - Single-arg constructor: `ContentsLinkReadController(ContentsLinkReadService readService)`.
+    Stays Kafka-free, Mongo-free, materializer-free, write-side-free at the
+    controller layer.
+  - `@GetMapping('/by-container/{id}') Flux<ContentsLinkRecord>
+    getContentsByContainer(@PathVariable('id') String id,
+    @AuthenticationPrincipal Jwt jwt)` — forward lookup, returns
+    `readService.findContents(id)` directly.
+  - `@GetMapping('/by-content/{id}') Flux<ContentsLinkRecord>
+    getContentsByContent(@PathVariable('id') String id,
+    @AuthenticationPrincipal Jwt jwt)` — reverse lookup, returns
+    `readService.findLocations(id)` directly.
+  - One `log.debug` per route mirrors
+    `CommittedTransactionReadController.getSnapshot`. The `jwt` parameter is
+    unused inside both bodies; it is present for parity with the existing
+    authenticated read controller and to keep the
+    `AuthenticationPrincipalArgumentResolver` chain identical for all
+    `/api/**` reads.
+  - No `Mono<ResponseEntity<...>>`, no `block()`, no `collectList()`, no
+    re-sort, no dedup, no in-memory filter, no `defaultIfEmpty`. The
+    Spring WebFlux runtime serializes `Flux<T>` as a flat JSON array,
+    using the empty body `[]` for an empty stream — no controller-side
+    code is needed for the empty-result contract.
+  - No controller-side input validation; blank/whitespace ids hit the
+    service `Assert.hasText(...)` and surface through
+    `GlobalExceptionHandler.handleIllegalArgument` as a 400
+    `ErrorResponse`.
+
+### Test changes
+
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/controller/ContentsLinkReadControllerSpec.groovy`
+  (new) — pure Spock controller spec.
+  - `Mock(ContentsLinkReadService)` is the only collaborator; no Spring
+    context, no Mongo, no Kafka, no Keycloak.
+  - `WebTestClient.bindToController(controller)` builds the test client,
+    `.controllerAdvice(new GlobalExceptionHandler())` wires the real
+    advice, and `.argumentResolvers { ... addCustomResolver(new
+    AuthenticationPrincipalArgumentResolver(ReactiveAdapterRegistry
+    .getSharedInstance())) }` lets `@AuthenticationPrincipal Jwt jwt`
+    resolve to `null` without a server, exactly as in
+    `CommittedTransactionReadControllerSpec`.
+  - Coverage (10 features):
+    1. Forward route 200 JSON serialization preserves `linkId`, `typeId`,
+       `left`, `right`, `properties.position.{kind,label,row,column}`, and
+       `provenance.{txn_id,commit_id,msg_uuid,committed_at,
+       materialized_at}` for two records, asserted via `jsonPath`.
+    2. Forward route delegates to `findContents(...)` only;
+       `1 * readService.findContents(CONTAINER_ID) >> ...` plus `0 * _`
+       proves no other collaborator is touched.
+    3. Forward route 200 with empty array (`$.length() == 0`) when
+       service emits `Flux.empty()`; status is **not** 404.
+    4. Forward route blank id (`'   '`) flows through service
+       `Assert.hasText` to a 400 `ErrorResponse` whose `status == 400`,
+       `error == 'Bad Request'`, and `message ==
+       'containerId must not be blank'`.
+    5. Reverse route 200 JSON serialization preserves identical fields
+       for two records.
+    6. Reverse route delegates to `findLocations(...)` only with
+       `0 * _`.
+    7. Reverse route 200 empty array on `Flux.empty()`.
+    8. Reverse route blank id surfaces
+       `'objectId must not be blank'` as 400.
+    9. Reflection assertion: only constructor parameter is
+       `ContentsLinkReadService` (matches the
+       `CommittedTransactionReadControllerSpec`
+       `controller has no direct Mongo collaborator` precedent).
+    10. Literal route-path assertion pinning
+        `/api/contents/by-container/{id}` and
+        `/api/contents/by-content/{id}` so a rename in either direction
+        breaks the spec.
+  - No integration spec is added; service-level Mongo-query coverage
+    already lives in `ContentsLinkReadServiceSpec` from TASK-010.
+
+### Documentation changes
+
+- `docs/architecture/kafka-transaction-message-vocabulary.md` — appended
+  a short HTTP-route paragraph to the existing "Reading `contents` Links"
+  section: documents the two routes, the empty-array success contract
+  (HTTP 200 with `[]`), the 400 path through `GlobalExceptionHandler` for
+  blank ids, and the no-Mongo/no-materializer/no-write-side controller
+  collaborator boundary.
+
+### Items intentionally NOT changed
+
+- `ContentsLinkReadService.groovy` and `ContentsLinkRecord.groovy` —
+  service query semantics, sort order, type-resolution policy, and value
+  object are frozen per `OUT_OF_SCOPE`.
+- `ContentsLinkReadServiceSpec.groovy` — service-level coverage from
+  TASK-010 is unchanged.
+- `SecurityConfig.groovy` — JWT auth on `/api/**` already covers both
+  new routes; no permit-list edit needed.
+- `GlobalExceptionHandler.groovy` — existing
+  `IllegalArgumentException → 400 ErrorResponse` advice already returns
+  the desired body; no new handler.
+- `CommittedTransactionReadController`, `CommittedTransactionReadService`,
+  `CommittedTransactionMaterializer`, `TransactionMessagePersistenceService`,
+  `TransactionMessageListener`, and their value objects.
+- `MongoDbInitializer` — `lnk` and `typ` are already enum-driven from
+  TASK-007.
+- `libraries/jade-tipi-dto/...` — no DTO, schema, or message-example
+  change.
+- `application.yml`, `build.gradle`, `docker-compose.yml`,
+  `DIRECTION.md`, frontend, integration-test sources.
+
+### Verification
+
+- Docker stack healthy before verification: `jade-tipi-mongo`,
+  `jade-tipi-kafka`, `jade-tipi-keycloak` all up (`docker compose ps`
+  confirmed).
+- `./gradlew :jade-tipi:compileGroovy` → BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:compileTestGroovy` → BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:test --tests '*ContentsLinkReadControllerSpec*'`
+  → BUILD SUCCESSFUL; `ContentsLinkReadControllerSpec`
+  `tests=10, failures=0, errors=0, skipped=0`.
+- `./gradlew :jade-tipi:test` → BUILD SUCCESSFUL; full unit suite
+  `tests=107, failures=0, errors=0, skipped=0` across 11 specs (was 97
+  across 10 specs after TASK-010; +10 new in
+  `ContentsLinkReadControllerSpec`). Suite breakdown:
+  `CommittedTransactionReadControllerSpec=5`,
+  `ContentsLinkReadControllerSpec=10`,
+  `JadetipiApplicationTests=1`,
+  `TransactionMessageListenerSpec=4`,
+  `MongoDbInitializerSpec=2`,
+  `DocumentServiceMongoDbImplSpec=9`,
+  `CommittedTransactionMaterializerSpec=19`,
+  `CommittedTransactionReadServiceSpec=12`,
+  `ContentsLinkReadServiceSpec=18`,
+  `TransactionMessagePersistenceServiceSpec=15`,
+  `TransactionServiceSpec=12`.
 
 ## TASK-010 — Plan contents location query reads
 

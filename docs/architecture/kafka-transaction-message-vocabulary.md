@@ -183,6 +183,13 @@ Both methods first query `typ` for documents with `kind == "link_type"` and `nam
 
 The service returns one `ContentsLinkRecord` per matching `lnk`, sorted by `_id` ASC. Each record carries the link `_id`, `type_id`, `left`, `right`, the verbatim `properties` map (including instance-only data such as `properties.position` for plate-well placements), and the verbatim `_jt_provenance` sub-document. Endpoints are returned as raw id strings; this iteration does not join `lnk` to `loc` or `ent`, does not deduplicate, and does not flag conflicting materialized rows. Blank or whitespace-only ids are rejected at the service boundary with `IllegalArgumentException`.
 
+`ContentsLinkReadController` exposes the same two questions over HTTP as a thin WebFlux adapter under `/api/contents`:
+
+- `GET /api/contents/by-container/{id}` delegates to `findContents(id)` (forward: `lnk.left == id`).
+- `GET /api/contents/by-content/{id}` delegates to `findLocations(id)` (reverse: `lnk.right == id`).
+
+Both routes return a flat JSON array of `ContentsLinkRecord` preserving service order. An empty service result maps to HTTP 200 with body `[]`; the routes do not return 404 for "no matching link" and do not surface materialization timing through the HTTP status. Blank or whitespace-only ids surface the service `Assert.hasText(...)` `IllegalArgumentException` as a 400 `ErrorResponse` through `GlobalExceptionHandler`. The controller has no Mongo, materializer, or write-side collaborators and adds no controller-side authorization, pagination, or endpoint resolution policy.
+
 ## Reference Examples
 
 A complete early transaction flow is bundled as resources under `libraries/jade-tipi-dto/src/main/resources/example/message/`:
