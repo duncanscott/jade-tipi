@@ -2,8 +2,10 @@
 
 ID: TASK-007
 TYPE: implementation
-STATUS: READY_FOR_REVIEW
+STATUS: ACCEPTED
 OWNER: claude-1
+NEXT_TASK:
+  - TASK-008
 OWNED_PATHS:
   - DIRECTION.md
   - docs/Jade-Tipi.md
@@ -57,6 +59,16 @@ IMPLEMENTATION_DIRECTIVES:
 - Verification should include at least `./gradlew :libraries:jade-tipi-dto:test`, `./gradlew :jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`, `./gradlew :jade-tipi:test --tests '*MongoDbInitializerSpec*'`, and `./gradlew :jade-tipi:test`. If local tooling, Gradle locks, or Docker/Mongo are unavailable, report the project-documented setup command `docker compose -f docker/docker-compose.yml --profile mongodb up -d` and the exact verification command that could not run rather than treating setup as a product blocker.
 
 LATEST_REPORT:
+Director implementation review on 2026-05-01:
+- Accepted claude-1 implementation commit `40aec2e`.
+- Acceptance criteria are satisfied. The DTO enum now has `LOCATION("location", "loc")`; the message schema admits `loc` in the collection enum and in the long-term data-action conditional; the canonical `10-create-location.json` example uses `collection: "loc"` and an ID suffix containing `~loc~`; and Spring Boot startup will create `loc` through the existing `MongoDbInitializer` `Collection.values()` loop.
+- Required assertions are present. `MessageSpec` covers `Collection.fromJson("loc")`, JSON serialization as `loc`, schema acceptance for `loc + create`, schema rejection for `loc + open|commit|rollback`, and the new example through the existing round-trip/schema-validation rows. `MongoDbInitializerSpec` uses a pure Spock mock to prove `createCollection("loc")` is called when `loc` is missing and not called when it already exists.
+- Scope check passed against the active task expansion in this file and `DIRECTIVES.md`. The merge changed only `docs/agents/claude-1-changes.md`, this task file, the approved DTO enum/schema/example/test paths, approved documentation paths, and the approved backend initializer test path. These edits are outside claude-1's base assignment-owned report files, but they are inside the explicit TASK-007 owned-path expansion authorized by `DIRECTIVES.md` and this task file.
+- The implementation honored the out-of-scope boundaries: no `loc` materialization from committed `txn` messages, no `contents` link type implementation, no link materializer, no plate/well APIs, no `parent_location_id`, no Kafka listener or transaction persistence shape changes, no committed snapshot API changes, and no HTTP submission/security work.
+- Director local verification was blocked before product tests by sandbox/tooling permissions, not by an observed product failure. `./gradlew :libraries:jade-tipi-dto:test` failed opening `/Users/duncanscott/.gradle/wrapper/dists/gradle-8.14.3-bin/.../gradle-8.14.3-bin.zip.lck` (`Operation not permitted`), and `docker compose -f docker/docker-compose.yml --profile mongodb ps` could not access the Docker socket. In a normal developer shell, use the documented setup command `docker compose -f docker/docker-compose.yml --profile mongodb up -d`, then run `./gradlew :libraries:jade-tipi-dto:test`, `./gradlew :jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`, `./gradlew :jade-tipi:test --tests '*MongoDbInitializerSpec*'`, and `./gradlew :jade-tipi:test`.
+- Credited developer verification: with the Docker stack up, claude-1 reported `./gradlew :libraries:jade-tipi-dto:test`, `./gradlew :jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`, `./gradlew :jade-tipi:test --tests '*MongoDbInitializerSpec*'`, and `./gradlew :jade-tipi:test` all passing.
+- Follow-up: `TASK-008` was created for pre-work on the next bounded location-modeling unit: canonical `contents` type/link vocabulary examples and tests. This keeps materialization, semantic link validation, and read APIs out of scope until the example vocabulary is reviewed.
+
 Implementation report on 2026-05-01 (claude-1):
 
 - DTO enum: `org.jadetipi.dto.message.Collection` now declares

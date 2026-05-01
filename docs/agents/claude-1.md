@@ -11,16 +11,18 @@ Report file: docs/agents/claude-1-changes.md
 
 ## Current Assignment
 
-- Active task: `TASK-006 - Add committed transaction snapshot HTTP read adapter`.
+- Active task: `TASK-008 - Add contents link vocabulary examples`.
 - Current phase: pre-work. Read `DIRECTIVES.md` and the task file, then
-  propose the smallest WebFlux/HTTP adapter for retrieving a committed
-  transaction snapshot through the accepted `CommittedTransactionReadService`.
+  propose the smallest DTO/example/documentation unit for declaring a
+  `contents` link type in `typ` and creating a concrete containment
+  relationship in `lnk`, building on the accepted `loc` collection from
+  `TASK-007`.
   Do not implement until the director moves the task to
   `READY_FOR_IMPLEMENTATION`.
 - Record pre-work in `docs/agents/claude-1-next-step.md`; record implementation
   outcomes in `docs/agents/claude-1-changes.md` only after implementation is
   approved.
-- Use `docs/orchestrator/tasks/TASK-006-committed-transaction-snapshot-http-read-adapter.md`
+- Use `docs/orchestrator/tasks/TASK-008-contents-link-vocabulary-examples.md`
   as the task-specific source of truth for pre-work paths and acceptance
   criteria.
 

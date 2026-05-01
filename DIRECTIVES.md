@@ -1,20 +1,38 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
-The active bounded unit is `TASK-007`: add `loc` as a first-class Jade-Tipi collection so DTO/schema messages can target locations and the Spring Boot Mongo initializer creates the `loc` collection at application startup.
+The active bounded unit is `TASK-008`: pre-work for canonical `contents` link vocabulary examples. The goal is to propose the smallest DTO/example/documentation unit for declaring a `contents` link type in `typ` and a concrete containment relationship in `lnk`, building on the accepted `loc` collection from `TASK-007`.
 
 New product direction is recorded in `DIRECTION.md`: add a first-class `loc` collection for laboratory locations, keep containment relationships canonical in `lnk`, define `contents` as a typed link/class through `typ`, and model plate well coordinates as instance properties on `contents` links unless wells need independent lifecycle.
 
 ## Active Task
 
-- `TASK-007 - Add location collection` is READY_FOR_IMPLEMENTATION and assigned to claude-1.
+- `TASK-008 - Add contents link vocabulary examples` is READY_FOR_PREWORK and assigned to claude-1.
 
 ## Scope Expansion
 
-claude-1 may implement within the `TASK-007` owned paths. Follow the implementation directives in `docs/orchestrator/tasks/TASK-007-add-location-collection.md`.
+claude-1 may perform pre-work only in `docs/agents/claude-1-next-step.md`; do not implement until the director moves `TASK-008` to `READY_FOR_IMPLEMENTATION`. Follow the pre-work directives in `docs/orchestrator/tasks/TASK-008-contents-link-vocabulary-examples.md`.
+
+## TASK-008 Pre-work Direction
+
+- Inspect `DIRECTION.md`, `docs/Jade-Tipi.md`, `docs/architecture/kafka-transaction-message-vocabulary.md`, existing message examples, `MessageSpec`, and `message.schema.json`.
+- Propose the smallest concrete example set for `contents`, including whether to add one `typ` message for the link type declaration and one `lnk` message for a concrete containment relationship.
+- Keep the proposal at the DTO/vocabulary/example layer unless source inspection reveals a narrow schema gap. Do not propose materialization, semantic endpoint validation, link materializers, plate/well read APIs, `parent_location_id`, Kafka listener changes, transaction persistence shape changes, committed snapshot API changes, HTTP submission wrappers, security policy, Docker Compose changes, or build changes.
+- Use existing project ID conventions, keep location IDs using `~loc~`, and keep parentage canonical in `lnk`.
+- Verification proposal should include at least `./gradlew :libraries:jade-tipi-dto:test`. If local tooling, Gradle locks, or Docker/Mongo are unavailable, report the documented setup command rather than treating setup as a product blocker.
+
+## TASK-007 Director Review
+
+- `TASK-007` is accepted on 2026-05-01. The DTO/schema layer now supports `loc`, the canonical `10-create-location.json` example uses `collection: "loc"` with a `~loc~` ID suffix, documentation lists `location (loc)` while preserving `txn` as the special transaction log/staging collection, and backend startup will create `loc` through the existing `MongoDbInitializer` `Collection.values()` loop.
+- Scope check passed against the active task expansion. The implementation changed only `docs/agents/claude-1-changes.md`, `docs/Jade-Tipi.md`, `docs/architecture/kafka-transaction-message-vocabulary.md`, the `TASK-007` task file, the approved DTO enum/schema/example/test paths, and the approved backend initializer test path.
+- The base assignment file `docs/agents/claude-1.md` was stale and still described `TASK-006`, but it also delegates scope expansion to `DIRECTIVES.md` and the active task file. The `TASK-007` implementation stayed inside that explicit expansion.
+- Required assertions are present: `Collection.fromJson("loc")`, JSON serialization as `loc`, schema acceptance for `loc + create`, schema rejection for `loc + open|commit|rollback`, example round-trip/schema validation, and pure Spock initializer behavior for missing/existing `loc`.
+- Director local verification was blocked before product tests by sandbox/tooling permissions, not by an observed product failure. `./gradlew :libraries:jade-tipi-dto:test` failed opening the Gradle wrapper cache lock in `/Users/duncanscott/.gradle`, and Docker inspection could not access the Docker socket. In a normal developer shell, use the documented setup and verification sequence: `docker compose -f docker/docker-compose.yml --profile mongodb up -d`, then `./gradlew :libraries:jade-tipi-dto:test`, `./gradlew :jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`, `./gradlew :jade-tipi:test --tests '*MongoDbInitializerSpec*'`, and `./gradlew :jade-tipi:test`.
+- Credited developer verification: with the Docker stack up, claude-1 reported `./gradlew :libraries:jade-tipi-dto:test`, `./gradlew :jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`, `./gradlew :jade-tipi:test --tests '*MongoDbInitializerSpec*'`, and `./gradlew :jade-tipi:test` passing.
+- Follow-up: `TASK-008` was created for pre-work on canonical `contents` type/link vocabulary examples. This is the next bounded location-modeling step and keeps materialization, semantic validation, and read APIs out of scope.
 
 ## TASK-007 Director Pre-work Review
 
