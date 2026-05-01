@@ -4,374 +4,320 @@ The developer writes pre-work plans here before implementation begins.
 
 STATUS: PRESENT
 
-## TASK-010 — Plan contents location query reads (pre-work)
+## TASK-011 — Plan contents location HTTP read adapter (pre-work)
 
 ### Directive summary
 
-Per `DIRECTIVES.md` (signal `REQUEST_NEXT_STEP`, active task `TASK-010`,
+Per `DIRECTIVES.md` (signal `REQUEST_NEXT_STEP`, active task `TASK-011`,
 status `READY_FOR_PREWORK`) and
-`docs/orchestrator/tasks/TASK-010-contents-location-query-read-prework.md`,
-propose the smallest read/query path over the materialized `loc`, `typ`,
-and `lnk` collections so callers can answer the two `DIRECTION.md`
-contents questions: **"what are the contents of this plate/location?"**
-(forward lookup over `lnk` where `left == containerId`) and **"where is
-this sample or object located?"** (reverse lookup over `lnk` where
-`right == objectId`).
+`docs/orchestrator/tasks/TASK-011-contents-location-http-read-adapter-prework.md`,
+propose the smallest HTTP/WebFlux adapter over the accepted
+`ContentsLinkReadService` so callers can answer the two `DIRECTION.md`
+contents questions through the backend without changing materialization,
+write semantics, or the service-level query behavior.
 
-The first read unit must:
+The first HTTP unit must:
 
-- Identify the canonical `contents` link type without adding write-time
-  semantic validation (DIRECTION.md uses `typ` records with
-  `kind=link_type` and `name=contents` as the type declaration).
-- Return matching `lnk` records in a deterministic order with verbatim
-  endpoints and instance properties.
-- Behave correctly when the container, object, or `contents` type does
-  not exist; when endpoint references are unresolved; and when more
-  than one materialized `lnk` matches.
+- Expose both query directions delivered by `TASK-010`:
+  `findContents(containerId)` (forward, `lnk.left == containerId`) and
+  `findLocations(objectId)` (reverse, `lnk.right == objectId`).
+- Stay strictly thin over the existing service: no semantic validation,
+  no endpoint join to `loc`/`ent`, no extra Mongo lookups, no caching,
+  no pagination policy, no authorization beyond what the existing
+  Spring Security chain already provides for `/api/**`.
+- Map service `Flux.empty()` to a deterministic, well-defined success
+  body (empty JSON array) and surface blank/whitespace-only ids through
+  the existing `GlobalExceptionHandler` advice as 400 `ErrorResponse`.
+- Be verifiable through pure controller specs that mock only the
+  service collaborator, mirroring `CommittedTransactionReadControllerSpec`.
 
-Director constraints to respect (from `OUT_OF_SCOPE` plus the
-`TASK-010 Pre-work Direction` block in `DIRECTIVES.md`):
+Director constraints to respect (from `OUT_OF_SCOPE` plus
+`TASK-011`'s task file):
 
-- Do not change transaction persistence, the committed snapshot shape,
-  or `TASK-009` materialization behavior.
+- Do not change `ContentsLinkReadService` query semantics, the value
+  object, or its tests unless pre-work identifies a blocking bug and
+  the director explicitly approves the fix. (Pre-work has identified
+  none.)
+- Do not change transaction persistence, committed snapshot shape,
+  materialization behavior, Kafka listener/topic configuration, DTO
+  schemas/examples, build files, Docker Compose, security policy,
+  or UI.
 - Do not add semantic write-time validation for `lnk.type_id`, `left`,
   `right`, or `allowed_*_collections`.
-- Do not add update/delete replay, backfill, background workers,
-  multi-transaction conflict resolution, or authorization/scoping
-  policy.
-- Do not rebuild HTTP submission wrappers, Kafka listener/topic
-  configuration, DTO schemas/examples, Docker Compose, or build
-  configuration.
-- Do not add `parent_location_id` to `loc` records; containment stays
-  canonical in `lnk`.
-- Do not implement UI work.
+- Do not join `lnk` endpoints to `loc` or `ent`, add
+  `parent_location_id`, implement update/delete replay, backfill jobs,
+  multi-transaction conflict resolution, authorization/scoping policy,
+  or pagination/bulk policy.
 
 This is pre-work only. No production source, build, schema, example,
 test, or non-doc edits beyond this file until the director moves
-`TASK-010` to `READY_FOR_IMPLEMENTATION` (or sets the global signal
+`TASK-011` to `READY_FOR_IMPLEMENTATION` (or sets the global signal
 to `PROCEED_TO_IMPLEMENTATION`).
 
 ### Current baseline (read, not yet changed)
 
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`
-  projects committed `loc + create`, `typ + create` (with
-  `data.kind == "link_type"`), and `lnk + create` messages into the
-  `loc`, `typ`, and `lnk` Mongo collections respectively. Each
-  materialized document has `_id == data.id`, copies the original
-  `data` payload verbatim (including the original payload `id`), and
-  carries a reserved `_jt_provenance` sub-document with `txn_id`,
-  `commit_id`, `msg_uuid`, `committed_at`, and `materialized_at`.
-  **The reader can rely on this shape** without re-validating it.
-- `CommittedTransactionMaterializerSpec` confirms the materialized
-  shapes the reader will see (e.g. `linkMessage()` materializes a
-  `lnk` doc carrying `_id`, `id`, `type_id`, `left`, `right`,
-  `properties.position`, plus `_jt_provenance`).
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionReadService.groovy`
-  is the existing pattern for a Kafka-free / HTTP-free read service:
-  takes `ReactiveMongoTemplate`, uses `Assert.hasText` for blank
-  inputs, uses `Query.query(Criteria.where(...).is(...))` with an
-  explicit `Sort.by(Sort.Direction.ASC, _id)`, and is verified by a
-  pure Spock spec that asserts the Mongo `Query` sort. **The new
-  reader should follow this pattern.**
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/ContentsLinkReadService.groovy`
+  is the accepted `TASK-010` service. Public surface:
+  `Flux<ContentsLinkRecord> findContents(String containerId)` and
+  `Flux<ContentsLinkRecord> findLocations(String objectId)`. Both
+  validate input with `Assert.hasText(...)` (so blank/whitespace/null
+  ids throw `IllegalArgumentException` at the service boundary), both
+  resolve canonical `contents` `type_id`s from `typ` via
+  `kind == "link_type" AND name == "contents"`, and both stream `lnk`
+  rows verbatim sorted by `_id` ASC. **The HTTP adapter never needs
+  to duplicate any of this.**
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/ContentsLinkRecord.groovy`
+  is a Groovy `@Immutable` carrying `linkId`, `typeId`, `left`, `right`,
+  `properties` (`Map<String, Object>`), and `provenance`
+  (`Map<String, Object>`). **It already serializes cleanly through
+  the project's default Jackson configuration** (string fields plus
+  two `Map<String, Object>` payloads), matching how
+  `CommittedTransactionMessage` is serialized by
+  `CommittedTransactionReadController`.
 - `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/controller/CommittedTransactionReadController.groovy`
-  is the existing pattern for a thin WebFlux adapter when one is
-  needed (single GET, delegates to a service, maps `Mono.empty()` to
-  404 with no body, defers `Assert.hasText` 400 mapping to
-  `GlobalExceptionHandler`). **The new reader does not need a
-  controller for verification** (see S2 below); a service-only
-  implementation can be fully verified by pure-Spock unit specs that
-  mock `ReactiveMongoTemplate`, matching `CommittedTransactionReadServiceSpec`.
-- `libraries/jade-tipi-dto/src/main/java/org/jadetipi/dto/message/Collection.java`
-  defines `LOCATION("location","loc")`, `TYPE("type","typ")`, and
-  `LINK("link","lnk")`. The reader matches Mongo collection names by
-  the abbreviation strings (`'loc'`, `'typ'`, `'lnk'`), the same way
-  the materializer does.
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/util/Constants.groovy`
-  carries `COLLECTION_TRANSACTIONS = 'txn'`. No new constant is
-  required for this task; the new reader can route on the
-  `'loc'` / `'typ'` / `'lnk'` abbreviation literals (or share
-  constants from the materializer if the director prefers).
-- `docs/architecture/kafka-transaction-message-vocabulary.md`
-  describes the `contents` link type and the materialized projection
-  but does not yet describe a reader. A short "Reading `contents`
-  links" paragraph is in scope of this task's owned paths and may be
-  proposed (Q9 below).
-- Existing service test pattern is pure Spock with
-  `Mock(ReactiveMongoTemplate)` and `Mono`/`Flux` stubs. The same
-  pattern fits the new reader.
+  is the controlling precedent for "thin WebFlux read adapter over a
+  service-boundary value object": single `@RestController`,
+  `@RequestMapping('/api/<area>')`, `@GetMapping(...)`, constructor
+  injection of one service, `@PathVariable` id, `@AuthenticationPrincipal Jwt jwt`
+  for parity with the other controllers (the JWT is required by the
+  security chain anyway), and one or two `log.debug`/`log.info`
+  observability lines. The new controller should mirror this shape
+  exactly except for differences forced by `Flux` vs `Mono`.
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/exception/GlobalExceptionHandler.groovy`
+  already maps `IllegalArgumentException` to a 400 `ErrorResponse`
+  body. The new controller relies on that mapping for blank
+  `containerId` / `objectId`, identical to the
+  `CommittedTransactionReadController` precedent. **No new exception
+  handlers, no new error DTO, no controller-side input validation.**
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/config/SecurityConfig.groovy`
+  permits the standard set of doc/swagger/actuator paths and gates
+  `anyExchange().authenticated()` with JWT. The two new routes both
+  live under `/api/...` and inherit JWT authentication from this
+  chain unchanged. **No security config change.**
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/controller/CommittedTransactionReadControllerSpec.groovy`
+  is the controlling precedent for controller-spec coverage:
+  `WebTestClient.bindToController(controller)`,
+  `.controllerAdvice(new GlobalExceptionHandler())`, an
+  `AuthenticationPrincipalArgumentResolver` registered as a custom
+  argument resolver so `@AuthenticationPrincipal Jwt jwt` resolves to
+  `null` without a server, and a mocked service collaborator. The new
+  spec reuses this pattern verbatim.
+- `docs/architecture/kafka-transaction-message-vocabulary.md` already
+  has a "Reading `contents` Links" section documenting the service
+  surface. A short follow-up paragraph documenting the HTTP routes and
+  the empty-array success contract is in scope of `TASK-011`'s owned
+  paths and may be proposed (Q9 below). The director can decline.
+- `docs/agents/claude-1.md` already names `TASK-011` and points to
+  the pre-work file; it does not need an edit during pre-work.
 
 ### Smallest implementation plan (proposal)
 
-#### S1. Read boundary
+#### S1. HTTP boundary — one new controller
 
-**Default proposal: a single Kafka-free, HTTP-free service that
-answers both forward and reverse `contents` queries by reading `lnk`
-(filtered by canonical `contents` `type_id`s resolved from `typ`).**
+New class
+`jade-tipi/src/main/groovy/org/jadetipi/jadetipi/controller/ContentsLinkReadController.groovy`
+(Spring `@RestController`):
 
-- New class
-  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/ContentsLinkReadService.groovy`
-  (Spring `@Service`).
-- Constructor takes only `ReactiveMongoTemplate`. Stays Kafka-free
-  and HTTP-free.
-- Public surface (default proposal):
-  - `Flux<ContentsLinkRecord> findContents(String containerId)` —
-    forward lookup (`lnk.left == containerId`).
-  - `Flux<ContentsLinkRecord> findLocations(String objectId)` —
-    reverse lookup (`lnk.right == objectId`).
-  - Internal helper `Flux<String> resolveContentsTypeIds()` — queries
-    `typ` for documents with `kind == 'link_type' AND name ==
-    'contents'` and emits each matching `_id`. The literal
-    `'contents'` matches the `DIRECTION.md` and `TASK-008` example
-    convention. The literal lives only inside the read service; no
-    write path changes.
-- New value object
-  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/ContentsLinkRecord.groovy`
-  (Groovy `@Immutable`, modeled on `CommittedTransactionMessage`)
-  carrying:
-    - `String linkId` (Mongo `_id`).
-    - `String typeId` (`type_id`).
-    - `String left`.
-    - `String right`.
-    - `Map<String, Object> properties` (verbatim `lnk.properties`,
-      including `properties.position` when present).
-    - `Map<String, Object> provenance` (verbatim `_jt_provenance`,
-      so a caller can correlate the link back to the originating
-      transaction without an extra query).
+- Constructor takes only `ContentsLinkReadService`. Stays Kafka-free,
+  Mongo-free, and materializer-free at the controller layer; the
+  service is the single collaborator.
+- `@RequestMapping('/api/contents')` — base path consistent with
+  existing `/api/transactions`, `/api/documents`, etc. The plural
+  noun matches the materialized concept (a `contents`-typed link).
+- Two `@GetMapping` methods, both returning `Flux<ContentsLinkRecord>`
+  (the controller does not need `Mono<ResponseEntity<...>>` because
+  there is no 404-vs-200 ambiguity — empty results are 200 `[]` per
+  S5, and the success status code is the WebFlux default 200).
+- Each method takes `@PathVariable('id') String id` and
+  `@AuthenticationPrincipal Jwt jwt`, mirroring
+  `CommittedTransactionReadController.getSnapshot(...)`. The `jwt`
+  parameter is unused inside the method body; it exists so the
+  argument resolver path is identical to other authenticated
+  endpoints. (Removable if the director prefers — Q11 below.)
 
-The reader is read-only; it does not mutate `lnk`, `loc`, or `typ`,
-does not re-materialize, and does not change committed-snapshot
-behavior.
-
-#### S2. HTTP adapter — deferred
-
-**Default proposal: do not add a controller in `TASK-010`.** Pure
-Spock unit specs against the new service (with `Mock(ReactiveMongoTemplate)`)
-exercise the actual Mongo query criteria, sort order, and response
-shape — exactly the verification level director-accepted for
-`CommittedTransactionReadService` in `TASK-005`. Adding a controller
-in this task would expand scope to security wiring, route shape, and
-HTTP error mapping that the directive explicitly defers ("include a
-thin HTTP adapter only if source inspection shows it is necessary
-for useful verification").
-
-A future task can wrap this service in a thin
-`/api/locations/{id}/contents` and `/api/objects/{id}/locations`
-controller, mirroring `CommittedTransactionReadController`.
-**Decision deferred to Q1 below**; the service in S1 is identical
-under either choice.
-
-#### S3. Forward + reverse, or forward only?
-
-**Default proposal: ship both `findContents` and `findLocations` in
-`TASK-010`.** Rationale:
-
-- They are the two `DIRECTION.md` "contents" questions; shipping
-  only one would leave the other still unanswered.
-- They share the same infrastructure: the same
-  `resolveContentsTypeIds()` helper, the same `Mongo` collection
-  name `'lnk'`, the same response DTO, the same sort, the same
-  error semantics. Splitting into two tasks would duplicate the
-  setup cost without producing two independent units of value.
-- The diff size stays small: one extra query method plus one extra
-  pair of unit-spec features.
-
-Forward-only is the alternative if the director prefers an even
-smaller first unit (Q2).
-
-#### S4. Query construction (default proposal)
-
-For each public method, the service first resolves `contents`
-type IDs and then runs a single `lnk` query.
-
-##### S4a. Resolve `contents` type IDs
+##### Default route shape
 
 ```
-typ filter:
-    record_type-equivalent fields are not present in the materialized
-    `typ` collection (the materializer copies the data payload verbatim);
-    use the data shape directly:
-        kind == 'link_type'
-        name == 'contents'
-sort: ASC by _id (deterministic, but not user-visible)
-project: _id only
+GET /api/contents/by-container/{id}   → Flux<ContentsLinkRecord>
+                                          forward (lnk.left == id)
+GET /api/contents/by-content/{id}     → Flux<ContentsLinkRecord>
+                                          reverse (lnk.right == id)
 ```
 
-Result: `Flux<String>` of matching link-type IDs. Typically a
-single-element flux (one canonical declaration), but we tolerate
-multiple matches because materialization permits multiple
-type-bearing transactions over time and idempotent re-creation.
+Rationale: the link type's `left_role: container` and
+`right_role: content` are explicit in
+`docs/architecture/kafka-transaction-message-vocabulary.md` and the
+`11-create-contents-type.json` example, so `by-container` and
+`by-content` are the lowest-ambiguity names and read naturally as
+"contents whose container is X" and "contents whose content is X."
+They avoid `forward`/`reverse` (asymmetric jargon) and
+`/locations` (which would imply joining to `loc`, deferred per
+`OUT_OF_SCOPE`).
 
-##### S4b. Forward lookup `findContents(containerId)`
+Two route alternatives are listed for the director in Q1 below.
 
-After resolving `typeIds`:
+#### S2. Response shape
 
-- If `typeIds` is empty → emit `Flux.empty()`. **No `contents` link
-  type has been declared yet, so by definition no contents links
-  exist that this reader should return.**
-- Else build:
+- Return type: `Flux<ContentsLinkRecord>` directly. Spring WebFlux
+  serializes it as a JSON array streamed under
+  `application/json`, the same media type used by
+  `CommittedTransactionReadController` for its single `Mono` result.
+- Each emitted JSON object preserves the materialized fields
+  verbatim, exactly as the value object is shaped today:
+  - `linkId` — the materialized Mongo `_id` (and original
+    `data.id`).
+  - `typeId` — `lnk.type_id`.
+  - `left` — `lnk.left` (raw id string; not joined to `loc`/`ent`).
+  - `right` — `lnk.right` (raw id string; not joined to
+    `loc`/`ent`).
+  - `properties` — the verbatim `lnk.properties` map, including
+    `properties.position` (`kind`/`label`/`row`/`column`) when
+    present for plate-well placements.
+  - `provenance` — the verbatim `_jt_provenance` sub-document
+    (`txn_id`, `commit_id`, `msg_uuid`, `committed_at`,
+    `materialized_at`).
+- No envelope, no totals, no pagination links: the directive's
+  "narrowest backend boundary" call and the `OUT_OF_SCOPE` no-pagination
+  rule both push back against an envelope. A flat array is also what
+  the existing controllers do (e.g. `DocumentController.listDocuments`
+  returns `Flux<ObjectNode>` directly).
+- No new DTO. The service already emits a value object with the
+  appropriate verbatim shape and the `_jt_provenance` sub-document;
+  introducing a thin HTTP DTO would duplicate fields without adding
+  value. Q6 below offers two alternatives if the director wants a
+  controller-only DTO.
 
-```
-lnk filter:
-    type_id $in {typeIds}
-    left == containerId
-sort: ASC by _id  (deterministic; matches receive order because
-                   _id == fully-namespaced lnk data.id, which the
-                   producer writes before publication)
-```
+#### S3. Empty-result behavior
 
-##### S4c. Reverse lookup `findLocations(objectId)`
+- When the service emits `Flux.empty()` (no `contents` declaration,
+  no matching `lnk`, container/object not present), the HTTP response
+  is **200 OK with body `[]`**, content type `application/json`.
+- This intentionally collapses three internal states into one
+  HTTP status:
+  - "no `contents` link type has been materialized yet,"
+  - "container/object id has no matching `lnk` rows,"
+  - "container/object id is not in `loc`/`ent` (yet)."
+  Distinguishing them at the HTTP layer would require querying
+  `loc`/`ent` (forbidden — see `OUT_OF_SCOPE`'s "do not join `lnk`
+  endpoints to `loc` or `ent`") or surfacing materialization timing
+  through a public API (out of scope). 200 `[]` is the safest
+  contract: reads do not lie about the materialized state of `lnk`
+  and do not silently 404 a perfectly valid query that simply has
+  no answer yet.
+- This is the Spring WebFlux default behavior for `Flux<T>`; no
+  explicit `defaultIfEmpty` or `Mono.fromIterable` is needed.
 
-Identical to forward, except `left == containerId` becomes
-`right == objectId`.
+#### S4. Blank / malformed / null id handling
 
-##### S4d. Mongo collection routing
+- `Assert.hasText(id, '...')` already lives inside the service. The
+  controller does **not** re-validate.
+- A blank or whitespace-only `id` triggers `IllegalArgumentException`
+  inside the service. The exception propagates out of the
+  `Flux<ContentsLinkRecord>`. `GlobalExceptionHandler.handleIllegalArgument`
+  maps that to **400 `ErrorResponse`** carrying the service's
+  `'containerId must not be blank'` (or `'objectId must not be blank'`)
+  message, status `400`, and the `error: 'Bad Request'` label. This
+  matches the verified behavior asserted in
+  `CommittedTransactionReadControllerSpec` (the
+  `whitespace-only id surfaces service Assert.hasText as 400 ErrorResponse`
+  feature).
+- A path that genuinely cannot bind a `{id}` (e.g. trailing-slash
+  truncation) is a Spring routing concern that already returns 404,
+  and is not exercised by this controller's owned coverage.
+- A `null` id cannot reach the controller for a `@PathVariable` route;
+  if it did, `Assert.hasText` would still fail with
+  `IllegalArgumentException`. Service-level coverage already proves
+  that path; the controller spec does not need to retest it.
 
-The service reads only from `'lnk'` and `'typ'`. It never reads from
-`'loc'`, `'ent'`, `'ppy'`, `'txn'`, or any other collection in this
-task. **Endpoint resolution against `loc` / `ent` / `loc` is
-explicitly deferred** (see S6 and Q4).
+#### S5. Logging and observability
 
-#### S5. Response shape and ordering
+- Two `log.debug` lines (one per route, mirroring
+  `CommittedTransactionReadController.getSnapshot`'s `log.debug`):
+  `'Listing contents by container: id={}'` and
+  `'Listing contents by content: id={}'`.
+- One `log.info` per route on completion (via `doOnComplete`) or
+  per emitted record (via `doOnNext`). I will pick whichever matches
+  the existing precedent in `CommittedTransactionReadController` —
+  which uses `doOnNext` to log `'Committed snapshot returned: id={}, messages={}'`.
+  For a `Flux`, `doOnComplete` is the correct equivalent because
+  there is no single returned record. The exact log line will be
+  decided during implementation; nothing in the spec asserts log
+  output, so this is observability-only and does not change behavior.
+- No new metrics. No new audit event. No new `@PreAuthorize` (JWT auth
+  is already enforced by the security chain).
 
-- Each emitted element is one `ContentsLinkRecord` per matching
-  `lnk` document.
-- Field mapping (verbatim, no transformation):
-    - `linkId` ← `_id` (the materialized Mongo `_id`, equal to the
-      original `data.id`).
-    - `typeId` ← `type_id`.
-    - `left` ← `left`.
-    - `right` ← `right`.
-    - `properties` ← `properties` (or `null`/empty when absent).
-    - `provenance` ← `_jt_provenance` (or `null` if absent for any
-      reason; the materializer always sets it, so production data
-      always has it).
-- Ordering: `_id` ASC. The reader sorts in Mongo, not in memory; the
-  unit spec asserts the `Query`'s `Sort` value (matching the
-  `CommittedTransactionReadServiceSpec` style of asserting the
-  query's sort rather than relying on mock ordering).
-- The reader does not deduplicate or group. If two distinct
-  materialized `lnk` records both have the same
-  (`type_id`, `left`, `right`) tuple — possible because the
-  materializer writes one document per `data.id` and a producer can
-  legitimately write multiple containment links for the same pair
-  with different per-link properties — both are returned.
+#### S6. Service / collaborator boundary
 
-#### S6. Edge-case behavior (specified per director ask)
-
-- **Missing container or object** (no `loc`/`ent` document with that
-  ID): the reader does not look at `loc` or `ent`; it queries `lnk`
-  by the raw ID string. Result is `Flux.empty()` if no `lnk`
-  records reference the ID. Behaviorally indistinguishable from
-  "container exists but has no contents," which is correct under
-  the directive's "no semantic write-time validation" rule.
-- **Unresolved endpoint references** (a `lnk.right` points at an
-  ID that has no corresponding `loc` or `ent` row, e.g. because the
-  `right` record has not been materialized yet): the reader
-  **still returns the `lnk` record** with the unresolved string
-  intact. Endpoint resolution is a future read concern; surfacing
-  an unresolved string is preferable to silently dropping the
-  record because the read should not lie about the materialized
-  state of `lnk`.
-- **No `contents` type declared yet**: `resolveContentsTypeIds()`
-  emits empty → both forward and reverse lookups emit `Flux.empty()`.
-  The reader does not treat this as an error.
-- **Multiple `contents` types declared** (e.g. one declaration in
-  the production transaction history and one in a tenant-specific
-  retest): the `$in` filter accepts all of them. The reader does
-  not pick a "canonical" subset; the director can layer that policy
-  in a future task. **The intent is "find all `lnk` whose type
-  semantically declares itself as `contents`"**, not "find `lnk`
-  whose type matches one specific declaration."
-- **Duplicate / conflicting `lnk` records**: the materializer skips
-  conflicting duplicates without overwrite, so each matching
-  `lnk._id` corresponds to one materialized payload. The reader
-  returns each materialized `lnk._id` once, in `_id` ASC order. It
-  does not flag conflicts; the materializer's `MaterializeResult`
-  counters are the conflict-visibility surface.
-- **Blank `containerId` or `objectId`**: `Assert.hasText(...)`
-  throws `IllegalArgumentException` with a clear message. The
-  reader does not catch it. (No controller is added in this task;
-  if a future controller wraps the service, the existing
-  `GlobalExceptionHandler` already maps `IllegalArgumentException`
-  to a 400 `ErrorResponse`.)
-- **`null` arguments**: same — `Assert.hasText(null, ...)` throws
-  `IllegalArgumentException`.
-- **Materialized `_jt_provenance` missing** (defensive — should not
-  happen under normal operation): the reader emits the record with
-  `provenance: null` rather than skipping it. The link is real even
-  when its provenance metadata is missing.
-- **Type discriminator strictness**: the resolver requires
-  `kind == 'link_type' AND name == 'contents'`. A bare entity-type
-  `typ` (no `kind`) named `'contents'` will **not** match, because
-  the materializer only writes `link_type` records into `typ` for
-  this iteration. Even if the materializer later widens, the
-  `kind == 'link_type'` filter keeps the reader honest.
+- The controller's only collaborator is `ContentsLinkReadService`.
+  No `ReactiveMongoTemplate`, no `CommittedTransactionMaterializer`,
+  no `CommittedTransactionReadService`, no `KafkaTemplate`, no
+  `TransactionService`, no Spring Data repository. This is asserted
+  by reflection in S7 (matching the
+  `CommittedTransactionReadControllerSpec`
+  `controller has no direct Mongo collaborator` feature).
+- The service's reactive contract (`Flux<ContentsLinkRecord>`) is
+  returned to the WebFlux runtime unchanged; the controller adds no
+  `block()`, `collectList()`, in-memory sort, dedup, or filter.
 
 #### S7. Tests
 
 All under
-`jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/`,
-following the existing pure-Spock `Mock(ReactiveMongoTemplate)`
+`jade-tipi/src/test/groovy/org/jadetipi/jadetipi/controller/`,
+following the existing pure-Spock `WebTestClient.bindToController`
 pattern.
 
-`ContentsLinkReadServiceSpec`:
+`ContentsLinkReadControllerSpec`:
 
-- **Forward — single match**: one materialized `lnk` row whose
-  `type_id` matches a single `contents` `typ._id` and `left ==
-  containerId` is returned with `linkId`, `typeId`, `left`,
-  `right`, `properties.position`, and `provenance` preserved.
-- **Forward — multiple matches**: returned in `_id` ASC order
-  matching the order in the simulated Mongo response. Asserts the
-  Mongo `Query.sort` value, not just the result order, so the
-  proof of database-side sort is independent of the mock's
-  iteration order.
-- **Forward — `$in` filter on multiple type IDs**: when
-  `resolveContentsTypeIds()` emits two type IDs, the `lnk` query
-  uses `Criteria.where('type_id').in(typeIds)`; assert this on the
-  captured `Query`. Two `lnk` rows with different `type_id` values
-  (both contents-class) both come back.
-- **Forward — no `contents` type declared**: `typ` query returns
-  empty → service emits `Flux.empty()`; `lnk` is **not** queried.
-  Asserted with `0 * mongoTemplate.find(_, _, 'lnk')` (matching
-  the materializer-spec idiom).
-- **Forward — no matching `lnk` (container exists in `loc` but has
-  no contents links)**: returns `Flux.empty()` without throwing.
-  The reader does not consult `loc` to decide.
-- **Forward — unresolved `right` reference**: a `lnk` whose
-  `right` is a string with no matching `loc`/`ent` is still
-  returned verbatim. The reader does not consult `loc`/`ent`.
-- **Reverse — symmetric coverage**: mirrors each forward case for
-  `findLocations(objectId)` (single match, multiple matches,
-  ordering, no `contents` type, no matching `lnk`, unresolved
-  `left`).
-- **Reverse — `right` collision across collections**: a `lnk` whose
-  `right` is a `loc` ID and another `lnk` whose `right` is an
-  `ent` ID are both returned (mirrors
-  `allowed_right_collections == ['loc', 'ent']` in the type
-  declaration).
-- **Type discriminator**: a `typ` record with `kind != 'link_type'`
-  but `name == 'contents'` is **not** picked up by
-  `resolveContentsTypeIds()`. Likewise a `link_type` named
-  something other than `'contents'` is ignored.
-- **Bad inputs**:
-    - `findContents(null)`, `findContents('')`, `findContents('   ')`
-      throw `IllegalArgumentException`. Likewise for
-      `findLocations`. Asserted via `where:` data table.
-- **No write-side coupling**: a Spock `0 * _ ` (or equivalent
-  per-mock checks) confirms the service does not invoke
-  `mongoTemplate.insert`, `update`, `save`, or `remove`.
-- **Provenance preservation**: the response carries
-  `provenance.txn_id`, `provenance.commit_id`, `provenance.msg_uuid`,
-  `provenance.committed_at`, and `provenance.materialized_at`
-  unchanged from the materializer-written sub-document.
+- **Setup mirrors `CommittedTransactionReadControllerSpec`**:
+  `Mock(ContentsLinkReadService)`, controller bound via
+  `WebTestClient.bindToController(controller).controllerAdvice(new GlobalExceptionHandler()).argumentResolvers { configurer -> configurer.addCustomResolver(new AuthenticationPrincipalArgumentResolver(ReactiveAdapterRegistry.getSharedInstance())) }.build()`.
+- **Forward — populated body**: a stub returning two
+  `ContentsLinkRecord` rows for `findContents('plate-1')` produces a
+  200 JSON array of length 2 with the expected `linkId`, `typeId`,
+  `left`, `right`, `properties.position.kind`,
+  `properties.position.label`, `properties.position.row`,
+  `properties.position.column`, and
+  `provenance.txn_id`/`commit_id`/`msg_uuid`/`committed_at`/`materialized_at`
+  values, asserted via `jsonPath`.
+- **Forward — preserves service order**: when the stub emits records
+  in `_id` ASC order, the JSON array preserves that order. (The
+  controller does not re-sort.)
+- **Forward — empty body**: a stub returning `Flux.empty()` produces
+  a 200 response whose body is an empty JSON array (`[]`), asserted
+  with `expectBody().jsonPath('$.length()').isEqualTo(0)` (or
+  equivalent). The status is **not** 404.
+- **Forward — blank id surfaces service `Assert.hasText` as 400
+  `ErrorResponse` via `GlobalExceptionHandler`**: a stub configured
+  to throw `IllegalArgumentException('containerId must not be blank')`
+  for `findContents('   ')` produces a 400 response whose JSON body
+  has `status == 400`, `error == 'Bad Request'`, and
+  `message == 'containerId must not be blank'`, asserted via
+  `jsonPath`. (Also asserts that the spec-driven 400 path goes through
+  the real `GlobalExceptionHandler` advice rather than a controller
+  short-circuit.)
+- **Forward — service delegation**: `1 * readService.findContents('plate-1') >> Flux.just(...)` and `0 * _` together prove that
+  the controller calls only `findContents` and no other collaborator.
+- **Reverse — symmetric coverage**: mirror each of the four forward
+  feature methods for `findLocations(objectId)` against the
+  `/api/contents/by-content/{id}` route.
+- **Route binding**: implicit in the four `WebTestClient.get().uri(...)` exchanges,
+  but explicitly assert the literal path strings as constants so a
+  rename in either direction breaks the spec.
+- **Controller has no direct Mongo collaborator**: a reflection feature
+  matching `CommittedTransactionReadControllerSpec` —
+  `Constructor<?>` parameter count is 1 and parameter type is
+  `ContentsLinkReadService`.
 
-Optional integration test (deferred to a follow-up task unless
-director asks otherwise — Q5). A new
-`jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/service/ContentsLinkReadIntegrationSpec.groovy`
-opts-in via env (mirroring the existing `JADETIPI_IT_KAFKA` pattern)
-and asserts that after the existing TASK-009 commit-and-materialize
-flow runs against a real Mongo, `findContents(plateId)` and
-`findLocations(sampleId)` return the materialized link.
+No integration test is proposed. The service-level coverage from
+`TASK-010` already exercises the Mongo `Query` shape, sort order,
+and empty-result paths against a mocked `ReactiveMongoTemplate`; the
+controller spec exercises HTTP routing, JSON serialization, and the
+`GlobalExceptionHandler` integration without a server. An opt-in
+end-to-end integration test (mirroring
+`TransactionMessageKafkaIngestIntegrationSpec`) would expand scope
+to standing up Kafka + Mongo to verify a thin HTTP adapter, which
+the directive's "narrowest" framing pushes back against. Q5 below
+offers it as an alternative if the director disagrees.
 
 #### S8. Verification commands
 
@@ -386,42 +332,35 @@ Targeted commands (in order):
 
 - `./gradlew :jade-tipi:compileGroovy` — defensive main compile.
 - `./gradlew :jade-tipi:compileTestGroovy` — defensive test compile.
-- `./gradlew :jade-tipi:test --tests '*ContentsLinkReadServiceSpec*'`
+- `./gradlew :jade-tipi:test --tests '*ContentsLinkReadControllerSpec*'`
   — focused new spec.
 - `./gradlew :jade-tipi:test` — full unit-suite regression
   (requires Mongo per `JadetipiApplicationTests.contextLoads`).
-- Optional, deferred unless Q5 says otherwise:
-  `./gradlew :jade-tipi:compileIntegrationTestGroovy` plus an
-  `JADETIPI_IT_CONTENTS=1`-gated
-  `./gradlew :jade-tipi:integrationTest --tests
-  '*ContentsLinkReadIntegrationSpec*'`.
 
-`./gradlew :libraries:jade-tipi-dto:test` is **not** required for
-`TASK-010` — the DTO library is unchanged.
+`./gradlew :libraries:jade-tipi-dto:test` is **not** required —
+the DTO library is unchanged.
+`./gradlew :jade-tipi:integrationTest` is **not** required — no
+integration spec is proposed (see S7 and Q5).
 
 If verification fails because Mongo is not running, the Gradle
 wrapper lock is held, the Gradle native dylib will not load, or the
 toolchain is missing, I will report the documented setup command
-(`docker compose -f docker/docker-compose.yml --profile mongodb up
--d`, `./gradlew --stop`, etc.) plus the exact command that could
-not run, instead of treating it as a product blocker, per
-directive.
+(`docker compose -f docker/docker-compose.yml --profile mongodb up -d`,
+`./gradlew --stop`, etc.) plus the exact command that could not run,
+instead of treating it as a product blocker, per directive.
 
-### Proposed file changes (all inside `TASK-010`-owned paths)
+### Proposed file changes (all inside `TASK-011`-owned paths)
 
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/ContentsLinkReadService.groovy`
-  (new) — the Kafka-free / HTTP-free reader (S1, S4, S5, S6).
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/ContentsLinkRecord.groovy`
-  (new) — small `@Immutable` value object for one returned
-  containment relationship (S5). Lives in `service` package matching
-  `CommittedTransactionMessage` precedent (Q6).
-- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/ContentsLinkReadServiceSpec.groovy`
-  (new) — pure Spock spec (S7).
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/controller/ContentsLinkReadController.groovy`
+  (new) — the thin WebFlux adapter (S1, S2, S3, S5, S6).
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/controller/ContentsLinkReadControllerSpec.groovy`
+  (new) — pure controller-level Spock spec (S7).
 - `docs/architecture/kafka-transaction-message-vocabulary.md` —
-  optional short "Reading `contents` links" paragraph noting the
-  forward and reverse query patterns and that endpoint resolution
-  remains a follow-up (Q9). Director can decline.
-- `docs/orchestrator/tasks/TASK-010-contents-location-query-read-prework.md`
+  optional short paragraph appended to the existing "Reading
+  `contents` Links" section noting the two HTTP routes, the empty
+  array success contract, and the 400 path through
+  `GlobalExceptionHandler`. Director can decline (Q9).
+- `docs/orchestrator/tasks/TASK-011-contents-location-http-read-adapter-prework.md`
   — `STATUS` flipped to `READY_FOR_REVIEW` and `LATEST_REPORT`
   rewritten only at the end of the implementation turn.
 - `docs/agents/claude-1-changes.md` — append the implementation
@@ -429,6 +368,9 @@ directive.
 
 No changes proposed to:
 
+- `ContentsLinkReadService.groovy`, `ContentsLinkRecord.groovy`, or
+  their existing spec — read-side query semantics are frozen
+  (`OUT_OF_SCOPE`).
 - `libraries/jade-tipi-dto/src/main/...` (no DTO, schema, or example
   changes).
 - `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/kafka/...` (no
@@ -437,105 +379,130 @@ No changes proposed to:
   (`loc`, `typ`, `lnk` are already enum-driven creates from
   `TASK-007`).
 - `CommittedTransactionMaterializer`, `CommittedTransactionReadService`,
-  `TransactionMessagePersistenceService`, and their value objects
-  (`CommittedTransactionSnapshot`, `CommittedTransactionMessage`,
-  `KafkaProvenance`, `MaterializeResult`, `PersistResult`) — read
-  shapes and write paths stay unchanged.
-- Any controller (no HTTP adapter in this task — see S2).
+  `CommittedTransactionReadController`, `TransactionMessagePersistenceService`,
+  and their value objects.
+- `SecurityConfig.groovy` — JWT auth on `/api/**` already covers the
+  two new routes; no permit-list edit is needed.
+- `GlobalExceptionHandler.groovy` — the existing
+  `IllegalArgumentException` advice already returns the desired 400
+  `ErrorResponse`.
 - `application.yml`, `build.gradle`, `docker-compose.yml`,
-  `DIRECTION.md`, security/auth code, frontend.
+  `DIRECTION.md`, frontend, integration-test sources.
 
 ### Blockers / open questions for the director
 
-1. **Q1 — Boundary: service-only vs. service + thin controller.**
-   Default proposal: service-only. Pure Spock specs against the
-   captured Mongo `Query` (sort, criteria) verify the read behavior
-   without expanding scope to HTTP wiring. Alternative: also add a
-   thin `GET /api/locations/{id}/contents` and
-   `GET /api/objects/{id}/locations` adapter modeled on
-   `CommittedTransactionReadController` so an end-to-end HTTP smoke
-   test is possible in this task. Confirm "service-only," or pick
-   "service + thin controller."
+1. **Q1 — Route shape.** Default proposal:
+   `GET /api/contents/by-container/{id}` (forward, `lnk.left == id`)
+   and `GET /api/contents/by-content/{id}` (reverse, `lnk.right == id`).
+   These directly mirror the `left_role: container` and
+   `right_role: content` facts in the canonical `contents` link-type
+   declaration. **Alternatives**:
+   - **A.** `GET /api/locations/{id}/contents` (forward) and
+     `GET /api/objects/{id}/locations` (reverse). Reads naturally as
+     "what's inside this location?" and "where is this object?",
+     matching `DIRECTION.md`'s wording. Drawback: implies a join to
+     `loc`/`ent` that is explicitly out of scope, and "objects" is
+     a broad noun.
+   - **B.** `GET /api/lnk/by-left/{id}` and
+     `GET /api/lnk/by-right/{id}`, with a `?type=contents` query param
+     so the same routes can later support other link types. Drawback:
+     pushes the canonical-`contents` resolution policy to the caller,
+     and `?type=contents` would be ignored by the current service.
+   - **C.** Merged: `GET /api/contents?container={id}` and
+     `GET /api/contents?content={id}`. Drawback: query-param routing
+     makes path-based caching/security less natural and breaks
+     parity with `/api/transactions/{id}/snapshot`.
+   Confirm the default, or pick **A**, **B**, or **C**.
 
 2. **Q2 — Direction coverage in the first unit.** Default proposal:
-   ship both `findContents` (forward, `left == containerId`) and
-   `findLocations` (reverse, `right == objectId`) in `TASK-010`,
-   sharing one `resolveContentsTypeIds()` helper. They are the two
-   `DIRECTION.md` contents questions and add a single extra method
-   plus mirrored tests. Alternative: ship forward only and defer
-   reverse to a follow-up. Confirm "both directions," or pick
-   "forward only."
+   ship both routes (forward and reverse) in `TASK-011`, matching
+   how `TASK-010` shipped both service methods. They share the same
+   controller class, the same value object, the same logging
+   pattern, and mirrored test rows. **Alternative**: ship the
+   forward route only and defer the reverse route to a follow-up.
+   Confirm "both directions," or pick "forward only."
 
-3. **Q3 — Canonical `contents` type resolution.** Default proposal:
-   resolve via `typ` query with `kind == 'link_type' AND name ==
-   'contents'`, gather all matching `_id`s, and filter `lnk` with
-   `type_id $in {ids}`. Alternative A: require the caller to pass
-   an explicit `linkTypeId` (most precise, but pushes the resolution
-   policy outside the service). Alternative B: hardcode a single
-   well-known type ID literal (rejected; namespaced IDs are
-   environment-specific). Confirm "resolve by name from `typ`," or
-   pick alternative A.
+3. **Q3 — `@AuthenticationPrincipal Jwt jwt` parameter.** Default
+   proposal: keep `@AuthenticationPrincipal Jwt jwt` on both methods,
+   matching `CommittedTransactionReadController.getSnapshot`. The
+   parameter is unused inside the body but keeps the argument-resolver
+   chain identical for all authenticated `/api` reads, which the
+   controller spec already wires through
+   `AuthenticationPrincipalArgumentResolver`. **Alternative**: drop
+   the parameter, since the security chain still gates the route.
+   Confirm "keep `Jwt jwt`," or pick "drop the parameter."
 
-4. **Q4 — Endpoint resolution scope.** Default proposal: do **not**
-   join `lnk` to `loc`/`ent` in `TASK-010`. Returned records carry
-   the `left` / `right` ID strings verbatim and the caller can
-   resolve them with a future task's read APIs. Alternative: also
-   fetch the matching `loc`/`ent` document for each `right` (forward)
-   or `left` (reverse) and bundle it into the response. Rationale to
-   defer: the join needs collection-aware dispatch
-   (`right` may be a `loc` ID or an `ent` ID per the type's
-   `allowed_right_collections == ['loc', 'ent']`), which is a much
-   larger reader; shipping the unjoined reader first matches the
-   directive's "narrowest backend boundary" ask. Confirm "no endpoint
-   join," or pick "join on read."
+4. **Q4 — Empty-result HTTP status.** Default proposal: 200 with
+   body `[]`. Rationale and trade-offs are in S3. **Alternatives**:
+   - **A.** 404 when no records match (treats "no contents" as
+     "resource missing"). Rejected as the default because it
+     conflates "no link type" with "no matching links" and pushes
+     callers to interpret 404 as a domain answer rather than a
+     missing route.
+   - **B.** 200 with a `{ "items": [] }` envelope. Rejected as the
+     default to match `DocumentController.listDocuments`'s flat
+     `Flux` precedent and keep the response narrow.
+   Confirm "200 `[]`," or pick **A** or **B**.
 
-5. **Q5 — Integration test scope.** Default proposal: ship only
-   the unit spec in `TASK-010`; defer the opt-in
-   `JADETIPI_IT_CONTENTS` integration spec to a separate task.
-   Alternative: include the opt-in integration spec now.
-   Confirm "unit spec only," or pick "include opt-in integration
-   spec."
+5. **Q5 — Integration test scope.** Default proposal: ship only the
+   controller spec in `TASK-011`. The service-level Mongo spec from
+   `TASK-010` plus the controller-level WebFlux spec from `TASK-011`
+   together cover routing, JSON, query construction, and Mongo sort.
+   **Alternative**: also add an opt-in `JADETIPI_IT_CONTENTS_HTTP=1`
+   integration spec under `jade-tipi/src/integrationTest/...` that
+   stands up the Spring Boot context, materializes a `contents` link
+   from canonical examples through Kafka + Mongo, and hits the new
+   HTTP routes via `WebTestClient.bindToServer`. This grows the
+   verification surface and re-uses the Kafka/Mongo Docker stack.
+   Confirm "controller spec only," or pick "include opt-in
+   integration spec."
 
-6. **Q6 — Response DTO location and shape.** Default proposal:
-   `org.jadetipi.jadetipi.service.ContentsLinkRecord` (Groovy
-   `@Immutable`) with `linkId`, `typeId`, `left`, `right`,
-   `properties` (`Map<String, Object>` verbatim from the materialized
-   `lnk`), and `provenance` (`Map<String, Object>` verbatim from
-   `_jt_provenance`). Lives in `service` to match
-   `CommittedTransactionMessage` precedent. Alternatives: (a) drop
-   `provenance` from the response, (b) replace the `properties` and
-   `provenance` `Map` types with named DTOs, (c) move both new
-   classes to a new `org.jadetipi.jadetipi.contents` package.
-   Confirm the default, or pick an alternative.
+6. **Q6 — Response DTO shape.** Default proposal: return
+   `ContentsLinkRecord` directly, no controller-side DTO. The value
+   object is already shaped for the consumer and lives in the
+   `service` package per the `CommittedTransactionMessage`
+   precedent. **Alternatives**:
+   - **A.** Add a thin
+     `org.jadetipi.jadetipi.dto.ContentsLinkResponse` (or similar)
+     to give the HTTP surface a stable name independent of the
+     service value object. Adds one new class and one mapping
+     function for no current behavior change.
+   - **B.** Drop `provenance` from the HTTP response (return only
+     `linkId`, `typeId`, `left`, `right`, `properties`). Hides
+     materialization metadata from external callers. Trade-off: the
+     service value object already exposes it, so excluding it would
+     require an HTTP-only DTO anyway (see **A**).
+   Confirm the default, or pick **A** or **B**.
 
-7. **Q7 — Sort field.** Default proposal: sort by `lnk._id` ASC.
-   Rationale: matches the `CommittedTransactionReadServiceSpec`
-   precedent, is deterministic, and exists on every materialized
-   record. Alternative: sort by a `properties.position` value (e.g.
-   `properties.position.row`, `properties.position.column`) for
-   plate-shaped views. Rejected as a default because not every
-   `contents` link has a `plate_well` position (DIRECTION.md allows
-   `loc → loc` containment without well coordinates), and adding
-   shape-specific sorts is a higher-level read concern. Confirm
-   "_id ASC," or pick a different sort.
+7. **Q7 — Path placement and base.** Default proposal:
+   `@RequestMapping('/api/contents')`. **Alternative**: nest under
+   `/api/links/contents/...` so future link types (e.g. `parent`,
+   `derived_from`) can sit alongside under `/api/links/<type>/...`.
+   Rejected as the default because it speculates about future link
+   types not yet declared in `DIRECTION.md`. Confirm
+   "/api/contents," or pick "/api/links/contents."
 
-8. **Q8 — Ambiguous `contents` type declarations.** Default
-   proposal: `$in` over all matching declarations. Alternative:
-   pick a deterministic single declaration (e.g. lowest `_id` ASC,
-   or most-recently-materialized) and only filter on that. Rejected
-   as a default because it would silently hide some contents links
-   from the reader. Confirm "match all declarations," or pick a
-   tie-break rule.
+8. **Q8 — Path-variable name.** Default proposal: `{id}` (as in
+   `CommittedTransactionReadController`). The full meaning
+   (`containerId` vs `objectId`) is carried by the route. The Java
+   parameter is named `id` and forwarded into the service. The
+   service method name carries the role distinction and the spec
+   asserts the right service method is called. **Alternatives**:
+   - **A.** Rename to `{containerId}` / `{contentId}` for self-documenting
+     paths; minor cosmetic gain.
+   - **B.** Keep `{id}` and document the role distinction in the
+     architecture doc paragraph (Q9).
+   Confirm "{id}," or pick **A** or **B**.
 
-9. **Q9 — Documentation edit scope.** Default proposal: add a short
-   "Reading `contents` links" paragraph to
+9. **Q9 — Documentation edit scope.** Default proposal: append a
+   short paragraph to the existing "Reading `contents` Links"
+   section in
    `docs/architecture/kafka-transaction-message-vocabulary.md`
-   noting the service surface, both query directions, the verbatim
-   response shape, and that endpoint resolution against `loc`/`ent`
-   is a follow-up. Alternative: leave the architecture doc unchanged
-   and record the reader in `docs/agents/claude-1-changes.md` only.
-   Confirm "add short paragraph," or pick "no architecture-doc
-   edit."
+   stating the two HTTP routes, the 200-with-`[]` success contract,
+   and the 400 path. **Alternative**: leave the architecture doc
+   unchanged and record the HTTP surface only in
+   `docs/agents/claude-1-changes.md`. Confirm "add short paragraph,"
+   or pick "no architecture-doc edit."
 
 10. **Q10 — Out-of-scope reaffirmation.** I am explicitly **not**
     touching: any DTO enum (`Collection`, `Action`, `Message`); the
@@ -544,11 +511,23 @@ No changes proposed to:
     the `txn` write-ahead log shape; the committed-snapshot
     response shape (`CommittedTransactionSnapshot` /
     `CommittedTransactionMessage` / `KafkaProvenance`); the
-    `TASK-009` materializer or its result type; semantic reference
-    validation; backfill jobs or update/delete replay;
-    `parent_location_id`; build files; Docker Compose; security
-    policy; or UI. Confirm that no piece of this `OUT_OF_SCOPE`
-    block has shifted.
+    `TASK-009` materializer or its result type;
+    `ContentsLinkReadService`, `ContentsLinkRecord`, or their spec;
+    semantic reference validation; backfill jobs or update/delete
+    replay; `parent_location_id`; build files; Docker Compose;
+    security policy (`SecurityConfig`); `GlobalExceptionHandler`;
+    or UI. Confirm that no piece of this `OUT_OF_SCOPE` block has
+    shifted.
+
+11. **Q11 — Smoke verification expectation.** Default proposal: only
+    the four Gradle commands in S8 (compile, compile-test, focused
+    spec, full unit suite) are required. **Alternative**: also start
+    `./gradlew :jade-tipi:bootRun`, exercise both routes with `curl`
+    against a JWT obtained from the Docker Keycloak, and capture the
+    response bodies in the report. This adds a manual end-to-end
+    smoke step but does not change implementation scope. Confirm
+    "Gradle-only verification," or pick "include manual `curl`
+    smoke."
 
 STOPPING here per orchestrator pre-work protocol — no
 implementation, no source / build / config / schema / example /
