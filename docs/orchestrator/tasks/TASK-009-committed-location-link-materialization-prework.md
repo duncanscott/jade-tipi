@@ -2,8 +2,10 @@
 
 ID: TASK-009
 TYPE: implementation
-STATUS: READY_FOR_REVIEW
+STATUS: ACCEPTED
 OWNER: claude-1
+NEXT_TASK:
+  - TASK-010
 OWNED_PATHS:
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/mongo/
@@ -81,6 +83,72 @@ DEPENDENCIES:
   examples.
 
 LATEST_REPORT:
+Director implementation review on 2026-05-01:
+- Accepted claude-1 implementation commit `dad3a61`.
+- Findings: no blocking bugs, regressions, or missing assertions found.
+- Acceptance criteria are satisfied. The merge adds a Kafka-free, HTTP-free
+  `CommittedTransactionMaterializer` over committed snapshots, plus
+  `materialize(String txnId)` delegating committed visibility to
+  `CommittedTransactionReadService.findCommitted`. The commit path invokes the
+  materializer after the first successful commit and on committed duplicate
+  delivery, while preserving the outward `PersistResult` values.
+- The implementation honors the TASK-009 directives. It materializes only
+  committed `create` messages for `loc`, `typ` records with
+  `data.kind == "link_type"`, and `lnk`; it skips unsupported collections,
+  unsupported actions, and bare entity-type `typ` records. Materialized
+  documents use `data.id` as Mongo `_id`, retain the payload `id`, and add
+  `_jt_provenance` with `txn_id`, `commit_id`, `msg_uuid`, `committed_at`, and
+  `materialized_at`.
+- Duplicate and invalid-id behavior is pinned: matching duplicate payloads are
+  idempotent success, conflicting duplicate payloads are logged/counted without
+  overwrite and do not block later messages, and missing or blank `data.id` is
+  logged/skipped without synthesizing an id.
+- Required assertions are present. `CommittedTransactionMaterializerSpec`
+  covers the three supported collections, skip behavior, duplicate matching,
+  duplicate conflict, missing/blank ids, message ordering, and the read-service
+  `txnId` overload. `TransactionMessagePersistenceServiceSpec` pins the
+  post-commit hook on first commit and committed duplicate delivery, including
+  the swallow-failure behavior on both paths.
+- Scope check passed against claude-1's base assignment plus the active
+  TASK-009 expansion. Against the base report-only paths
+  (`docs/agents/claude-1.md`, `docs/agents/claude-1-next-step.md`,
+  `docs/agents/claude-1-changes.md`), only
+  `docs/agents/claude-1-changes.md` changed. The code, architecture doc, tests,
+  and task-file edits are outside the base report-only paths but inside the
+  explicit TASK-009 owned-path expansion authorized by this file and
+  `DIRECTIVES.md`.
+- Out-of-scope boundaries were preserved: no readers, controllers, HTTP
+  submission rebuilds, DTO/schema/example changes, Kafka listener/topic
+  changes, build changes, Docker Compose changes, security changes,
+  `parent_location_id`, update/delete replay, integration spec, or semantic
+  reference validation for `lnk.type_id`, `left`, `right`, or
+  `allowed_*_collections`.
+- Director verification partially passed: `./gradlew :jade-tipi:compileGroovy`
+  was BUILD SUCCESSFUL. Further required local verification was blocked before
+  product tests by the Gradle wrapper cache permission, not by an observed
+  product failure: `./gradlew :jade-tipi:compileTestGroovy` failed opening
+  `/Users/duncanscott/.gradle/wrapper/dists/gradle-8.14.3-bin/.../gradle-8.14.3-bin.zip.lck`
+  (`Operation not permitted`). In a normal developer shell, use the
+  project-documented setup command
+  `docker compose -f docker/docker-compose.yml --profile mongodb up -d`, then
+  run the required verification commands:
+  `./gradlew :jade-tipi:compileGroovy`,
+  `./gradlew :jade-tipi:compileTestGroovy`,
+  `./gradlew :jade-tipi:test --tests '*CommittedTransactionMaterializerSpec*'`,
+  `./gradlew :jade-tipi:test --tests '*TransactionMessagePersistenceServiceSpec*'`,
+  and `./gradlew :jade-tipi:test`.
+- Credited developer verification: claude-1 reported the Docker stack healthy
+  and all required TASK-009 commands passing, plus
+  `./gradlew :jade-tipi:compileIntegrationTestGroovy`.
+- Additional director static checks passed: `git diff --check
+  origin/director..HEAD` produced no output, and changed-file ownership was
+  confined to task-authorized paths plus the developer report.
+- Follow-up: `TASK-010` was created for pre-work on the next bounded
+  location-modeling unit: the smallest read/query path over materialized
+  `contents` links for plate contents and reverse location lookup. Semantic
+  validation, HTTP submission rebuilds, authorization policy, backfill jobs,
+  and UI remain out of scope until separately directed.
+
 Implementation done on 2026-05-01 against the director's accepted pre-work
 directives. Added a Kafka-free, HTTP-free `CommittedTransactionMaterializer`
 service that consumes a `CommittedTransactionSnapshot` (or a `txnId` resolved

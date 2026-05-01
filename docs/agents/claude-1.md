@@ -11,18 +11,18 @@ Report file: docs/agents/claude-1-changes.md
 
 ## Current Assignment
 
-- Active task: `TASK-009 - Plan committed location/link materialization`.
+- Active task: `TASK-010 - Plan contents location query reads`.
 - Current phase: pre-work. Read `DIRECTIVES.md` and the task file, then
-  propose the smallest committed-transaction materialization path for the
-  accepted `loc`, `typ` link-type, and `lnk` contents-link vocabulary. The
-  proposal should identify the backend boundary, materialized document shape,
-  idempotency/error behavior, tests, and verification commands.
+  propose the smallest read/query path over the materialized `loc`, `typ`, and
+  `lnk` collections for the accepted `contents` link vocabulary. The proposal
+  should identify the backend boundary, supported query shapes, response shape,
+  edge-case behavior, tests, and verification commands.
   Do not implement until the director moves the task to
   `READY_FOR_IMPLEMENTATION`.
 - Record pre-work in `docs/agents/claude-1-next-step.md`; record implementation
   outcomes in `docs/agents/claude-1-changes.md` only after implementation is
   approved.
-- Use `docs/orchestrator/tasks/TASK-009-committed-location-link-materialization-prework.md`
+- Use `docs/orchestrator/tasks/TASK-010-contents-location-query-read-prework.md`
   as the task-specific source of truth for pre-work paths and acceptance
   criteria.
 

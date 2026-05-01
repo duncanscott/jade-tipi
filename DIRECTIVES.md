@@ -1,20 +1,39 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
-The active bounded unit is `TASK-009`: implement the smallest committed-transaction materialization path for the accepted `loc`, `typ` link-type, and `lnk` contents-link vocabulary. The goal is a narrow, testable backend projection from committed `txn` snapshots into long-term MongoDB collections before reader/query APIs are designed.
+The active bounded unit is `TASK-010`: plan the smallest read/query path over the materialized `loc`, `typ`, and `lnk` collections so the backend can answer the `DIRECTION.md` contents questions: "what are the contents of this plate/location?" and "where is this sample or object located?"
 
 New product direction is recorded in `DIRECTION.md`: add a first-class `loc` collection for laboratory locations, keep containment relationships canonical in `lnk`, define `contents` as a typed link/class through `typ`, and model plate well coordinates as instance properties on `contents` links unless wells need independent lifecycle.
 
 ## Active Task
 
-- `TASK-009 - Plan committed location/link materialization` is READY_FOR_IMPLEMENTATION and assigned to claude-1.
+- `TASK-010 - Plan contents location query reads` is READY_FOR_PREWORK and assigned to claude-1.
 
 ## Scope Expansion
 
-Implementation is authorized for `TASK-009` inside the active task's owned paths. Use `docs/orchestrator/tasks/TASK-009-committed-location-link-materialization-prework.md` as the source of truth for the accepted pre-work decisions, implementation scope, and verification commands.
+Pre-work is authorized for `TASK-010` in `docs/agents/claude-1-next-step.md`. Use `docs/orchestrator/tasks/TASK-010-contents-location-query-read-prework.md` as the task-specific source of truth. Implementation is not authorized until director review moves the task to `READY_FOR_IMPLEMENTATION`.
+
+## TASK-010 Pre-work Direction
+
+- Inspect `DIRECTION.md`, `docs/architecture/kafka-transaction-message-vocabulary.md`, `CommittedTransactionMaterializer`, `CommittedTransactionReadService`, materializer tests, existing service/controller tests, and Mongo query helper patterns.
+- Propose the narrowest backend boundary for reading materialized contents links. Prefer a Kafka-free service over `loc`, `typ`, and `lnk`; include a thin HTTP adapter only if source inspection shows it is necessary for useful verification.
+- Specify whether the first implementation should cover both forward lookup (`contents` links where `left` is the container) and reverse lookup (`contents` links where `right` is the object), or only one of them.
+- Specify response shape, ordering, missing-container/object behavior, unresolved endpoint behavior, duplicate/conflicting link behavior, and how to identify the canonical `contents` link type without adding write-time semantic validation.
+- Do not change transaction persistence, committed snapshot shape, materialization behavior, Kafka listener/topic configuration, DTO schemas/examples, build files, Docker Compose, security policy, HTTP submission wrappers, `parent_location_id`, backfill jobs, update/delete replay, or UI.
+- Verification proposal should include focused `:jade-tipi` service/controller tests and any necessary compile/full-test command. If local tooling, Gradle locks, or Docker/Mongo are unavailable, report the documented setup command `docker compose -f docker/docker-compose.yml --profile mongodb up -d` rather than treating setup as a product blocker.
+
+## TASK-009 Director Review
+
+- `TASK-009` is accepted on 2026-05-01. The backend now has a Kafka-free, HTTP-free `CommittedTransactionMaterializer` over committed snapshots and a post-commit hook in `TransactionMessagePersistenceService` that runs after first commit and on committed duplicate delivery.
+- Scope check passed against claude-1's base assignment plus the active task expansion. Against the base report-only paths, only `docs/agents/claude-1-changes.md` changed; all code/docs/task edits were outside the base report-only paths but inside the explicit TASK-009 owned-path expansion.
+- Required behavior is present: committed `loc + create`, link-type `typ + create`, and `lnk + create` messages are projected into long-term collections with `_id == data.id`, retained payload `id`, and `_jt_provenance`; unsupported messages are skipped; missing/blank ids are skipped; matching duplicates are idempotent; conflicting duplicates are logged/counted without overwrite and do not block later messages.
+- The implementation honored the directives: no semantic reference validation, readers/controllers, HTTP submission rebuilds, DTO/schema/example changes, Kafka listener/topic changes, build changes, Docker Compose changes, security changes, `parent_location_id`, update/delete replay, or integration spec was added.
+- Director verification partially passed: `./gradlew :jade-tipi:compileGroovy` succeeded. Further verification was blocked before product tests by sandbox/tooling permissions: `./gradlew :jade-tipi:compileTestGroovy` failed opening the Gradle wrapper cache lock in `/Users/duncanscott/.gradle`. In a normal developer shell, use `docker compose -f docker/docker-compose.yml --profile mongodb up -d`, then run the TASK-009 required Gradle commands.
+- Credited developer verification: claude-1 reported `./gradlew :jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`, `./gradlew :jade-tipi:test --tests '*CommittedTransactionMaterializerSpec*'`, `./gradlew :jade-tipi:test --tests '*TransactionMessagePersistenceServiceSpec*'`, `./gradlew :jade-tipi:test`, and `./gradlew :jade-tipi:compileIntegrationTestGroovy` passing with the Docker stack healthy.
+- Follow-up: `TASK-010` was created for pre-work on the smallest contents/location read-query path over the materialized collections.
 
 ## TASK-009 Director Pre-work Review
 
