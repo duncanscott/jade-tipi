@@ -3,28 +3,195 @@
 The developer writes completed work reports here.
 
 STATUS: READY_FOR_REVIEW
-TASK: TASK-006 — Add committed transaction snapshot HTTP read adapter
-DATE: 2026-04-30
-SUMMARY: New thin WebFlux read adapter `CommittedTransactionReadController`
-exposes `GET /api/transactions/{id}/snapshot`, delegates committed
-visibility entirely to `CommittedTransactionReadService.findCommitted`,
-maps a present snapshot to HTTP 200 and `Mono.empty()` to HTTP 404 (empty
-body), and lets the service `Assert.hasText` plus `GlobalExceptionHandler`
-produce the standard 400 `ErrorResponse` for blank/whitespace-only ids.
-No service, DTO-package, or security changes. New
-`CommittedTransactionReadControllerSpec` uses
-`WebTestClient.bindToController` with the real `GlobalExceptionHandler`
-advice and a registered `AuthenticationPrincipalArgumentResolver` (no
-Spring context, no Mongo/Kafka/Keycloak) and exercises the actual route,
-JSON body serialization, the 404 empty-body path, the 400
-`ErrorResponse`, service delegation, and the absence of a Mongo
-collaborator.
-VERIFICATION: docker compose stack healthy. `./gradlew
-:jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`,
-`./gradlew :jade-tipi:test --tests '*CommittedTransactionReadControllerSpec*'`
-(5/5 features green), `./gradlew :jade-tipi:test` (full unit suite,
-0 failures, 0 errors), and `./gradlew :jade-tipi:compileIntegrationTestGroovy`
-all passed.
+TASK: TASK-007 — Add location collection
+DATE: 2026-05-01
+SUMMARY: Added `loc` as a first-class long-term Jade-Tipi collection.
+`Collection.LOCATION("location","loc")` was added to the DTO enum and
+inherits the data-action set automatically; `message.schema.json` now
+admits `"loc"` in the top-level collection enum and in the
+non-transaction action-compatibility conditional, so `loc` accepts
+`create|update|delete` and rejects `open|commit|rollback`. A canonical
+`10-create-location.json` example was added with the `~loc~` ID suffix
+per the director directive. `MessageSpec` was extended with enum
+round-trip, schema-acceptance for `loc + create`, and `@Unroll`
+schema-rejection for each transaction-control action paired with `loc`;
+the new example was added to `EXAMPLE_PATHS` so the existing round-trip
+and schema-validate features cover it. A new pure-Spock backend spec
+`MongoDbInitializerSpec` proves the existing `Collection.values()` loop
+in `MongoDbInitializer` calls `createCollection('loc')` exactly once when
+`loc` is missing and not at all when `loc` already exists; no change to
+`MongoDbInitializer.groovy`. Docs updated: `docs/Jade-Tipi.md` lists
+`location (loc)` and clarifies `txn` as the special log/staging
+collection, and `docs/architecture/kafka-transaction-message-vocabulary.md`
+adds `loc` to the prose enumeration, the action-compatibility bullet, and
+the numbered reference-examples list. `DIRECTION.md` is unchanged per
+directive. No production code change in `MongoDbInitializer.groovy`,
+`TransactionMessagePersistenceService`, `TransactionMessageListener`,
+`CommittedTransactionReadService`, `CommittedTransactionReadController`,
+`SecurityConfig`, `application.yml`, or `build.gradle`. The `txn`
+write-ahead log shape from TASK-003 is preserved.
+VERIFICATION: docker compose stack healthy (`jade-tipi-mongo`,
+`jade-tipi-kafka`, `jade-tipi-keycloak`). `./gradlew
+:libraries:jade-tipi-dto:test` (`MessageSpec` `tests=33, failures=0`),
+`./gradlew :jade-tipi:compileGroovy`,
+`./gradlew :jade-tipi:compileTestGroovy`,
+`./gradlew :jade-tipi:test --tests '*MongoDbInitializerSpec*'`
+(`tests=2, failures=0`), and `./gradlew :jade-tipi:test` (56 unit tests,
+0 failures, 0 errors) all passed.
+
+## TASK-007 — Add location collection
+
+Director moved `TASK-007` to `READY_FOR_IMPLEMENTATION` on 2026-05-01 with
+the implementation directives in
+`docs/orchestrator/tasks/TASK-007-add-location-collection.md`.
+Implementation done on 2026-05-01.
+
+### DTO changes
+
+- `libraries/jade-tipi-dto/src/main/java/org/jadetipi/dto/message/Collection.java`
+  now declares `LOCATION("location", "loc")` between `LINK` and `UNIT`.
+  The existing constructor branch on `"transaction".equals(name)` gives
+  `LOCATION` the data-mutating action set `[CREATE, UPDATE, DELETE]`
+  automatically; `fromJson(String)` and `@JsonValue` already handle the
+  new value through the abbreviation/name match path.
+- `libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json`
+  has `"loc"` in `$defs/Collection.enum` (between `"lnk"` and `"ppy"`)
+  and in the long-term-collection enum inside the second `allOf`
+  conditional. The first conditional (transaction-only actions for
+  `txn`) is unchanged, so `loc` paired with `open|commit|rollback`
+  fails the second conditional's `action ∈ {create, update, delete}`
+  whitelist.
+- New canonical example
+  `libraries/jade-tipi-dto/src/main/resources/example/message/10-create-location.json`
+  is a `loc + create` envelope with `id` suffix `~loc~freezer_a` (per the
+  director directive to use `loc` consistently in example IDs rather than
+  introducing a separate `lo` suffix in this task).
+
+### DTO test coverage
+
+`libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`:
+
+- Added `/example/message/10-create-location.json` to `EXAMPLE_PATHS`,
+  so the existing `@Unroll` round-trip and `validate()` features
+  automatically cover the `loc` example.
+- Added `Collection.fromJson('loc')` enum-shape feature: asserts
+  `fromJson('loc') == LOCATION`, `fromJson('location') == LOCATION`,
+  `LOCATION.toJson() == 'loc'`, `LOCATION.abbreviation == 'loc'`,
+  `LOCATION.name == 'location'`, and `LOCATION.actions == [CREATE,
+  UPDATE, DELETE]`.
+- Added `loc + create` schema acceptance feature using
+  `Message.newInstance(...)` and `validate()` with `noExceptionThrown()`.
+- Added an `@Unroll` schema-rejection feature over the three
+  transaction-control actions (`OPEN`, `COMMIT`, `ROLLBACK`) paired
+  with `Collection.LOCATION`, asserting `ValidationException` whose
+  message contains "action".
+
+`MessageSpec` totals after the change: `tests=33, skipped=0,
+failures=0, errors=0` (was 23; +10 = 1 enum-shape + 1 schema-accept +
+3 schema-reject @Unroll rows + 2 round-trip + 2 validate from the new
+example + 1 added by parameter expansion).
+
+### Backend startup coverage
+
+New `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/mongo/config/MongoDbInitializerSpec.groovy`
+(pure Spock, no Spring context, no live Mongo). Uses `Mock(ReactiveMongoTemplate)`:
+
+1. **`run()` creates the `loc` collection when it does not yet exist.**
+   Asserts `1 * collectionExists('loc') >> Mono.just(false)`,
+   `1 * createCollection('loc') >> Mono.empty()`,
+   `0 * createCollection({ String name -> name != 'loc' })`, and uses
+   wildcard catch-alls (`_ * collectionExists(_) >> Mono.just(true)`,
+   `_ * getCollection(_) >> Mono.empty()`) for every other collection.
+   The system-out shows the existing initializer log line
+   `"Creating collection 'loc'"` for each of the eight non-`loc` enum
+   values plus `tipi`, while only `loc` reaches `createCollection`.
+2. **`run()` does not recreate `loc` when it already exists.**
+   Asserts `0 * createCollection(_ as String)` and stubs every existence
+   check as `Mono.just(true)`.
+
+`MongoDbInitializer.groovy` is intentionally unchanged. The behavior is
+gained for free via `Collection.values()` once `LOCATION` is in the
+enum.
+
+### Documentation
+
+- `docs/Jade-Tipi.md` — added `* location     (loc)` between
+  `link (lnk)` and `unit (uni)` in the abbreviation list, and a short
+  note clarifying that `txn` is the durable transaction log/staging
+  collection while the other abbreviations name long-term materialized
+  domain collections.
+- `docs/architecture/kafka-transaction-message-vocabulary.md` — added
+  `loc` to the prose collection enumeration, to the
+  long-term-collection bullet (`collection ∈ {ent, ppy, lnk, loc, uni,
+  grp, typ, vdn} → action ∈ {create, update, delete}`), and added
+  `10. 10-create-location.json` to the numbered reference-examples
+  list.
+- `DIRECTION.md` is unchanged. The document is already aligned with
+  this task's scope (location/link modeling, no `parent_location_id`
+  on `loc`, future `contents` link type) and no implementation detail
+  contradicted it.
+
+### Files changed in this turn
+
+- `libraries/jade-tipi-dto/src/main/java/org/jadetipi/dto/message/Collection.java`
+- `libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json`
+- `libraries/jade-tipi-dto/src/main/resources/example/message/10-create-location.json`
+  (new)
+- `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/mongo/config/MongoDbInitializerSpec.groovy`
+  (new)
+- `docs/Jade-Tipi.md`
+- `docs/architecture/kafka-transaction-message-vocabulary.md`
+- `docs/orchestrator/tasks/TASK-007-add-location-collection.md`
+  (`STATUS` flipped from `READY_FOR_IMPLEMENTATION` to
+  `READY_FOR_REVIEW`; `LATEST_REPORT` rewritten with the
+  implementation outcome)
+- `docs/agents/claude-1-changes.md` — this report.
+
+### What did not change
+
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/mongo/config/MongoDbInitializer.groovy`
+  (no source change required; the new collection is created via the
+  existing `Collection.values()` loop).
+- `TransactionMessageListener`, `TransactionMessagePersistenceService`,
+  `TransactionService`, `CommittedTransactionReadService`,
+  `CommittedTransactionReadController`, `GlobalExceptionHandler`,
+  `ErrorResponse`, `SecurityConfig`, `application.yml`,
+  `application-test.yml`, `build.gradle`, and the `txn` write-ahead log
+  shape from `TASK-003` / `TASK-004` are unchanged.
+- No new authentication, authorization, redaction, materialization,
+  link-type, plate/well, or HTTP-submission policy was added.
+- No `DIRECTION.md` change.
+
+### Verification
+
+`docker compose -f docker/docker-compose.yml ps` showed `jade-tipi-mongo`,
+`jade-tipi-kafka`, and `jade-tipi-keycloak` all healthy. Then:
+
+- `./gradlew :libraries:jade-tipi-dto:test` — BUILD SUCCESSFUL.
+  `MessageSpec` `tests=33, skipped=0, failures=0, errors=0`.
+- `./gradlew :jade-tipi:compileGroovy` — BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:compileTestGroovy` — BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:test --tests '*MongoDbInitializerSpec*'` —
+  BUILD SUCCESSFUL. `tests=2, skipped=0, failures=0, errors=0`.
+- `./gradlew :jade-tipi:test` — BUILD SUCCESSFUL. 56 unit tests across:
+  - `JadetipiApplicationTests` (1)
+  - `TransactionMessageListenerSpec` (4)
+  - `DocumentServiceMongoDbImplSpec` (9)
+  - `CommittedTransactionReadServiceSpec` (12)
+  - `CommittedTransactionReadControllerSpec` (5)
+  - `TransactionMessagePersistenceServiceSpec` (11)
+  - `TransactionServiceSpec` (12)
+  - `MongoDbInitializerSpec` (2) — new
+  All green; `failures=0, errors=0`.
+
+If a future verification fails because Docker / Mongo is not running,
+the documented setup command is `docker compose -f
+docker/docker-compose.yml --profile mongodb up -d` (only Mongo is
+strictly required for the unit suite because
+`JadetipiApplicationTests.contextLoads` opens a Mongo connection).
+
+STATUS: READY_FOR_REVIEW
 
 ## TASK-006 — Add committed transaction snapshot HTTP read adapter
 

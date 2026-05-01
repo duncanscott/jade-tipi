@@ -27,6 +27,7 @@ public enum Collection {
     ENTITY("entity", "ent"),
     GROUP("group", "grp"),
     LINK("link", "lnk"),
+    LOCATION("location", "loc"),
     UNIT("unit", "uni"),
     PROPERTY("property", "ppy"),
     TYPE("type", "typ"),

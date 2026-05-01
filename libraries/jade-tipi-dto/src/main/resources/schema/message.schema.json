@@ -55,7 +55,7 @@
       "if": {
         "properties": {
           "collection": {
-            "enum": ["ent", "ppy", "lnk", "uni", "grp", "typ", "vdn"]
+            "enum": ["ent", "ppy", "lnk", "loc", "uni", "grp", "typ", "vdn"]
           }
         },
         "required": ["collection"]
@@ -148,6 +148,7 @@
         "ent",
         "grp",
         "lnk",
+        "loc",
         "ppy",
         "typ",
         "txn",

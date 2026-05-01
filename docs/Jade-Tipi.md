@@ -83,11 +83,16 @@ The basic set of Jade-Tipi collections is:
 * entity       (ent)
 * property     (ppy)  
 * link         (lnk)
+* location     (loc)
 * unit         (uni)
 * group        (grp)  
 * type         (typ)
 * validation   (vdn)
 * transaction  (txn)
+
+`txn` is the durable transaction log and staging collection, not a normal
+domain collection. The other abbreviations name long-term materialized
+domain collections.
 
 All objects in a Jade-Tipi belong to a **group**.  Groups are used to define ownership of metadata and to assign read and write permissions on objects owned by the group.  Members of one group may add properties to objects owned by another group.  For example, a QC group may analyze a DNA assembly owned by the assembly group and assign a quality score.  Properties are owned by the group that added them.
 

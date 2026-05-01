@@ -30,7 +30,8 @@ class MessageSpec extends Specification {
             '/example/message/06-create-entity.json',
             '/example/message/07-assign-property-value-text.json',
             '/example/message/08-assign-property-value-number.json',
-            '/example/message/09-commit-transaction.json'
+            '/example/message/09-commit-transaction.json',
+            '/example/message/10-create-location.json'
     ]
 
     private static String readResource(String path) {
@@ -201,6 +202,63 @@ class MessageSpec extends Specification {
         then:
         ValidationException ex = thrown()
         ex.message.toLowerCase().contains('action')
+    }
+
+    def "Collection.fromJson('loc') returns LOCATION and serializes back as 'loc'"() {
+        expect:
+        Collection.fromJson('loc') == Collection.LOCATION
+        Collection.fromJson('location') == Collection.LOCATION
+        Collection.LOCATION.toJson() == 'loc'
+        Collection.LOCATION.abbreviation == 'loc'
+        Collection.LOCATION.name == 'location'
+        Collection.LOCATION.actions == [Action.CREATE, Action.UPDATE, Action.DELETE]
+    }
+
+    def "schema accepts collection=loc paired with action=create"() {
+        given:
+        def txn = new Transaction(
+                '018fd849-2a40-7abc-8a45-111111111111',
+                new Group('jade-tipi-org', 'dev'),
+                'kli',
+                '0000-0002-1825-0097'
+        )
+        def message = Message.newInstance(
+                txn,
+                Collection.LOCATION,
+                Action.CREATE,
+                [
+                        id: 'jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~freezer_a',
+                        name: 'freezer_a'
+                ]
+        )
+
+        when:
+        message.validate()
+
+        then:
+        noExceptionThrown()
+    }
+
+    @Unroll
+    def "schema rejects collection=loc paired with transaction-control action #action"() {
+        given:
+        def txn = new Transaction(
+                '018fd849-2a40-7abc-8a45-111111111111',
+                new Group('jade-tipi-org', 'dev'),
+                'kli',
+                null
+        )
+        def message = Message.newInstance(txn, Collection.LOCATION, action, [:])
+
+        when:
+        message.validate()
+
+        then:
+        ValidationException ex = thrown()
+        ex.message.toLowerCase().contains('action')
+
+        where:
+        action << [Action.OPEN, Action.COMMIT, Action.ROLLBACK]
     }
 
     def "Message id remains <txn>~<uuid>~<action> and excludes collection"() {

@@ -16,12 +16,12 @@ Every submitted message uses the DTO `Message` envelope and carries a first-clas
 }
 ```
 
-`collection` is the Jade-Tipi collection abbreviation: `ent`, `ppy`, `lnk`, `uni`, `grp`, `typ`, `vdn`, or `txn`. The backend stores it explicitly in `txn` message documents.
+`collection` is the Jade-Tipi collection abbreviation: `ent`, `ppy`, `lnk`, `loc`, `uni`, `grp`, `typ`, `vdn`, or `txn`. The backend stores it explicitly in `txn` message documents.
 
 `txn`, `uuid`, `collection`, and `action` are all required by `message.schema.json`. The schema also enforces action/collection compatibility:
 
 - `collection: txn` → `action ∈ {open, rollback, commit}`.
-- `collection ∈ {ent, ppy, lnk, uni, grp, typ, vdn}` → `action ∈ {create, update, delete}`.
+- `collection ∈ {ent, ppy, lnk, loc, uni, grp, typ, vdn}` → `action ∈ {create, update, delete}`.
 
 `Message.getId()` is `<txn.getId()>~<uuid>~<action>` and intentionally does not include the collection. The collection is stored as a first-class field on the message and (later) on the persisted `txn` message record, so it does not need to round-trip through the ID.
 
@@ -128,6 +128,7 @@ A complete early transaction flow is bundled as resources under `libraries/jade-
 7. `07-assign-property-value-text.json`
 8. `08-assign-property-value-number.json`
 9. `09-commit-transaction.json`
+10. `10-create-location.json`
 
 These examples are exercised by `MessageSpec` to round-trip through `JsonMapper` and pass `Message.validate()` against `message.schema.json`.
 

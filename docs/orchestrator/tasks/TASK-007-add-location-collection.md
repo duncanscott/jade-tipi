@@ -2,7 +2,7 @@
 
 ID: TASK-007
 TYPE: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: READY_FOR_REVIEW
 OWNER: claude-1
 OWNED_PATHS:
   - DIRECTION.md
@@ -57,9 +57,74 @@ IMPLEMENTATION_DIRECTIVES:
 - Verification should include at least `./gradlew :libraries:jade-tipi-dto:test`, `./gradlew :jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`, `./gradlew :jade-tipi:test --tests '*MongoDbInitializerSpec*'`, and `./gradlew :jade-tipi:test`. If local tooling, Gradle locks, or Docker/Mongo are unavailable, report the project-documented setup command `docker compose -f docker/docker-compose.yml --profile mongodb up -d` and the exact verification command that could not run rather than treating setup as a product blocker.
 
 LATEST_REPORT:
-Director pre-work review on 2026-05-01:
-- Accepted claude-1 pre-work commit `0217921`.
-- The plan satisfies the TASK-007 pre-work acceptance criteria. It inspected `DIRECTION.md`, `Collection.java`, `message.schema.json`, `MongoDbInitializer`, existing DTO tests, current examples, documentation, and startup-test options before proposing implementation.
-- Scope check passed for the pre-work turn. The latest claude-1 commit changed only `docs/agents/claude-1-next-step.md`, which is inside the developer-owned path set from `docs/agents/claude-1.md`.
-- Source spot-check confirms the plan's main assumptions: `Collection` already serializes with `@JsonValue`, `fromJson` accepts name or abbreviation, non-transaction actions are assigned by the enum constructor, `message.schema.json` has one non-transaction action conditional to extend, and `MongoDbInitializer` creates collections by iterating `Collection.values()`.
-- The director resolved the optional pre-work questions inline: use `loc` rather than `lo` as the example ID suffix, use `10-create-location.json`, keep backend startup coverage focused on initializer behavior, do not require a live-Mongo bootRun/mongosh check for this task, leave `DIRECTION.md` unchanged, and keep all out-of-scope boundaries unchanged.
+Implementation report on 2026-05-01 (claude-1):
+
+- DTO enum: `org.jadetipi.dto.message.Collection` now declares
+  `LOCATION("location", "loc")` (placed alphabetically between `LINK` and
+  `UNIT`). The existing constructor branch on `"transaction".equals(name)` gives
+  `LOCATION` the data-mutating action set `[CREATE, UPDATE, DELETE]` with no
+  other code change. `fromJson` and `@JsonValue` handle the new value with no
+  annotation churn.
+- JSON schema: `libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json`
+  now has `"loc"` in `$defs/Collection.enum` and in the long-term-collection
+  enum inside the second `allOf` conditional. The first conditional
+  (`collection: "txn"` → transaction-control actions) is unchanged, so a
+  `loc + open|commit|rollback` envelope fails the second conditional's
+  data-action whitelist.
+- Canonical example:
+  `libraries/jade-tipi-dto/src/main/resources/example/message/10-create-location.json`
+  is a `loc + create` envelope with `id` suffix `~loc~freezer_a` per the
+  director directive to use `loc` consistently in example IDs.
+- DTO tests: `MessageSpec` now includes
+  `/example/message/10-create-location.json` in `EXAMPLE_PATHS` (so the
+  existing `@Unroll` round-trip and schema-validate features cover it),
+  asserts `Collection.fromJson('loc') == LOCATION` plus the expected name,
+  abbreviation, and action set, asserts schema acceptance for a canonical
+  `loc + create` envelope, and asserts `@Unroll` schema rejection of
+  `loc` paired with each transaction-control action (`open`, `commit`,
+  `rollback`). Total `MessageSpec` rows after the change: 33, all green.
+- Backend startup coverage: new
+  `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/mongo/config/MongoDbInitializerSpec.groovy`
+  uses a pure Spock mock of `ReactiveMongoTemplate` to assert (1) the
+  initializer calls `createCollection('loc')` exactly once when the `loc`
+  collection does not exist while leaving every other collection untouched
+  (`0 * createCollection({ name -> name != 'loc' })`), and (2) when `loc`
+  already exists no `createCollection` call is issued at all. No change to
+  `MongoDbInitializer.groovy`; the new behavior rides on the existing
+  `Collection.values()` loop.
+- Documentation: `docs/Jade-Tipi.md` lists `location (loc)` alongside the
+  other base collection abbreviations and clarifies that `txn` is the
+  transaction log/staging collection. `docs/architecture/kafka-transaction-message-vocabulary.md`
+  adds `loc` to the prose collection enumeration, to the
+  long-term-collection action-compatibility bullet, and to the numbered
+  reference-examples list. `DIRECTION.md` is unchanged, per directive.
+- Out-of-scope items respected: no `loc` materialization from committed
+  `txn` messages, no `contents` link type or link materializer, no
+  plate/well APIs, no `parent_location_id`, no Kafka listener or
+  transaction persistence shape changes, no committed-snapshot API
+  changes, no HTTP submission or security work.
+
+Verification (Docker stack up: `jade-tipi-mongo`, `jade-tipi-kafka`,
+`jade-tipi-keycloak` all healthy):
+
+- `./gradlew :libraries:jade-tipi-dto:test` — BUILD SUCCESSFUL.
+  `MessageSpec` reports `tests=33, skipped=0, failures=0, errors=0`.
+- `./gradlew :jade-tipi:compileGroovy` — BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:compileTestGroovy` — BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:test --tests '*MongoDbInitializerSpec*'` — BUILD
+  SUCCESSFUL. `MongoDbInitializerSpec` reports `tests=2, skipped=0,
+  failures=0, errors=0`.
+- `./gradlew :jade-tipi:test` — BUILD SUCCESSFUL. 56 unit tests across:
+  `JadetipiApplicationTests` (1), `TransactionMessageListenerSpec` (4),
+  `DocumentServiceMongoDbImplSpec` (9),
+  `CommittedTransactionReadServiceSpec` (12),
+  `CommittedTransactionReadControllerSpec` (5),
+  `TransactionMessagePersistenceServiceSpec` (11),
+  `TransactionServiceSpec` (12), `MongoDbInitializerSpec` (2 — new). 0
+  failures, 0 errors.
+
+If a future verification fails because Docker / Mongo is not running, the
+documented setup command is `docker compose -f docker/docker-compose.yml
+--profile mongodb up -d` (only Mongo is strictly required for the unit
+suite because `JadetipiApplicationTests.contextLoads` opens a Mongo
+connection).

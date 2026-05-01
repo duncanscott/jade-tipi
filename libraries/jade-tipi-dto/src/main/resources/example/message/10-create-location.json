@@ -1,0 +1,19 @@
+{
+  "txn": {
+    "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+    "group": {
+      "org": "jade-tipi-org",
+      "grp": "dev"
+    },
+    "client": "kli",
+    "user": "0000-0002-1825-0097"
+  },
+  "uuid": "018fd849-2a47-7777-8f01-aaaaaaaaaaaa",
+  "collection": "loc",
+  "action": "create",
+  "data": {
+    "id": "jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~freezer_a",
+    "name": "freezer_a",
+    "description": "minus-80 freezer in room 110"
+  }
+}
