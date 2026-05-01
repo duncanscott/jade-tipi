@@ -3,6 +3,118 @@
 The developer writes completed work reports here.
 
 STATUS: READY_FOR_REVIEW
+TASK: TASK-014 — Implement root-shaped materialized documents
+DATE: 2026-05-01
+SUMMARY: Updated `CommittedTransactionMaterializer` so the currently
+supported committed `loc + create`, `typ + create` (only when
+`data.kind == "link_type"`), and `lnk + create` messages now write the
+accepted `TASK-013` root document shape instead of the provisional
+copied-data shape. The supported-message boundary, snapshot input via
+`CommittedTransactionReadService`, missing/blank `data.id` skip,
+unsupported-message skip, snapshot ordering, and non-duplicate insert
+error propagation are unchanged. Each materialized document now has
+`_id == data.id`, `id == data.id`, top-level
+`collection == message.collection`, top-level `type_id`, explicit
+`properties`, denormalized `links`, and a reserved `_head` sub-document.
+For `loc` and `typ link_type` the materializer copies every payload
+field other than `id` and `type_id` into root `properties` (so the
+canonical location example carries `name` and `description` under
+`properties`, and the `contents` link-type declaration carries `kind`,
+`name`, `description`, `left_role`, `right_role`,
+`left_to_right_label`, `right_to_left_label`, `allowed_left_collections`,
+and `allowed_right_collections` under `properties`); top-level
+`type_id` is taken from `data.type_id` when present and is `null`
+otherwise. For `lnk` the materializer puts top-level `type_id`, `left`,
+and `right` from the payload at the root and mirrors `data.properties`
+under root `properties`, defaulting to `{}` when the payload omits it
+(so the plate-well coordinate at `properties.position` is preserved
+verbatim). For every supported root in this iteration `links` is an
+empty map; per the accepted `TASK-013` decision, no endpoint stubs are
+created and no endpoint `links` projections are populated, leaving
+endpoint projection maintenance to a later task. `_head` carries
+`schema_version: 1`, `document_kind: "root"`, `root_id == _id`, and a
+nested `provenance` map with `txn_id`, `commit_id`, `msg_uuid`, source
+`collection`, source `action`, `committed_at`, and a fresh
+`materialized_at` `Instant`. The legacy reserved `_jt_provenance`
+field is no longer written on new roots; provenance moved to
+`_head.provenance`. Duplicate-id handling preserves prior behavior:
+matching duplicates are idempotent successes (`duplicateMatching++`),
+differing duplicates are logged at error and counted
+(`conflictingDuplicate++`) without overwrite, a single conflict does
+not block subsequent messages in the same snapshot, and non-duplicate
+insert failures still propagate the original `Throwable`. Duplicate
+comparison now ignores only `_head.provenance.materialized_at` so
+retried matching payloads remain idempotent while every other payload
+or provenance difference (including `commit_id`, `msg_uuid`, source
+`action`, or any `properties` value) still surfaces as a conflict.
+Internally, `buildDocument` was rewritten around four root-shape
+helpers (`buildInlineProperties`, `copyProperties`, `buildHead`, and
+`stripVolatileFields`); the materializer's static field constants were
+expanded for the new root namespace (`FIELD_COLLECTION`,
+`FIELD_TYPE_ID`, `FIELD_LEFT`, `FIELD_RIGHT`, `FIELD_PROPERTIES`,
+`FIELD_LINKS`, `FIELD_HEAD`, `HEAD_*`, `PROV_COLLECTION`,
+`PROV_ACTION`); `FIELD_PROVENANCE = '_jt_provenance'` was removed.
+`CommittedTransactionMaterializerSpec` was rewritten to assert the
+root shape on `loc`, `typ link_type`, and `lnk` (top-level `_id`,
+`id`, `collection`, `type_id`, `left`/`right` for `lnk`, explicit
+`properties`, empty `links`, and `_head` schema metadata + provenance
+keys including `collection` and `action`), to confirm new roots do
+not carry `_jt_provenance`, to add a `loc` case where `data.type_id`
+is set so it appears at the root and is excluded from `properties`,
+to add a `lnk` case with no payload `properties` that defaults root
+`properties` to `{}`, to assert `_head.provenance` differences other
+than `materialized_at` (e.g. differing `commit_id`) still surface as
+conflicts, to assert non-duplicate insert errors propagate without
+hitting `findById`, and to reshape the existing duplicate scenarios
+(matching, differing, single-conflict-not-blocking) so the existing
+documents are stored in the new root shape with full
+`_head.provenance`. Identifiers, IDs, and helper messages
+(`locMessage`, `linkTypeMessage`, `linkMessage`, `entityTypeMessage`,
+`entityCreateMessage`, `propertyCreateMessage`,
+`updateLocationMessage`, `springDuplicate`) and unrelated lifecycle
+features (`materialize(txnId)` empty/non-empty, blank txnId, null
+snapshot, mixed ordering across `loc`/`typ`/`lnk` with `ppy`/`ent`
+skips) were preserved. No changes to `ContentsLinkReadService`,
+`ContentsLinkRecord`, `ContentsLinkReadController`, integration
+tests, DTO schemas, canonical examples, Docker Compose, Gradle files,
+Kafka listener behavior, security, frontend, response envelopes,
+pagination, endpoint joins, semantic reference validation, endpoint
+projection maintenance, extension pages, pending pages, update/delete
+replay, backfill, transaction-overlay reads, required properties, or
+default values were made; `TASK-012` was not resumed. Owned-paths
+boundary was respected: edits stayed within
+`jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`,
+`jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`,
+`docs/agents/claude-1-changes.md`, and (left untouched in this turn)
+the active task file
+`docs/orchestrator/tasks/TASK-014-materialized-root-document-materializer.md`.
+VERIFICATION: docker compose stack already healthy
+(`jade-tipi-mongo`, `jade-tipi-kafka`, `jade-tipi-keycloak` all up;
+`docker compose -f docker/docker-compose.yml ps` confirmed).
+`./gradlew :jade-tipi:compileGroovy` BUILD SUCCESSFUL.
+`./gradlew :jade-tipi:compileTestGroovy` BUILD SUCCESSFUL.
+`./gradlew :jade-tipi:test --tests '*CommittedTransactionMaterializerSpec*'`
+BUILD SUCCESSFUL with the rewritten spec at
+`tests=23, failures=0, errors=0, skipped=0` (was 16 features yielding
+22 tests after TASK-009; the rewrite adds explicit `data.type_id`
+loc, lnk-without-properties default, conflicting `_head.provenance`
+when only `materialized_at` is allowed to differ, and non-duplicate
+insert error propagation while consolidating shape assertions).
+`./gradlew :jade-tipi:test` BUILD SUCCESSFUL with the full unit suite
+green across all 11 specs at zero failures and zero errors:
+`CommittedTransactionMaterializerSpec` (23),
+`CommittedTransactionReadControllerSpec` (5),
+`ContentsLinkReadControllerSpec` (10), `JadetipiApplicationTests`
+(1), `TransactionMessageListenerSpec` (4), `MongoDbInitializerSpec`
+(2), `DocumentServiceMongoDbImplSpec` (9),
+`CommittedTransactionReadServiceSpec` (12),
+`ContentsLinkReadServiceSpec` (18),
+`TransactionMessagePersistenceServiceSpec` (15), and
+`TransactionServiceSpec` (12) — 111 tests in total. No integration
+tests were run because TASK-014 is unit-only and the directives list
+no integration verification target.
+
+STATUS: READY_FOR_REVIEW
 TASK: TASK-011 — Plan contents location HTTP read adapter
 DATE: 2026-05-01
 SUMMARY: Implemented the smallest HTTP/WebFlux adapter over the accepted

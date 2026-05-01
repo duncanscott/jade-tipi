@@ -176,7 +176,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
         return new DuplicateKeyException('duplicate key', cause)
     }
 
-    def 'materializes a loc create message into the loc collection with provenance'() {
+    def 'materializes a loc create as a root document with inline properties and _head.provenance'() {
         given:
         Map<String, Object> captured = null
         mongoTemplate.insert(_ as Map, 'loc') >> { Map doc, String _coll ->
@@ -195,23 +195,62 @@ class CommittedTransactionMaterializerSpec extends Specification {
         result.skippedUnsupported == 0
         result.skippedInvalid == 0
 
-        and: 'doc preserves _id == data.id and copies the data payload verbatim'
+        and: 'shared root fields use the payload id and source collection'
         captured._id == LOC_ID
         captured.id == LOC_ID
-        captured.name == 'freezer_a'
-        captured.description == 'minus-80 freezer in room 110'
+        captured.collection == 'loc'
+        captured.type_id == null
 
-        and: 'doc carries reserved provenance with the snapshot context'
-        Map provenance = captured._jt_provenance as Map
-        provenance != null
+        and: 'explicit payload fields other than id and type_id move under properties'
+        Map properties = captured.properties as Map
+        properties.name == 'freezer_a'
+        properties.description == 'minus-80 freezer in room 110'
+        !properties.containsKey('id')
+        !properties.containsKey('type_id')
+
+        and: 'links is initialized to an empty map for new roots'
+        captured.links == [:]
+
+        and: '_head carries schema metadata and projection provenance'
+        Map head = captured._head as Map
+        head.schema_version == 1
+        head.document_kind == 'root'
+        head.root_id == LOC_ID
+        Map provenance = head.provenance as Map
         provenance.txn_id == TXN_ID
         provenance.commit_id == COMMIT_ID
         provenance.msg_uuid == '018fd849-2a47-7777-8f01-aaaaaaaaaaaa'
+        provenance.collection == 'loc'
+        provenance.action == 'create'
         provenance.committed_at == COMMITTED_AT
         provenance.materialized_at instanceof Instant
+
+        and: 'the legacy _jt_provenance field is not written on new roots'
+        !captured.containsKey('_jt_provenance')
     }
 
-    def 'materializes a link-type typ create with all six declarative facts'() {
+    def 'loc with an explicit data.type_id sets top-level type_id and excludes it from properties'() {
+        given:
+        String typeId = 'jade-tipi-org~dev~018fd849-2a4c-7ccc-8c0c-cccccccccccc~typ~freezer'
+        Map<String, Object> captured = null
+        mongoTemplate.insert(_ as Map, 'loc') >> { Map doc, String _coll ->
+            captured = doc
+            return Mono.just(doc)
+        }
+
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([locMessage([type_id: typeId])])).block()
+
+        then:
+        result.materialized == 1
+        captured.type_id == typeId
+        Map properties = captured.properties as Map
+        !properties.containsKey('type_id')
+        properties.name == 'freezer_a'
+    }
+
+    def 'materializes a link-type typ create root with all six declarative facts under properties'() {
         given:
         Map<String, Object> captured = null
         mongoTemplate.insert(_ as Map, 'typ') >> { Map doc, String _coll ->
@@ -226,17 +265,32 @@ class CommittedTransactionMaterializerSpec extends Specification {
         result.materialized == 1
         result.skippedUnsupported == 0
 
-        and: 'all six declarative facts and allowed_*_collections survive verbatim'
+        and: 'shared root fields are populated and type_id is null for a typ link-type root'
         captured._id == TYP_ID
-        captured.kind == 'link_type'
-        captured.name == 'contents'
-        captured.left_role == 'container'
-        captured.right_role == 'content'
-        captured.left_to_right_label == 'contains'
-        captured.right_to_left_label == 'contained_by'
-        captured.allowed_left_collections == ['loc']
-        captured.allowed_right_collections == ['loc', 'ent']
-        (captured._jt_provenance as Map).txn_id == TXN_ID
+        captured.id == TYP_ID
+        captured.collection == 'typ'
+        captured.type_id == null
+
+        and: 'all six declarative facts plus allowed_*_collections survive under properties'
+        Map properties = captured.properties as Map
+        properties.kind == 'link_type'
+        properties.name == 'contents'
+        properties.left_role == 'container'
+        properties.right_role == 'content'
+        properties.left_to_right_label == 'contains'
+        properties.right_to_left_label == 'contained_by'
+        properties.allowed_left_collections == ['loc']
+        properties.allowed_right_collections == ['loc', 'ent']
+        !properties.containsKey('id')
+        !properties.containsKey('type_id')
+
+        and: 'links is empty and _head.provenance carries source collection/action'
+        captured.links == [:]
+        Map provenance = (captured._head as Map).provenance as Map
+        provenance.collection == 'typ'
+        provenance.action == 'create'
+        provenance.txn_id == TXN_ID
+        !captured.containsKey('_jt_provenance')
     }
 
     def 'skips a typ create whose data.kind is not link_type'() {
@@ -249,7 +303,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
         0 * mongoTemplate.insert(_, _)
     }
 
-    def 'materializes a lnk create preserving type_id, left, right, and properties.position'() {
+    def 'materializes a lnk create as a root with top-level type_id, left, right, and properties.position'() {
         given:
         Map<String, Object> captured = null
         mongoTemplate.insert(_ as Map, 'lnk') >> { Map doc, String _coll ->
@@ -262,7 +316,11 @@ class CommittedTransactionMaterializerSpec extends Specification {
 
         then:
         result.materialized == 1
+
+        and: 'shared root and lnk-specific fields are at the top level'
         captured._id == LNK_ID
+        captured.id == LNK_ID
+        captured.collection == 'lnk'
         captured.type_id == TYP_ID
         captured.left.endsWith('~loc~plate_b1')
         captured.right.endsWith('~ent~sample_x1')
@@ -274,6 +332,34 @@ class CommittedTransactionMaterializerSpec extends Specification {
         position.label == 'A1'
         position.row == 'A'
         position.column == 1
+
+        and: 'links is empty and _head.provenance is populated for the lnk source'
+        captured.links == [:]
+        Map provenance = (captured._head as Map).provenance as Map
+        provenance.collection == 'lnk'
+        provenance.action == 'create'
+        provenance.msg_uuid == '018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb'
+        !captured.containsKey('_jt_provenance')
+    }
+
+    def 'lnk create without payload properties defaults root properties to an empty map'() {
+        given:
+        Map<String, Object> captured = null
+        mongoTemplate.insert(_ as Map, 'lnk') >> { Map doc, String _coll ->
+            captured = doc
+            return Mono.just(doc)
+        }
+
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([linkMessage([properties: null])])).block()
+
+        then:
+        result.materialized == 1
+        captured.properties == [:]
+        captured.type_id == TYP_ID
+        captured.left.endsWith('~loc~plate_b1')
+        captured.right.endsWith('~ent~sample_x1')
     }
 
     def 'skips ppy and ent create messages'() {
@@ -298,19 +384,31 @@ class CommittedTransactionMaterializerSpec extends Specification {
         0 * mongoTemplate.insert(_, _)
     }
 
-    def 'identical-payload duplicate is treated as success without overwrite'() {
-        given:
+    def 'identical-payload duplicate is matching even when materialized_at differs'() {
+        given: 'existing root has the same payload but an earlier materialized_at'
         Map existing = [
-                _id            : LOC_ID,
-                id             : LOC_ID,
-                name           : 'freezer_a',
-                description    : 'minus-80 freezer in room 110',
-                _jt_provenance : [
-                        txn_id         : 'older-txn',
-                        commit_id      : 'older-commit',
-                        msg_uuid       : 'older-msg',
-                        committed_at   : Instant.parse('2025-12-31T00:00:00Z'),
-                        materialized_at: Instant.parse('2025-12-31T00:00:01Z')
+                _id        : LOC_ID,
+                id         : LOC_ID,
+                collection : 'loc',
+                type_id    : null,
+                properties : [
+                        name       : 'freezer_a',
+                        description: 'minus-80 freezer in room 110'
+                ],
+                links      : [:],
+                _head      : [
+                        schema_version: 1,
+                        document_kind : 'root',
+                        root_id       : LOC_ID,
+                        provenance    : [
+                                txn_id         : TXN_ID,
+                                commit_id      : COMMIT_ID,
+                                msg_uuid       : '018fd849-2a47-7777-8f01-aaaaaaaaaaaa',
+                                collection     : 'loc',
+                                action         : 'create',
+                                committed_at   : COMMITTED_AT,
+                                materialized_at: Instant.parse('2025-12-31T00:00:01Z')
+                        ]
                 ]
         ]
         mongoTemplate.insert(_ as Map, 'loc') >> Mono.error(springDuplicate())
@@ -331,13 +429,32 @@ class CommittedTransactionMaterializerSpec extends Specification {
         0 * mongoTemplate.save(_, _)
     }
 
-    def 'differing-payload duplicate is counted as conflict and not overwritten'() {
+    def 'differing-payload duplicate is conflicting and not overwritten'() {
         given:
         Map existing = [
                 _id        : LOC_ID,
                 id         : LOC_ID,
-                name       : 'freezer_a_OLD',
-                description: 'a different description'
+                collection : 'loc',
+                type_id    : null,
+                properties : [
+                        name       : 'freezer_a_OLD',
+                        description: 'a different description'
+                ],
+                links      : [:],
+                _head      : [
+                        schema_version: 1,
+                        document_kind : 'root',
+                        root_id       : LOC_ID,
+                        provenance    : [
+                                txn_id         : TXN_ID,
+                                commit_id      : COMMIT_ID,
+                                msg_uuid       : '018fd849-2a47-7777-8f01-aaaaaaaaaaaa',
+                                collection     : 'loc',
+                                action         : 'create',
+                                committed_at   : COMMITTED_AT,
+                                materialized_at: Instant.parse('2025-12-31T00:00:01Z')
+                        ]
+                ]
         ]
         mongoTemplate.insert(_ as Map, 'loc') >> Mono.error(springDuplicate())
         mongoTemplate.findById(LOC_ID, Map.class, 'loc') >> Mono.just(existing)
@@ -357,9 +474,69 @@ class CommittedTransactionMaterializerSpec extends Specification {
         0 * mongoTemplate.save(_, _)
     }
 
+    def 'differing _head.provenance (excluding materialized_at) is a conflict'() {
+        given: 'same payload, but provenance differs on commit_id'
+        Map existing = [
+                _id        : LOC_ID,
+                id         : LOC_ID,
+                collection : 'loc',
+                type_id    : null,
+                properties : [
+                        name       : 'freezer_a',
+                        description: 'minus-80 freezer in room 110'
+                ],
+                links      : [:],
+                _head      : [
+                        schema_version: 1,
+                        document_kind : 'root',
+                        root_id       : LOC_ID,
+                        provenance    : [
+                                txn_id         : TXN_ID,
+                                commit_id      : 'OTHER-COMMIT',
+                                msg_uuid       : '018fd849-2a47-7777-8f01-aaaaaaaaaaaa',
+                                collection     : 'loc',
+                                action         : 'create',
+                                committed_at   : COMMITTED_AT,
+                                materialized_at: Instant.parse('2025-12-31T00:00:01Z')
+                        ]
+                ]
+        ]
+        mongoTemplate.insert(_ as Map, 'loc') >> Mono.error(springDuplicate())
+        mongoTemplate.findById(LOC_ID, Map.class, 'loc') >> Mono.just(existing)
+
+        when:
+        MaterializeResult result = materializer.materialize(snapshot([locMessage()])).block()
+
+        then:
+        result.materialized == 0
+        result.duplicateMatching == 0
+        result.conflictingDuplicate == 1
+    }
+
     def 'a single conflicting duplicate does not block subsequent messages'() {
         given:
-        Map existingLoc = [_id: LOC_ID, id: LOC_ID, name: 'older-freezer']
+        Map existingLoc = [
+                _id        : LOC_ID,
+                id         : LOC_ID,
+                collection : 'loc',
+                type_id    : null,
+                properties : [name: 'older-freezer'],
+                links      : [:],
+                _head      : [
+                        schema_version: 1,
+                        document_kind : 'root',
+                        root_id       : LOC_ID,
+                        provenance    : [
+                                txn_id         : 'older-txn',
+                                commit_id      : 'older-commit',
+                                msg_uuid       : 'older-msg',
+                                collection     : 'loc',
+                                action         : 'create',
+                                committed_at   : Instant.parse('2025-12-30T00:00:00Z'),
+                                materialized_at: Instant.parse('2025-12-30T00:00:01Z')
+                        ]
+                ]
+        ]
         boolean linkInserted = false
         mongoTemplate.insert(_ as Map, 'loc') >> Mono.error(springDuplicate())
         mongoTemplate.findById(LOC_ID, Map.class, 'loc') >> Mono.just(existingLoc)
@@ -378,6 +555,19 @@ class CommittedTransactionMaterializerSpec extends Specification {
         result.conflictingDuplicate == 1
         result.skippedUnsupported == 0
         result.skippedInvalid == 0
+    }
+
+    def 'non-duplicate insert failure propagates as an error'() {
+        given:
+        mongoTemplate.insert(_ as Map, 'loc') >> Mono.error(new RuntimeException('mongo down'))
+
+        when:
+        materializer.materialize(snapshot([locMessage()])).block()
+
+        then:
+        RuntimeException ex = thrown(RuntimeException)
+        ex.message == 'mongo down'
+        0 * mongoTemplate.findById(_, _, _)
     }
 
     def 'missing data.id is counted as skippedInvalid and not auto-id\'d'() {
@@ -469,6 +659,8 @@ class CommittedTransactionMaterializerSpec extends Specification {
         result != null
         result.materialized == 1
         captured._id == LOC_ID
+        captured.collection == 'loc'
+        (captured._head as Map).document_kind == 'root'
     }
 
     def 'blank txnId is rejected with IllegalArgumentException'() {

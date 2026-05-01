@@ -25,7 +25,7 @@ import java.time.Instant
 
 /**
  * Projects committed transaction messages from the {@code txn} write-ahead log
- * into their long-term MongoDB collections. Reads via
+ * into root-shaped long-term MongoDB documents. Reads via
  * {@link CommittedTransactionReadService} so the accepted committed-visibility
  * gate (record_type=transaction, state=committed, non-blank commit_id) is the
  * single source of truth for visibility.
@@ -42,9 +42,16 @@ import java.time.Instant
  * txn-control actions — is counted as {@code skippedUnsupported} without
  * raising an error.
  *
- * <p>Materialized documents copy {@code data} verbatim, set {@code _id} to
- * {@code data.id}, and add a reserved {@link #FIELD_PROVENANCE} sub-document
- * so projection metadata cannot collide with payload keys.
+ * <p>Each materialized document is a self-describing root with {@code _id},
+ * {@code id}, {@code collection}, top-level {@code type_id}, explicit
+ * {@code properties}, denormalized {@code links}, and a reserved {@code _head}
+ * sub-document carrying schema metadata and projection provenance under
+ * {@code _head.provenance}.
+ *
+ * <p>Endpoint {@code links} projections for {@code lnk} endpoints are
+ * intentionally not maintained here; this materializer writes {@code links: {}}
+ * for every supported root and leaves endpoint-projection maintenance to a
+ * later task.
  *
  * <p>Semantic reference validation (resolution of {@code lnk.type_id},
  * {@code left}, {@code right}, or {@code allowed_*_collections}) is
@@ -56,11 +63,26 @@ class CommittedTransactionMaterializer {
 
     static final String FIELD_ID = '_id'
     static final String FIELD_DATA_ID = 'id'
-    static final String FIELD_PROVENANCE = '_jt_provenance'
+    static final String FIELD_COLLECTION = 'collection'
+    static final String FIELD_TYPE_ID = 'type_id'
+    static final String FIELD_LEFT = 'left'
+    static final String FIELD_RIGHT = 'right'
+    static final String FIELD_PROPERTIES = 'properties'
+    static final String FIELD_LINKS = 'links'
+    static final String FIELD_HEAD = '_head'
+
+    static final String HEAD_SCHEMA_VERSION = 'schema_version'
+    static final String HEAD_DOCUMENT_KIND = 'document_kind'
+    static final String HEAD_ROOT_ID = 'root_id'
+    static final String HEAD_PROVENANCE = 'provenance'
+    static final int ROOT_SCHEMA_VERSION = 1
+    static final String DOCUMENT_KIND_ROOT = 'root'
 
     static final String PROV_TXN_ID = 'txn_id'
     static final String PROV_COMMIT_ID = 'commit_id'
     static final String PROV_MSG_UUID = 'msg_uuid'
+    static final String PROV_COLLECTION = 'collection'
+    static final String PROV_ACTION = 'action'
     static final String PROV_COMMITTED_AT = 'committed_at'
     static final String PROV_MATERIALIZED_AT = 'materialized_at'
 
@@ -136,7 +158,7 @@ class CommittedTransactionMaterializer {
         Map<String, Object> doc = buildDocument(docId, snapshot, message)
         return mongoTemplate.insert(doc, message.collection)
                 .doOnSuccess({ Object inserted ->
-                    log.info('Materialized {} record: id={}, txnId={}, commitId={}',
+                    log.info('Materialized {} root: id={}, txnId={}, commitId={}',
                             message.collection, docId, snapshot.txnId, snapshot.commitId)
                     result.materialized++
                 })
@@ -153,7 +175,7 @@ class CommittedTransactionMaterializer {
                                          Throwable ex,
                                          MaterializeResult result) {
         if (!isDuplicateKey(ex)) {
-            log.error('Materializer insert failed for {} record id={}: txnId={}, commitId={}',
+            log.error('Materializer insert failed for {} root id={}: txnId={}, commitId={}',
                     message.collection, docId, snapshot.txnId, snapshot.commitId, ex)
             return Mono.error(ex)
         }
@@ -211,27 +233,90 @@ class CommittedTransactionMaterializer {
     private static Map<String, Object> buildDocument(String docId,
                                                      CommittedTransactionSnapshot snapshot,
                                                      CommittedTransactionMessage message) {
+        Map<String, Object> data = (message.data ?: [:]) as Map<String, Object>
+
         Map<String, Object> doc = new LinkedHashMap<>()
         doc.put(FIELD_ID, docId)
-        if (message.data != null) {
-            doc.putAll(message.data)
+        doc.put(FIELD_DATA_ID, docId)
+        doc.put(FIELD_COLLECTION, message.collection)
+        doc.put(FIELD_TYPE_ID, data.get(FIELD_TYPE_ID))
+
+        if (COLLECTION_LNK == message.collection) {
+            doc.put(FIELD_LEFT, data.get(FIELD_LEFT))
+            doc.put(FIELD_RIGHT, data.get(FIELD_RIGHT))
+            doc.put(FIELD_PROPERTIES, copyProperties(data.get(FIELD_PROPERTIES)))
+        } else {
+            doc.put(FIELD_PROPERTIES, buildInlineProperties(data))
         }
+
+        doc.put(FIELD_LINKS, new LinkedHashMap<String, Object>())
+        doc.put(FIELD_HEAD, buildHead(docId, snapshot, message))
+        return doc
+    }
+
+    private static Map<String, Object> buildInlineProperties(Map<String, Object> data) {
+        Map<String, Object> properties = new LinkedHashMap<>()
+        data.each { String key, Object value ->
+            if (key != FIELD_DATA_ID && key != FIELD_TYPE_ID) {
+                properties.put(key, value)
+            }
+        }
+        return properties
+    }
+
+    private static Map<String, Object> copyProperties(Object propertiesValue) {
+        if (propertiesValue instanceof Map) {
+            return new LinkedHashMap<>((Map<String, Object>) propertiesValue)
+        }
+        return new LinkedHashMap<String, Object>()
+    }
+
+    private static Map<String, Object> buildHead(String docId,
+                                                 CommittedTransactionSnapshot snapshot,
+                                                 CommittedTransactionMessage message) {
         Map<String, Object> provenance = new LinkedHashMap<>()
         provenance.put(PROV_TXN_ID, snapshot.txnId)
         provenance.put(PROV_COMMIT_ID, snapshot.commitId)
         provenance.put(PROV_MSG_UUID, message.msgUuid)
+        provenance.put(PROV_COLLECTION, message.collection)
+        provenance.put(PROV_ACTION, message.action)
         provenance.put(PROV_COMMITTED_AT, snapshot.committedAt)
         provenance.put(PROV_MATERIALIZED_AT, Instant.now())
-        doc.put(FIELD_PROVENANCE, provenance)
-        return doc
+
+        Map<String, Object> head = new LinkedHashMap<>()
+        head.put(HEAD_SCHEMA_VERSION, ROOT_SCHEMA_VERSION)
+        head.put(HEAD_DOCUMENT_KIND, DOCUMENT_KIND_ROOT)
+        head.put(HEAD_ROOT_ID, docId)
+        head.put(HEAD_PROVENANCE, provenance)
+        return head
     }
 
+    /**
+     * Compare an existing materialized document with an incoming candidate,
+     * ignoring only {@code _head.provenance.materialized_at}. Retried matching
+     * payloads remain idempotent while real payload or provenance differences
+     * still surface as conflicts.
+     */
     private static boolean isSamePayload(Map existing, Map incoming) {
-        Map<String, Object> existingCopy = new LinkedHashMap<>(existing ?: [:])
-        existingCopy.remove(FIELD_PROVENANCE)
-        Map<String, Object> incomingCopy = new LinkedHashMap<>(incoming ?: [:])
-        incomingCopy.remove(FIELD_PROVENANCE)
+        Map<String, Object> existingCopy = stripVolatileFields(existing)
+        Map<String, Object> incomingCopy = stripVolatileFields(incoming)
         return Objects.equals(existingCopy, incomingCopy)
+    }
+
+    private static Map<String, Object> stripVolatileFields(Map source) {
+        Map<String, Object> copy = new LinkedHashMap<>(source ?: [:])
+        Object headValue = copy.get(FIELD_HEAD)
+        if (headValue instanceof Map) {
+            Map<String, Object> headCopy = new LinkedHashMap<>((Map<String, Object>) headValue)
+            Object provenanceValue = headCopy.get(HEAD_PROVENANCE)
+            if (provenanceValue instanceof Map) {
+                Map<String, Object> provenanceCopy = new LinkedHashMap<>((Map<String, Object>) provenanceValue)
+                provenanceCopy.remove(PROV_MATERIALIZED_AT)
+                headCopy.put(HEAD_PROVENANCE, provenanceCopy)
+            }
+            copy.put(FIELD_HEAD, headCopy)
+        }
+        return copy
     }
 
     private static boolean isDuplicateKey(Throwable ex) {
