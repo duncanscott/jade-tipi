@@ -115,6 +115,57 @@ A property assignment is stored as a property record whose ID is the entity ID p
 
 Early backend validation should verify required envelope fields, known collection/action pairs, and object-shaped property values. Full reference validation between properties, types, entities, and assignments — and value-shape validation against the registered property `value_schema` — can follow once snapshot reads over `txn` exist.
 
+## Link Types And Concrete Links
+
+Concrete relationships between domain objects are recorded in `lnk`. The semantics of each relationship — its endpoint roles, human-readable labels, and the collections allowed on each side — live in `typ` as a `link_type` declaration. `loc` records do not carry parentage; containment is represented as a `lnk` with the appropriate type. A link type should exist before any `lnk` records reference it.
+
+The first canonical link type is `contents`. Its `typ` declaration carries the role and label facts plus the allowed endpoint collections:
+
+```json
+{
+  "collection": "typ",
+  "action": "create",
+  "data": {
+    "kind": "link_type",
+    "id": "jade-tipi-org~dev~...~typ~contents",
+    "name": "contents",
+    "left_role": "container",
+    "right_role": "content",
+    "left_to_right_label": "contains",
+    "right_to_left_label": "contained_by",
+    "allowed_left_collections": ["loc"],
+    "allowed_right_collections": ["loc", "ent"]
+  }
+}
+```
+
+`data.kind: "link_type"` distinguishes a link-type record from an entity-type record in `typ`, mirroring the `definition`/`assignment` discriminator used for `ppy` records.
+
+A concrete `contents` link references the type and the two endpoints, and stores instance-specific properties — for a sample placed in a plate well, the well coordinate is a `position` property on the link itself rather than on the plate or sample:
+
+```json
+{
+  "collection": "lnk",
+  "action": "create",
+  "data": {
+    "id": "jade-tipi-org~dev~...~lnk~plate_b1_sample_x1",
+    "type_id": "jade-tipi-org~dev~...~typ~contents",
+    "left": "jade-tipi-org~dev~...~loc~plate_b1",
+    "right": "jade-tipi-org~dev~...~ent~sample_x1",
+    "properties": {
+      "position": {
+        "kind": "plate_well",
+        "label": "A1",
+        "row": "A",
+        "column": 1
+      }
+    }
+  }
+}
+```
+
+The schema accepts this envelope today on the strength of `lnk + create` and the snake_case property-name rule. Semantic checks — that `lnk.type_id` resolves to a committed `typ` record, that `left` and `right` resolve, and that the endpoint collections match the type's `allowed_left_collections` / `allowed_right_collections` — are not enforced by `message.schema.json` and remain a follow-up reader/materializer concern. Property-name values such as `position.label` ("A1") are stored verbatim; the snake_case rule applies to property keys, not to their string values.
+
 ## Reference Examples
 
 A complete early transaction flow is bundled as resources under `libraries/jade-tipi-dto/src/main/resources/example/message/`:
@@ -129,6 +180,8 @@ A complete early transaction flow is bundled as resources under `libraries/jade-
 8. `08-assign-property-value-number.json`
 9. `09-commit-transaction.json`
 10. `10-create-location.json`
+11. `11-create-contents-type.json`
+12. `12-create-contents-link-plate-sample.json`
 
 These examples are exercised by `MessageSpec` to round-trip through `JsonMapper` and pass `Message.validate()` against `message.schema.json`.
 

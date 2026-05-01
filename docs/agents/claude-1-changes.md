@@ -3,6 +3,236 @@
 The developer writes completed work reports here.
 
 STATUS: READY_FOR_REVIEW
+TASK: TASK-008 — Add contents link vocabulary examples
+DATE: 2026-05-01
+SUMMARY: Added the smallest canonical vocabulary unit for the `contents`
+relationship. Two new example messages —
+`libraries/jade-tipi-dto/src/main/resources/example/message/11-create-contents-type.json`
+(a `typ + create` carrying `data.kind: "link_type"` and the six
+declarative facts: `left_role: "container"`, `right_role: "content"`,
+`left_to_right_label: "contains"`, `right_to_left_label: "contained_by"`,
+`allowed_left_collections: ["loc"]`,
+`allowed_right_collections: ["loc", "ent"]`, with ID segment
+`~typ~contents`) and
+`libraries/jade-tipi-dto/src/main/resources/example/message/12-create-contents-link-plate-sample.json`
+(a `lnk + create` referencing that type via `type_id` and pointing
+`left` at a plate `~loc~plate_b1` and `right` at a sample `~ent~sample_x1`
+with a snake-case `properties.position` of
+`{kind: "plate_well", label: "A1", row: "A", column: 1}`). Both examples
+reuse the established canonical batch `txn.uuid`
+`018fd849-2a40-7abc-8a45-111111111111` and use the three-letter ID
+segments `~typ~`, `~lnk~`, `~loc~`, `~ent~` per `DIRECTION.md`; the
+older `04-create-entity-type.json` `~ty~` example is intentionally left
+untouched per the director directive. `MessageSpec` got both new paths
+appended to `EXAMPLE_PATHS` so the existing `@Unroll` round-trip and
+schema-validate features cover them, plus two focused features pinning
+the canonical shapes — one asserts the `contents` `typ` declaration's
+collection/action and all six declarative facts, and one asserts the
+`contents` `lnk` envelope's collection/action, the `~typ~contents` /
+`~loc~plate_b1` / `~ent~sample_x1` reference suffixes, and the
+`position.kind/label/row/column` values. `docs/architecture/kafka-transaction-message-vocabulary.md`
+gained a new "Link Types And Concrete Links" section after the property
+assignment section that explains containment is canonical in `lnk`,
+that link-type semantics live in `typ` (with `data.kind: "link_type"`
+mirroring the `ppy` `definition`/`assignment` discriminator pattern),
+that `loc` records still do not carry parentage, and that semantic
+reference validation (type/endpoint resolution and
+`allowed_*_collections` matching) is not enforced today and is a
+follow-up reader/materializer concern. The numbered reference-examples
+list was extended to `11-create-contents-type.json` and
+`12-create-contents-link-plate-sample.json`. `docs/Jade-Tipi.md`,
+`DIRECTION.md`, and the JSON schema are unchanged. No DTO enum, schema,
+backend service/listener/controller/initializer, build, Docker Compose,
+security policy, HTTP wrapper, materializer, semantic-validation,
+plate/well read API, `parent_location_id`, or committed-snapshot change.
+VERIFICATION: `./gradlew :libraries:jade-tipi-dto:test` passed
+(`MessageSpec` `tests=39, failures=0, errors=0`; `UnitSpec`
+`tests=8, failures=0, errors=0`); the two new examples flow through
+the existing round-trip and schema-validate `@Unroll` features (12
+round-trip features and 12 schema-validate features cover examples
+01–12), and the two new focused features for the `contents`
+declaration and concrete link both pass.
+
+## TASK-008 — Add contents link vocabulary examples
+
+Director moved `TASK-008` to `READY_FOR_IMPLEMENTATION` on 2026-05-01
+with implementation directives in
+`docs/orchestrator/tasks/TASK-008-contents-link-vocabulary-examples.md`
+and the `TASK-008 Director Pre-work Review` block in
+`DIRECTIVES.md`. Implementation done on 2026-05-01.
+
+### Example resource changes
+
+- `libraries/jade-tipi-dto/src/main/resources/example/message/11-create-contents-type.json`
+  (new) — canonical `typ + create` envelope declaring the `contents`
+  link type. Reuses the canonical batch `txn.uuid`
+  `018fd849-2a40-7abc-8a45-111111111111`. The `data` payload carries
+  `kind: "link_type"` (mirroring the `ppy` `kind` discriminator
+  pattern), the canonical ID
+  `jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents`,
+  human description, and the six declarative facts:
+  `left_role: "container"`, `right_role: "content"`,
+  `left_to_right_label: "contains"`,
+  `right_to_left_label: "contained_by"`,
+  `allowed_left_collections: ["loc"]`,
+  `allowed_right_collections: ["loc", "ent"]`. All field names are
+  snake_case-compliant for the schema's nested
+  `propertyNames` rule.
+- `libraries/jade-tipi-dto/src/main/resources/example/message/12-create-contents-link-plate-sample.json`
+  (new) — canonical `lnk + create` envelope for a concrete plate-well
+  containment. Reuses the same canonical batch `txn.uuid` as the
+  `typ` example. The `data` payload carries `id` ending in
+  `~lnk~plate_b1_sample_x1`, `type_id` pointing at the
+  `~typ~contents` ID from the type example, `left` pointing at a
+  plate `~loc~plate_b1` and `right` pointing at a sample
+  `~ent~sample_x1` (both endpoints are flat string IDs that are not
+  themselves created by example messages — semantic reference
+  validation is `OUT_OF_SCOPE`), and a `properties.position` object
+  `{kind: "plate_well", label: "A1", row: "A", column: 1}`. The
+  `"A1"` / `"A"` casing matches `DIRECTION.md` per the director's
+  pre-work review (the snake_case rule applies to property names,
+  not values).
+
+### MessageSpec coverage
+
+`libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`:
+
+- Appended `/example/message/11-create-contents-type.json` and
+  `/example/message/12-create-contents-link-plate-sample.json` to
+  `EXAMPLE_PATHS`, so the existing `@Unroll` features
+  `"example #examplePath round-trips through JsonMapper preserving collection"`
+  and `"example #examplePath validates against the schema"` now cover
+  examples 01 through 12 (24 generated features in total for those
+  two `@Unroll` features).
+- Added focused feature
+  `"contents typ example declares the canonical link-type facts"`:
+  asserts `Collection.TYPE`, `Action.CREATE`, the canonical
+  `~typ~contents` ID, `data.kind == 'link_type'`,
+  `data.name == 'contents'`, `data.left_role == 'container'`,
+  `data.right_role == 'content'`,
+  `data.left_to_right_label == 'contains'`,
+  `data.right_to_left_label == 'contained_by'`,
+  `data.allowed_left_collections == ['loc']`, and
+  `data.allowed_right_collections == ['loc', 'ent']`. This pins the
+  canonical declaration so a later refactor of the example file fails
+  loudly rather than silently dropping a fact.
+- Added focused feature
+  `"contents lnk example references the contents type and carries a position property"`:
+  asserts `Collection.LINK`, `Action.CREATE`, `data.id` ending with
+  `~lnk~plate_b1_sample_x1`, `data.type_id` ending with
+  `~typ~contents`, `data.left` ending with `~loc~plate_b1`,
+  `data.right` ending with `~ent~sample_x1`, and the
+  `properties.position` object's `kind`, `label`, `row`, and `column`
+  values. This pins the canonical concrete-link shape and the
+  `DIRECTION.md` plate-well coordinate casing.
+
+No new spec file was added, no schema-rejection feature was added
+(the directive's task is to add canonical examples; existing
+`Collection.PROPERTY + Action.OPEN` and `LOCATION` rejection features
+already establish the rejection-pattern coverage), and no test was
+removed.
+
+### Documentation changes
+
+`docs/architecture/kafka-transaction-message-vocabulary.md`:
+
+- Added new section "Link Types And Concrete Links" after the
+  "Property Value Assignment" section. The section records that
+  containment lives in `lnk` (not on `loc.parent_location_id`),
+  that link semantics live in `typ` as `link_type` declarations
+  (mirroring the `ppy` `definition`/`assignment` discriminator),
+  and that the first canonical link type is `contents`. It shows
+  the canonical `typ` payload shape (snake-case `data` body) and
+  the canonical `lnk` payload shape (`type_id`, `left`, `right`,
+  `properties.position`) as JSON snippets in the same style used
+  for property and entity sections. It explicitly notes that
+  semantic reference validation (`type_id` resolution, `left` /
+  `right` resolution, and matching `allowed_*_collections`) is
+  not enforced today and is a follow-up reader/materializer
+  concern, and that property-name values such as `"A1"` are stored
+  verbatim because the snake_case rule constrains property keys,
+  not values.
+- Extended the numbered "Reference Examples" list with
+  `11. 11-create-contents-type.json` and
+  `12. 12-create-contents-link-plate-sample.json`.
+
+`docs/Jade-Tipi.md` is unchanged — the high-level spec already covers
+links and types generically and a `contents`-specific paragraph would
+duplicate the architecture doc. `DIRECTION.md` is unchanged — it
+already records the `contents` direction.
+
+### Out of scope (preserved)
+
+- `libraries/jade-tipi-dto/src/main/java/org/jadetipi/dto/message/Collection.java`,
+  `Action.java`, and `Message.java` — unchanged. `LINK` and `TYPE`
+  already exist with the correct data-action whitelist.
+- `libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json` —
+  unchanged. The schema already accepts `lnk + create` and
+  `typ + create`; every field name in the new examples is
+  snake_case-compliant for the recursive `propertyNames` rule.
+- `04-create-entity-type.json` — left untouched per the director
+  directive. The older two-letter `~ty~` segment is preserved; the
+  new `~typ~` segment establishes the canonical link-type ID form
+  going forward without a backward-incompatible rewrite.
+- All backend code under `jade-tipi/src/main/groovy/...`
+  (Kafka listener, persistence service, committed read service,
+  controller, `MongoDbInitializer`, security config). The
+  `Collection.values()` startup loop already handles `lnk` and
+  `typ`.
+- All build files (`build.gradle`, `settings.gradle`,
+  `gradle.properties`), `application.yml` profiles, Docker Compose,
+  and security policy.
+- HTTP submission wrappers, materializers, semantic reference
+  validation, plate/well read APIs, and the committed-snapshot
+  surface (`CommittedTransactionReadService` /
+  `CommittedTransactionReadController`).
+- `parent_location_id` is not added to `loc` records; containment
+  remains canonical in `lnk` per `DIRECTION.md`.
+- The `txn` write-ahead log record shape from `TASK-003` is
+  preserved.
+
+### Verification
+
+`./gradlew :libraries:jade-tipi-dto:test --rerun-tasks` —
+**BUILD SUCCESSFUL**. The XML report shows
+`MessageSpec` `tests=39, failures=0, errors=0, skipped=0` and
+`UnitSpec` `tests=8, failures=0, errors=0, skipped=0`. The two new
+focused features
+(`contents typ example declares the canonical link-type facts` and
+`contents lnk example references the contents type and carries a
+position property`) and the two new `@Unroll`-generated rows for
+each of the round-trip and schema-validate `@Unroll` features all
+pass.
+
+`./gradlew :libraries:jade-tipi-dto:compileJava` ran as part of the
+test task (`compileJava` was up-to-date / executed with the
+re-run; no Java source was changed and compilation succeeded).
+
+No further regression commands were needed for `TASK-008` — there is
+no Kafka, HTTP, listener, persistence, controller, initializer, or
+materializer change. `:jade-tipi:test` and `:jade-tipi:integrationTest`
+were not required by the task directive and were not run.
+
+### Files changed (inside owned paths)
+
+- `libraries/jade-tipi-dto/src/main/resources/example/message/11-create-contents-type.json`
+  (new)
+- `libraries/jade-tipi-dto/src/main/resources/example/message/12-create-contents-link-plate-sample.json`
+  (new)
+- `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`
+  (extended `EXAMPLE_PATHS`; added two focused features)
+- `docs/architecture/kafka-transaction-message-vocabulary.md`
+  (new "Link Types And Concrete Links" section; extended
+  reference-examples list)
+- `docs/orchestrator/tasks/TASK-008-contents-link-vocabulary-examples.md`
+  (`STATUS` flipped to `READY_FOR_REVIEW`; `LATEST_REPORT` rewritten)
+- `docs/agents/claude-1-changes.md` (this report)
+
+---
+
+# Earlier reports
+
+STATUS: READY_FOR_REVIEW
 TASK: TASK-007 — Add location collection
 DATE: 2026-05-01
 SUMMARY: Added `loc` as a first-class long-term Jade-Tipi collection.

@@ -2,7 +2,7 @@
 
 ID: TASK-008
 TYPE: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: READY_FOR_REVIEW
 OWNER: claude-1
 OWNED_PATHS:
   - docs/Jade-Tipi.md
@@ -66,41 +66,83 @@ DEPENDENCIES:
 - `TASK-007` is accepted and adds `loc` as a first-class collection.
 
 LATEST_REPORT:
-Director pre-work review accepted on 2026-05-01. Scope check passed:
-claude-1's latest pre-work turn changed only
-`docs/agents/claude-1-next-step.md`, inside the developer-owned pre-work paths.
-Proceed to implementation with these decisions:
+Implementation complete on 2026-05-01. Status moved to `READY_FOR_REVIEW`.
 
-- Add exactly two canonical examples:
-  `11-create-contents-type.json` for `typ + create` and
-  `12-create-contents-link-plate-sample.json` for `lnk + create`.
-- Use the three-letter ID segments from `DIRECTION.md` and `TASK-007`:
-  `~typ~contents`, `~lnk~...`, and `~loc~...`. Do not rewrite the older
-  `04-create-entity-type.json` `~ty~` example in this task.
-- Reuse the current canonical example transaction UUID for the two new
-  examples, matching `10-create-location.json`.
-- Use the `DIRECTION.md` plate-well value casing (`"A1"` and `"A"`). The
-  snake_case schema rule applies to property names, not string values.
-- Keep `docs/Jade-Tipi.md` unchanged unless implementation reveals a direct
-  contradiction. Put the `contents` vocabulary explanation in
-  `docs/architecture/kafka-transaction-message-vocabulary.md`.
-- Do not add supporting endpoint create examples in this task; unresolved
-  `left`/`right` references are acceptable because semantic reference
-  validation is out of scope.
-- Include `data.kind: "link_type"` on the `typ` payload and include all six
-  declarative facts from `DIRECTION.md`: `left_role`, `right_role`,
-  `left_to_right_label`, `right_to_left_label`,
-  `allowed_left_collections`, and `allowed_right_collections`.
-- Extend `MessageSpec` through the existing example path coverage and add
-  focused assertions for the `contents` `typ` declaration and concrete `lnk`
-  shape.
-- Do not change `Collection`, `Action`, `Message`, `message.schema.json`, any
-  backend service/listener/controller/initializer, build files, Docker Compose,
-  security policy, HTTP wrappers, materialization, semantic validation,
-  plate/well read APIs, `parent_location_id`, or the committed-snapshot surface.
+Two canonical example messages were added under
+`libraries/jade-tipi-dto/src/main/resources/example/message/`:
 
-Required verification after implementation includes
-`./gradlew :libraries:jade-tipi-dto:test`. Defensive compile/regression checks
-from the pre-work are useful if available, but if local tooling, Gradle locks,
-or Docker/Mongo are unavailable, report the documented setup command and the
-exact command that could not run instead of treating setup as a product blocker.
+- `11-create-contents-type.json` — `typ + create` envelope declaring the
+  `contents` link type. Reuses the canonical batch `txn.uuid`
+  `018fd849-2a40-7abc-8a45-111111111111` (matching
+  `10-create-location.json`). The `data` payload has
+  `kind: "link_type"`, ID
+  `jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents`,
+  and the six declarative facts from `DIRECTION.md`:
+  `left_role: "container"`, `right_role: "content"`,
+  `left_to_right_label: "contains"`,
+  `right_to_left_label: "contained_by"`,
+  `allowed_left_collections: ["loc"]`,
+  `allowed_right_collections: ["loc", "ent"]`.
+- `12-create-contents-link-plate-sample.json` — `lnk + create` envelope
+  for a concrete plate→sample containment, reusing the same canonical
+  `txn.uuid`. The `data` payload has ID
+  `jade-tipi-org~dev~018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~lnk~plate_b1_sample_x1`,
+  `type_id` pointing at the `~typ~contents` declaration, `left` pointing
+  at a plate `~loc~plate_b1` and `right` pointing at a sample
+  `~ent~sample_x1`, and a `properties.position` object
+  `{kind: "plate_well", label: "A1", row: "A", column: 1}`. Per the
+  director's pre-work review, the `"A1"` / `"A"` value casing matches
+  `DIRECTION.md`; the snake_case rule applies to property keys, not
+  values.
+
+Three-letter ID segments (`~typ~`, `~lnk~`, `~loc~`, `~ent~`) per
+`DIRECTION.md` and `TASK-007`. The older `04-create-entity-type.json`
+`~ty~` example is intentionally left unchanged.
+
+`MessageSpec` was extended:
+
+- `EXAMPLE_PATHS` now includes both new paths, so the existing
+  `@Unroll` round-trip and schema-validate features cover examples 01
+  through 12.
+- New focused feature
+  `"contents typ example declares the canonical link-type facts"`
+  asserts `Collection.TYPE`, `Action.CREATE`, the canonical
+  `~typ~contents` ID, and all six declarative `data` facts.
+- New focused feature
+  `"contents lnk example references the contents type and carries a position property"`
+  asserts `Collection.LINK`, `Action.CREATE`, the
+  `~lnk~plate_b1_sample_x1` / `~typ~contents` / `~loc~plate_b1` /
+  `~ent~sample_x1` reference suffixes, and the `position`
+  `kind`/`label`/`row`/`column` values.
+
+`docs/architecture/kafka-transaction-message-vocabulary.md` got a new
+"Link Types And Concrete Links" section after "Property Value
+Assignment" that records: containment is canonical in `lnk`, link-type
+semantics live in `typ` as `link_type` declarations (mirroring the
+`ppy` `definition`/`assignment` discriminator), `loc` records do not
+carry parentage, and semantic reference validation
+(`type_id` resolution, `left`/`right` resolution,
+`allowed_*_collections` matching) is not enforced today and is a
+follow-up reader/materializer concern. The numbered reference-examples
+list now includes `11-create-contents-type.json` and
+`12-create-contents-link-plate-sample.json`.
+
+Out of scope and unchanged: `docs/Jade-Tipi.md`, `DIRECTION.md`,
+`Collection`, `Action`, `Message`, `message.schema.json`, every
+backend service/listener/controller/initializer, build files, Docker
+Compose, security policy, HTTP wrappers, materialization, semantic
+reference validation, plate/well read APIs, `parent_location_id`, the
+`txn` write-ahead log shape, and the committed-snapshot service /
+controller. No supporting endpoint create examples were added —
+unresolved `left`/`right` references are acceptable because semantic
+reference validation is out of scope.
+
+Verification: `./gradlew :libraries:jade-tipi-dto:test --rerun-tasks`
+ran with **BUILD SUCCESSFUL**. The XML test report shows `MessageSpec`
+`tests=39, failures=0, errors=0, skipped=0` (33 prior features + the
+two new `EXAMPLE_PATHS` rows in each `@Unroll` feature + the two new
+focused features) and `UnitSpec`
+`tests=8, failures=0, errors=0, skipped=0`. Defensive
+`./gradlew :libraries:jade-tipi-dto:compileJava` runs as part of the
+test task and succeeded. No backend tests were required by the task
+directive and none were run.

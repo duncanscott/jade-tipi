@@ -1,0 +1,26 @@
+{
+  "txn": {
+    "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+    "group": {
+      "org": "jade-tipi-org",
+      "grp": "dev"
+    },
+    "client": "kli",
+    "user": "0000-0002-1825-0097"
+  },
+  "uuid": "018fd849-2a49-7999-8a09-aaaaaaaaaaab",
+  "collection": "typ",
+  "action": "create",
+  "data": {
+    "kind": "link_type",
+    "id": "jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents",
+    "name": "contents",
+    "description": "containment relationship between a container location and its contents",
+    "left_role": "container",
+    "right_role": "content",
+    "left_to_right_label": "contains",
+    "right_to_left_label": "contained_by",
+    "allowed_left_collections": ["loc"],
+    "allowed_right_collections": ["loc", "ent"]
+  }
+}

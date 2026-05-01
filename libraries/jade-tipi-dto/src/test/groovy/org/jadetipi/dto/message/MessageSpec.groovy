@@ -31,7 +31,9 @@ class MessageSpec extends Specification {
             '/example/message/07-assign-property-value-text.json',
             '/example/message/08-assign-property-value-number.json',
             '/example/message/09-commit-transaction.json',
-            '/example/message/10-create-location.json'
+            '/example/message/10-create-location.json',
+            '/example/message/11-create-contents-type.json',
+            '/example/message/12-create-contents-link-plate-sample.json'
     ]
 
     private static String readResource(String path) {
@@ -295,5 +297,55 @@ class MessageSpec extends Specification {
         expect:
         a == b
         a.hashCode() == b.hashCode()
+    }
+
+    def "contents typ example declares the canonical link-type facts"() {
+        given:
+        String json = readResource('/example/message/11-create-contents-type.json')
+
+        when:
+        Message message = JsonMapper.fromJson(json, Message)
+
+        then:
+        message.collection() == Collection.TYPE
+        message.action() == Action.CREATE
+
+        and:
+        Map data = message.data()
+        data.kind == 'link_type'
+        data.id == 'jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents'
+        data.name == 'contents'
+        data.left_role == 'container'
+        data.right_role == 'content'
+        data.left_to_right_label == 'contains'
+        data.right_to_left_label == 'contained_by'
+        data.allowed_left_collections == ['loc']
+        data.allowed_right_collections == ['loc', 'ent']
+    }
+
+    def "contents lnk example references the contents type and carries a position property"() {
+        given:
+        String json = readResource('/example/message/12-create-contents-link-plate-sample.json')
+
+        when:
+        Message message = JsonMapper.fromJson(json, Message)
+
+        then:
+        message.collection() == Collection.LINK
+        message.action() == Action.CREATE
+
+        and:
+        Map data = message.data()
+        data.id.endsWith('~lnk~plate_b1_sample_x1')
+        data.type_id.endsWith('~typ~contents')
+        data.left.endsWith('~loc~plate_b1')
+        data.right.endsWith('~ent~sample_x1')
+
+        and:
+        Map position = data.properties.position
+        position.kind == 'plate_well'
+        position.label == 'A1'
+        position.row == 'A'
+        position.column == 1
     }
 }
