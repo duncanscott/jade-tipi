@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
@@ -10,11 +10,22 @@ New product direction is recorded in `DIRECTION.md`: add a first-class `loc` col
 
 ## Active Task
 
-- `TASK-011 - Plan contents location HTTP read adapter` is READY_FOR_PREWORK and assigned to claude-1.
+- `TASK-011 - Plan contents location HTTP read adapter` is READY_FOR_IMPLEMENTATION and assigned to claude-1.
 
 ## Scope Expansion
 
-Pre-work is authorized for `TASK-011`. Use `docs/orchestrator/tasks/TASK-011-contents-location-http-read-adapter-prework.md` as the task-specific source of truth and record the proposal in `docs/agents/claude-1-next-step.md`. Do not implement until the director reviews the pre-work and moves the task to `READY_FOR_IMPLEMENTATION`.
+Implementation is authorized for `TASK-011`. Use `docs/orchestrator/tasks/TASK-011-contents-location-http-read-adapter-prework.md` as the task-specific source of truth and record implementation outcomes in `docs/agents/claude-1-changes.md`.
+
+## TASK-011 Director Pre-work Review
+
+- `TASK-011` pre-work is accepted on 2026-05-01. Scope check passed: claude-1 changed only `docs/agents/claude-1-next-step.md`, inside the developer-owned pre-work paths.
+- Implement one thin WebFlux read adapter over `ContentsLinkReadService`: `GET /api/contents/by-container/{id}` delegates to `findContents(id)` and `GET /api/contents/by-content/{id}` delegates to `findLocations(id)`.
+- Return `ContentsLinkRecord` directly as a flat JSON array. Empty results are HTTP 200 with `[]`; blank or whitespace-only ids should flow through service `Assert.hasText(...)` and `GlobalExceptionHandler` as 400 `ErrorResponse`.
+- Keep `@AuthenticationPrincipal Jwt jwt` on both controller methods for parity with `CommittedTransactionReadController`, but do not add controller-side authorization/scoping policy or security config changes.
+- Add focused pure `WebTestClient.bindToController` coverage for route binding, delegation, JSON serialization, service-order preservation, empty-array behavior, blank-id 400 handling, and a reflection assertion that the controller has only `ContentsLinkReadService` as a constructor collaborator.
+- Do not add an integration test, response envelope, pagination policy, controller DTO, endpoint joins to `loc`/`ent`, Mongo/materializer/write-side collaborators, service query semantic changes, schema/example/build/Docker/frontend changes, or semantic write-time validation.
+- Optional doc scope: append a short HTTP-route paragraph to `docs/architecture/kafka-transaction-message-vocabulary.md` if it stays tightly aligned with the existing "Reading `contents` Links" section.
+- Required verification after implementation: `./gradlew :jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`, `./gradlew :jade-tipi:test --tests '*ContentsLinkReadControllerSpec*'`, and `./gradlew :jade-tipi:test`. If Mongo-backed tests fail because Mongo is unavailable, use `docker compose -f docker/docker-compose.yml --profile mongodb up -d` and report setup/tooling blockers separately from product failures.
 
 ## TASK-010 Director Review
 

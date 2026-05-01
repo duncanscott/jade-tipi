@@ -2,7 +2,7 @@
 
 ID: TASK-011
 TYPE: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 OWNED_PATHS:
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/controller/
@@ -70,5 +70,43 @@ DEPENDENCIES:
   service-level coverage.
 
 LATEST_REPORT:
-Created by director on 2026-05-01 after accepting `TASK-010`. This is the next
-bounded location-modeling unit within the current project goal.
+Director pre-work review passed on 2026-05-01. Scope check passed: claude-1's
+latest pre-work changed only `docs/agents/claude-1-next-step.md`, inside the
+developer-owned pre-work paths. Implement the default proposal from the pre-work:
+add one thin `ContentsLinkReadController` under `/api/contents` with
+`GET /api/contents/by-container/{id}` delegating to
+`ContentsLinkReadService.findContents(id)` and
+`GET /api/contents/by-content/{id}` delegating to
+`ContentsLinkReadService.findLocations(id)`.
+
+Return `Flux<ContentsLinkRecord>` directly as a flat JSON array. Empty service
+results must be HTTP 200 with `[]`; blank or whitespace-only ids should rely on
+the service `Assert.hasText(...)` plus `GlobalExceptionHandler` to return 400
+`ErrorResponse`. Keep `@AuthenticationPrincipal Jwt jwt` for parity with the
+existing authenticated read controller, but do not add controller-side
+authorization/scoping policy.
+
+Add focused pure WebFlux controller coverage modeled on
+`CommittedTransactionReadControllerSpec`: route binding, service delegation in
+both directions, JSON serialization including nested `properties` and
+`provenance`, service-order preservation, empty-array behavior, blank-id 400 via
+the real global handler, and a reflection/no-collaborator assertion proving the
+controller constructor takes only `ContentsLinkReadService`. Do not add an
+integration test in this task.
+
+Implementation may optionally append a short HTTP-route paragraph to
+`docs/architecture/kafka-transaction-message-vocabulary.md`; do not add a new
+HTTP DTO unless implementation reveals a concrete serialization problem.
+Preserve all out-of-scope boundaries: no service query semantic changes, no
+Mongo/materializer/write-side collaborators in the controller, no joins to
+`loc` or `ent`, no schema/example/build/Docker/security/frontend changes, no
+pagination policy, and no semantic write-time validation.
+
+Required verification after implementation:
+`./gradlew :jade-tipi:compileGroovy`,
+`./gradlew :jade-tipi:compileTestGroovy`,
+`./gradlew :jade-tipi:test --tests '*ContentsLinkReadControllerSpec*'`, and
+`./gradlew :jade-tipi:test`. If Mongo-backed tests fail because Mongo is
+unavailable, use the project-documented setup command
+`docker compose -f docker/docker-compose.yml --profile mongodb up -d` and report
+setup/tooling blockers separately from product failures.
