@@ -3,7 +3,7 @@
 ID: TASK-015
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-014
@@ -98,4 +98,30 @@ report the project-documented setup command
 blocked command/error rather than treating setup as a product blocker.
 
 LATEST_REPORT:
-Created on 2026-05-01 from accepted `TASK-014` implementation review.
+Director pre-work review accepted on 2026-05-01. Scope check passed:
+claude-1's latest pre-work commit changed only
+`docs/agents/claude-1-next-step.md`, inside the base developer-owned paths.
+The implementation plan is clear and matches the active task source of truth:
+query canonical `contents` link types from root-shaped `typ` documents using
+`properties.kind == "link_type"` and `properties.name == "contents"`; keep
+`lnk` reads on top-level `type_id`, `left`, `right`, and `properties`; map
+`ContentsLinkRecord.provenance` from `_head.provenance`.
+
+Director decisions for implementation: include the short explicit legacy
+fallback from `_head.provenance` to top-level `_jt_provenance`, with focused
+coverage for canonical provenance, fallback provenance, and missing
+provenance. Keep architecture-doc edits scoped to the "Reading `contents`
+Links" section for this task; defer broad materialization-section currency
+work to a later doc follow-up unless the narrow read-section edit cannot be
+made coherent. No production controller change is expected; update controller
+serialization expectations only if the existing spec data needs refresh.
+
+Required implementation coverage remains the focused service assertions listed
+above: root-shaped `typ` query criteria, unchanged `lnk` row query/mapping,
+`_head.provenance` mapping, legacy fallback, empty-result behavior, blank-id
+behavior, ordering, unresolved endpoint pass-through, and no writes. Required
+verification remains the Gradle command list in this task file. If local
+tooling blocks verification, report the documented setup command
+`docker compose -f docker/docker-compose.yml --profile mongodb up -d`,
+`./gradlew --stop` for stale Gradle daemons, and the exact blocked command and
+error rather than treating setup as a product blocker.
