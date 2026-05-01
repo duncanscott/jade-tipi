@@ -6,6 +6,8 @@ STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 SOURCE_TASKS:
   - TASK-011
+NEXT_TASK:
+  - TASK-013
 OWNED_PATHS:
   - jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/
   - jade-tipi/src/integrationTest/resources/
@@ -76,6 +78,15 @@ DEPENDENCIES:
   materialization, the contents read service, and the HTTP adapter.
 
 LATEST_REPORT:
+Director pause on 2026-05-01:
+- Do not implement `TASK-012` while `TASK-013` is active. Product direction now
+  says materialized MongoDB documents should move toward a canonical
+  root-document contract rather than hardening the current copied-data
+  projection shape from `TASK-009`.
+- `TASK-013` is a research/design task that pauses this source task and should
+  define the materialized root document shape before this integration coverage
+  is resumed, rewritten, or replaced.
+
 Director pre-work review accepted on 2026-05-01. Scope check passed:
 claude-1 changed only `docs/agents/claude-1-next-step.md`, inside the
 developer-owned pre-work paths. Implement the narrow opt-in integration spec

@@ -11,12 +11,15 @@ Report file: docs/agents/codex-1-changes.md
 
 ## Current Assignment
 
-- Active task: `TASK-001 - Restore DTO units test baseline`.
-- Current phase: accepted. Do not continue implementation for `TASK-001`;
-  wait for new director instructions before taking another task.
-- Use `docs/orchestrator/tasks/TASK-001-restore-dto-units-test-baseline.md` as
-  the task-specific source of truth for implementation paths and acceptance
-  criteria.
+- Active task: `TASK-013 - Define materialized root document contract`.
+- Current phase: pre-work. Read `DIRECTIVES.md` and the task file, then propose
+  the concrete design plan for the canonical materialized root document
+  contract. This is a research/design task: do not implement production code or
+  tests.
+- Record pre-work in `docs/agents/codex-1-next-step.md`.
+- Use `docs/orchestrator/tasks/TASK-013-materialized-root-document-contract.md`
+  as the task-specific source of truth for source inspection, owned paths, and
+  acceptance criteria.
 
 ## Owned Paths
 

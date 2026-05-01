@@ -1,23 +1,65 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
-The active bounded unit is `TASK-012`: plan opt-in end-to-end integration coverage for the accepted contents read path, proving canonical location/type/link messages can flow through Kafka ingestion, committed materialization, and the `GET /api/contents/...` HTTP read routes without changing product semantics.
+The active bounded unit is `TASK-013`: define the canonical materialized root
+document contract before additional integration work hardens the current
+provisional copied-data materializer shape.
 
-New product direction is recorded in `DIRECTION.md`: add a first-class `loc` collection for laboratory locations, keep containment relationships canonical in `lnk`, define `contents` as a typed link/class through `typ`, and model plate well coordinates as instance properties on `contents` links unless wells need independent lifecycle.
+Product direction is recorded in `DIRECTION.md`: Jade-Tipi objects are logical
+JSON objects; the first materializer should use a root-document-only physical
+shape with explicit `properties`, denormalized `links`, and reserved `_head`
+metadata; extension property/link pages remain future storage work. The current
+copied-data materializer output is provisional and should not be hardened by new
+integration coverage until the root document contract is defined.
 
 ## Active Task
 
-- `TASK-012 - Plan contents HTTP read integration coverage` is READY_FOR_IMPLEMENTATION and assigned to claude-1.
+- `TASK-013 - Define materialized root document contract` is READY_FOR_PREWORK
+  and assigned to codex-1.
+- `TASK-012 - Plan contents HTTP read integration coverage` remains prepared
+  but is paused while `TASK-013` is active.
 
 ## Scope Expansion
 
-Implementation is approved for `TASK-012`. Use `docs/orchestrator/tasks/TASK-012-contents-http-read-integration-prework.md` as the task-specific source of truth and record implementation outcomes in `docs/agents/claude-1-changes.md`.
+Pre-work is requested for `TASK-013`. Use
+`docs/orchestrator/tasks/TASK-013-materialized-root-document-contract.md` as the
+task-specific source of truth and record the pre-work response in
+`docs/agents/codex-1-next-step.md`. Do not implement code or tests in this
+task. Do not route `TASK-012` implementation until `TASK-013` is accepted and
+the director explicitly reauthorizes, rewrites, or replaces the integration
+task.
+
+## TASK-013 Pre-work Direction
+
+- Inspect `DIRECTION.md`, `docs/Jade-Tipi.md`, `docs/README.md`,
+  `docs/OVERVIEW.md`, `docs/architecture/kafka-transaction-message-vocabulary.md`,
+  canonical message examples, `message.schema.json`,
+  `CommittedTransactionMaterializer`, `ContentsLinkReadService`,
+  `ContentsLinkReadController`, and the accepted TASK-009 through TASK-012 task
+  reports.
+- Propose a concrete root document contract for materialized Jade-Tipi objects:
+  shared fields, `_head`, `type_id`, explicit `properties`, denormalized
+  `links`, provenance, and how to migrate away from `_jt_provenance`.
+- Include example root documents for `loc`, `lnk`, a `typ` link-type
+  declaration, and an ordinary `ent`.
+- Clarify map key policy, especially whether `properties` and `links` should be
+  keyed only by property/link object IDs.
+- Keep required properties, default values, extension pages, pending pages,
+  compaction, semantic validation, update/delete replay, and transaction-overlay
+  reads out of the first implementation contract unless the pre-work identifies
+  a blocking contradiction.
+- Recommend whether `TASK-012` should resume as-is, be rewritten, or be replaced
+  after this design is accepted.
 
 ## TASK-012 Director Pre-work Review
 
+- `TASK-012` implementation is paused on 2026-05-01 by active research task
+  `TASK-013`. The pre-work below remains useful context, but it must not be
+  implemented until the materialized root document contract is accepted and the
+  director explicitly reauthorizes or rewrites the integration task.
 - `TASK-012` pre-work is accepted on 2026-05-01. Scope check passed: claude-1 changed only `docs/agents/claude-1-next-step.md`, inside the developer-owned pre-work paths.
 - Implement one opt-in integration spec under `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/contents/`, using the accepted `TASK-004` Kafka integration pattern plus authenticated `WebTestClient` against a real `RANDOM_PORT` Spring context.
 - Reuse the project-documented Docker stack and the existing `JADETIPI_IT_KAFKA` opt-in flag. Keep the Kafka probe and add the proposed Keycloak readiness probe so missing services skip before Spring context load.

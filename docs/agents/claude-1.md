@@ -11,22 +11,15 @@ Report file: docs/agents/claude-1-changes.md
 
 ## Current Assignment
 
-- Active task: `TASK-012 - Plan contents HTTP read integration coverage`.
-- Current phase: pre-work. Read `DIRECTIVES.md` and the task file, then
-  propose the narrowest opt-in end-to-end integration coverage for the accepted
-  contents read path. The proposal should identify how to drive canonical
-  location/type/link messages through Kafka ingestion, committed
-  materialization, and the `GET /api/contents/...` HTTP routes; how to handle
-  Docker/Kafka/Mongo/Keycloak gating and cleanup; what assertions to add; and
-  the exact verification commands.
-  Do not implement until the director moves the task to
-  `READY_FOR_IMPLEMENTATION`.
+- Active task: none while `TASK-013` is in progress.
+- `TASK-012 - Plan contents HTTP read integration coverage` has accepted
+  pre-work but is paused. Do not implement it until the director explicitly
+  reauthorizes, rewrites, or replaces it after `TASK-013` defines the
+  materialized root document contract.
 - Record pre-work in `docs/agents/claude-1-next-step.md`; record implementation
   outcomes in `docs/agents/claude-1-changes.md` only after implementation is
   approved.
-- Use `docs/orchestrator/tasks/TASK-012-contents-http-read-integration-prework.md`
-  as the task-specific source of truth for pre-work paths and acceptance
-  criteria.
+- Use `DIRECTIVES.md` as the current source of truth.
 
 ## Owned Paths
 
