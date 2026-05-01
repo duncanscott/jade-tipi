@@ -2,7 +2,7 @@
 
 ID: TASK-010
 TYPE: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 OWNED_PATHS:
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/
@@ -73,5 +73,44 @@ DEPENDENCIES:
   `typ` link-type declarations, and `lnk` records.
 
 LATEST_REPORT:
-Created by the director on 2026-05-01 after accepting `TASK-009`. Ready for
-developer pre-work only; implementation is not yet authorized.
+Director accepted claude-1 pre-work on 2026-05-01. Scope check passed: the
+latest developer turn changed only `docs/agents/claude-1-next-step.md`, inside
+claude-1's pre-work-owned paths.
+
+Implementation is authorized with these decisions:
+- Build a Kafka-free, HTTP-free `ContentsLinkReadService` over materialized
+  `typ` and `lnk`; do not add a controller in this task.
+- Support both directions in the first unit: `findContents(containerId)` for
+  `contents` links whose `left` is the container, and `findLocations(objectId)`
+  for `contents` links whose `right` is the object.
+- Resolve the canonical `contents` link type by querying `typ` records where
+  `kind == "link_type"` and `name == "contents"`, then filter `lnk.type_id`
+  with all matching type IDs. Do not hardcode a type ID and do not require the
+  caller to pass one.
+- Return one small service value object per matching `lnk`, preserving the link
+  id, `type_id`, `left`, `right`, `properties`, and `_jt_provenance` values
+  verbatim. Sort results by `_id` ascending and do not deduplicate or group.
+- Do not join endpoints to `loc` or `ent` in this task. Missing containers,
+  missing objects, unresolved endpoints, absent `contents` declarations, and no
+  matching links should produce an empty result or the verbatim unresolved link
+  behavior specified in the pre-work, not a product error.
+- Tolerate multiple `contents` type declarations by matching all declarations.
+  Duplicate/conflicting materialized links are already a materializer concern;
+  the reader returns the materialized `lnk` rows it finds.
+- Add focused pure Spock service coverage and the small architecture-doc
+  "Reading `contents` links" paragraph proposed in pre-work. Do not add an
+  integration test unless implementation shows the unit boundary is not
+  verifiable.
+- Keep the existing out-of-scope boundaries: no transaction persistence,
+  committed snapshot, materializer, Kafka, DTO schema/example, build, Docker,
+  security, HTTP submission, UI, update/delete replay, backfill, authorization,
+  semantic write validation, or `parent_location_id` changes.
+
+Required verification after implementation:
+`./gradlew :jade-tipi:compileGroovy`,
+`./gradlew :jade-tipi:compileTestGroovy`,
+`./gradlew :jade-tipi:test --tests '*ContentsLinkReadServiceSpec*'`, and
+`./gradlew :jade-tipi:test`. If Mongo-backed tests fail because Mongo is not
+running, use the documented setup command
+`docker compose -f docker/docker-compose.yml --profile mongodb up -d` and
+report any setup/tooling blocker separately from product failures.

@@ -1,22 +1,37 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
-The active bounded unit is `TASK-010`: plan the smallest read/query path over the materialized `loc`, `typ`, and `lnk` collections so the backend can answer the `DIRECTION.md` contents questions: "what are the contents of this plate/location?" and "where is this sample or object located?"
+The active bounded unit is `TASK-010`: implement the smallest read/query path over the materialized `loc`, `typ`, and `lnk` collections so the backend can answer the `DIRECTION.md` contents questions: "what are the contents of this plate/location?" and "where is this sample or object located?"
 
 New product direction is recorded in `DIRECTION.md`: add a first-class `loc` collection for laboratory locations, keep containment relationships canonical in `lnk`, define `contents` as a typed link/class through `typ`, and model plate well coordinates as instance properties on `contents` links unless wells need independent lifecycle.
 
 ## Active Task
 
-- `TASK-010 - Plan contents location query reads` is READY_FOR_PREWORK and assigned to claude-1.
+- `TASK-010 - Plan contents location query reads` is READY_FOR_IMPLEMENTATION and assigned to claude-1.
 
 ## Scope Expansion
 
-Pre-work is authorized for `TASK-010` in `docs/agents/claude-1-next-step.md`. Use `docs/orchestrator/tasks/TASK-010-contents-location-query-read-prework.md` as the task-specific source of truth. Implementation is not authorized until director review moves the task to `READY_FOR_IMPLEMENTATION`.
+Implementation is authorized for `TASK-010`. Use `docs/orchestrator/tasks/TASK-010-contents-location-query-read-prework.md` as the task-specific source of truth and record implementation outcomes in `docs/agents/claude-1-changes.md`.
+
+## TASK-010 Director Pre-work Review
+
+- `TASK-010` pre-work is accepted on 2026-05-01. Scope check passed: claude-1 changed only `docs/agents/claude-1-next-step.md`, inside the developer-owned pre-work paths.
+- Implement a Kafka-free, HTTP-free `ContentsLinkReadService` over materialized `typ` and `lnk`; do not add a controller in this task.
+- Support both first-query directions: `findContents(containerId)` for `contents` links whose `left` is the container, and `findLocations(objectId)` for `contents` links whose `right` is the object.
+- Resolve `contents` by querying `typ` for `kind == "link_type"` and `name == "contents"`, then filter `lnk.type_id` by all matching type IDs. Do not hardcode a type ID, require caller-supplied type IDs, or add write-time semantic validation.
+- Return one service value object per matching `lnk`, preserving link id, `type_id`, `left`, `right`, `properties`, and `_jt_provenance` verbatim. Sort by `_id` ascending; do not deduplicate, group, or silently hide duplicate materialized links.
+- Do not join endpoints to `loc` or `ent` in this task. Missing containers/objects, absent `contents` declarations, no matching links, and unresolved endpoint strings should follow the empty/verbatim behavior from the accepted pre-work.
+- Add focused pure Spock service coverage and a short architecture-doc paragraph for reading `contents` links. Keep integration coverage deferred unless the service boundary proves unverifiable.
+- Required verification after implementation: `./gradlew :jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`, `./gradlew :jade-tipi:test --tests '*ContentsLinkReadServiceSpec*'`, and `./gradlew :jade-tipi:test`. If Mongo-backed tests fail because Mongo is unavailable, use `docker compose -f docker/docker-compose.yml --profile mongodb up -d` and report setup/tooling blockers separately from product failures.
+- Preserve out-of-scope boundaries: no transaction persistence, committed snapshot, materializer, Kafka listener/topic, DTO schema/example, build, Docker Compose, security, HTTP submission, UI, update/delete replay, backfill, authorization, semantic write validation, or `parent_location_id` changes.
 
 ## TASK-010 Pre-work Direction
+
+Historical context only; implementation is now authorized by the accepted
+director decisions above.
 
 - Inspect `DIRECTION.md`, `docs/architecture/kafka-transaction-message-vocabulary.md`, `CommittedTransactionMaterializer`, `CommittedTransactionReadService`, materializer tests, existing service/controller tests, and Mongo query helper patterns.
 - Propose the narrowest backend boundary for reading materialized contents links. Prefer a Kafka-free service over `loc`, `typ`, and `lnk`; include a thin HTTP adapter only if source inspection shows it is necessary for useful verification.
