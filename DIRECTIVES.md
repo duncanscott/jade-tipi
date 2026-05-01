@@ -1,12 +1,13 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
-The active bounded unit is `TASK-013`: define the canonical materialized root
-document contract before additional integration work hardens the current
-provisional copied-data materializer shape.
+The active bounded implementation unit is `TASK-014`: update
+`CommittedTransactionMaterializer` so currently supported committed
+`loc + create`, `typ link_type + create`, and `lnk + create` messages write the
+accepted root-document shape from `TASK-013`.
 
 Product direction is recorded in `DIRECTION.md`: Jade-Tipi objects are logical
 JSON objects; the first materializer should use a root-document-only physical
@@ -17,20 +18,53 @@ integration coverage until the root document contract is defined.
 
 ## Active Task
 
-- `TASK-013 - Define materialized root document contract` is READY_FOR_PREWORK
-  and assigned to codex-1.
+- `TASK-013 - Define materialized root document contract` is accepted.
+- `TASK-014 - Implement root-shaped materialized documents` is
+  READY_FOR_IMPLEMENTATION and assigned to claude-1.
 - `TASK-012 - Plan contents HTTP read integration coverage` remains prepared
-  but is paused while `TASK-013` is active.
+  but is paused while `TASK-014` is active. Do not implement `TASK-012` as-is.
 
 ## Scope Expansion
 
-Pre-work is requested for `TASK-013`. Use
-`docs/orchestrator/tasks/TASK-013-materialized-root-document-contract.md` as the
-task-specific source of truth and record the pre-work response in
-`docs/agents/codex-1-next-step.md`. Do not implement code or tests in this
-task. Do not route `TASK-012` implementation until `TASK-013` is accepted and
-the director explicitly reauthorizes, rewrites, or replaces the integration
+Implementation is authorized for `TASK-014`. Use
+`docs/orchestrator/tasks/TASK-014-materialized-root-document-materializer.md`
+as the task-specific source of truth. Do not route `TASK-012` implementation
+until the root-shaped materializer and contents read-service follow-up are
+complete and the director explicitly rewrites or replaces the integration
 task.
+
+## TASK-014 Implementation Direction
+
+- Update only `CommittedTransactionMaterializer`,
+  `CommittedTransactionMaterializerSpec`, the `TASK-014` task file, and the
+  assigned developer report.
+- Preserve the existing materializer boundary: only `loc + create`,
+  `lnk + create`, and `typ + create` when `data.kind == "link_type"` are
+  materialized.
+- Write root-shaped documents with `_id`, `id`, `collection`, top-level
+  `type_id`, `properties`, `links`, and `_head`.
+- Move provenance from `_jt_provenance` to `_head.provenance`, including
+  `txn_id`, `commit_id`, `msg_uuid`, source `collection`, source `action`,
+  `committed_at`, and `materialized_at`.
+- For this task, write `links: {}` for every supported root. Do not create
+  endpoint stubs and do not maintain endpoint `links` projections yet.
+- Keep inline property keys for the current accepted payload examples. Do not
+  require property IDs for `name`, link-type declaration facts, or
+  `properties.position`.
+- Preserve skip, duplicate, conflict, and non-duplicate insert failure behavior.
+  Duplicate comparison should ignore only `_head.provenance.materialized_at`.
+- Do not update contents read services/controllers, integration tests, DTO
+  schemas, canonical examples, Docker/Gradle files, Kafka listener behavior,
+  security, frontend, endpoint joins, semantic reference validation, endpoint
+  projection maintenance, extension pages, required/default properties, or
+  `TASK-012`.
+- Required verification: `./gradlew :jade-tipi:compileGroovy`,
+  `./gradlew :jade-tipi:compileTestGroovy`,
+  `./gradlew :jade-tipi:test --tests '*CommittedTransactionMaterializerSpec*'`,
+  and `./gradlew :jade-tipi:test`. If local setup blocks verification, report
+  the documented setup command
+  `docker compose -f docker/docker-compose.yml --profile mongodb up -d` and the
+  exact blocked command/error.
 
 ## TASK-013 Pre-work Direction
 
@@ -54,12 +88,36 @@ task.
 - Recommend whether `TASK-012` should resume as-is, be rewritten, or be replaced
   after this design is accepted.
 
+## TASK-013 Director Pre-work Review
+
+- `TASK-013` pre-work is accepted on 2026-05-01. Scope check passed: codex-1
+  changed only `docs/agents/codex-1-next-step.md`, inside the developer-owned
+  pre-work paths.
+- Source-reference check passed. The pre-work aligns with `DIRECTION.md` and
+  `docs/architecture/kafka-transaction-message-vocabulary.md`: root documents
+  should carry identity, `collection`, `type_id`, explicit `properties`,
+  denormalized `links`, and `_head`; the current `_jt_provenance` copied-data
+  materializer shape is provisional; `contents` semantics live in `typ`, while
+  `lnk` remains canonical for relationships.
+- The accepted contract is root-document-only for the first implementation:
+  `_id == id == data.id`, top-level `collection`, top-level `type_id`,
+  `properties`, `links`, and `_head.provenance`.
+- Director decision: do not create endpoint stubs and do not populate endpoint
+  `links` projections in the first materializer update. Write canonical root
+  documents for supported `loc`, `typ link_type`, and `lnk` messages with
+  `links: {}`. Endpoint projection maintenance waits for a later task.
+- Director decision: transitional inline property keys are acceptable for the
+  current accepted examples because they do not carry property IDs for `name`,
+  link-type declaration facts, or `properties.position`.
+- `TASK-012` must not resume as-is. It should be rewritten or replaced after
+  root-shaped materialization and the contents read service are updated.
+
 ## TASK-012 Director Pre-work Review
 
-- `TASK-012` implementation is paused on 2026-05-01 by active research task
-  `TASK-013`. The pre-work below remains useful context, but it must not be
-  implemented until the materialized root document contract is accepted and the
-  director explicitly reauthorizes or rewrites the integration task.
+- `TASK-012` implementation is paused on 2026-05-01 by active implementation
+  task `TASK-014`. The pre-work below remains historical context, but it must
+  not be implemented as-is. Rewrite or replace this integration task after the
+  root-shaped materializer and contents read service are updated.
 - `TASK-012` pre-work is accepted on 2026-05-01. Scope check passed: claude-1 changed only `docs/agents/claude-1-next-step.md`, inside the developer-owned pre-work paths.
 - Implement one opt-in integration spec under `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/contents/`, using the accepted `TASK-004` Kafka integration pattern plus authenticated `WebTestClient` against a real `RANDOM_PORT` Spring context.
 - Reuse the project-documented Docker stack and the existing `JADETIPI_IT_KAFKA` opt-in flag. Keep the Kafka probe and add the proposed Keycloak readiness probe so missing services skip before Spring context load.

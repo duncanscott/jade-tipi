@@ -2,8 +2,8 @@
 
 ID: TASK-013
 TYPE: research
-ARTIFACT_INTENT: design-spec
-STATUS: READY_FOR_PREWORK
+ARTIFACT_INTENT: research-report
+STATUS: ACCEPTED
 OWNER: codex-1
 SOURCE_TASK:
   - TASK-012
@@ -85,6 +85,50 @@ DEPENDENCIES:
 - `TASK-012` has accepted pre-work but is paused by this research task.
 
 LATEST_REPORT:
-Created on 2026-05-01 after product-direction discussion clarified that
-materialized Mongo documents should be canonical root documents, not simple
-copies of transaction message payloads.
+Director pre-work review accepted on 2026-05-01.
+
+Scope check:
+- codex-1 changed only `docs/agents/codex-1-next-step.md`, which is inside
+  the developer-owned pre-work paths.
+
+Accepted contract:
+- Materialized domain roots should use `_id`, `id`, `collection`, `type_id`,
+  `properties`, `links`, and reserved `_head` metadata. `_head.provenance`
+  replaces new writes of `_jt_provenance`; readers may carry a short fallback
+  while the copied-data shape is removed.
+- `type_id` is top-level on every root. It may be `null` only when the current
+  create payload does not provide a type, such as the accepted `loc` example
+  and the `typ` link-type declaration.
+- `properties` contains explicit payload fields only. Do not synthesize
+  required/default values.
+- `lnk` roots remain canonical for relationships. Endpoint `links` projections
+  are denormalized rebuildable read accelerators, not the source of truth.
+- Initial `links` map keys should be canonical `lnk` object IDs. Initial
+  inline payload properties may keep their existing inline keys, because the
+  current accepted create examples do not carry property IDs for `name`,
+  link-type declaration facts, or `properties.position`. Later `ppy`
+  assignment materialization should use `property_id` as the map key.
+- Do not implement semantic reference validation, endpoint joins, extension
+  pages, pending pages, background compaction, update/delete replay,
+  transaction-overlay reads, response envelopes, pagination, authorization
+  policy, plate-shaped projections, required properties, or default values in
+  the first root-document implementation.
+
+Director decisions on open questions:
+- The first implementation task should not create endpoint stubs and should not
+  maintain endpoint `links` projections yet. It should write canonical
+  root-shaped `loc`, `typ link_type`, and `lnk` documents with `links: {}`.
+  Endpoint projection maintenance should be a later task after `ent`
+  materialization and missing-reference policy are designed.
+- The transitional inline property-key policy is accepted for the current
+  canonical examples. Do not block the materializer update on a vocabulary
+  change to carry property IDs.
+
+Handoff:
+- `TASK-014` is the next implementation unit: update
+  `CommittedTransactionMaterializer` and its unit coverage to write the
+  accepted root-shaped documents for currently supported `loc + create`,
+  `typ link_type + create`, and `lnk + create` messages.
+- Do not resume `TASK-012` as-is. Rewrite or replace that integration task
+  after the materializer and contents read service understand the accepted
+  root shape.
