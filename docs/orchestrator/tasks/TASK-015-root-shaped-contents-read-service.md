@@ -3,10 +3,12 @@
 ID: TASK-015
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: ACCEPTED
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-014
+NEXT_TASK:
+  - TASK-016
 PAUSE_SOURCE_TASKS: true
 OWNED_PATHS:
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/ContentsLinkReadService.groovy
@@ -125,3 +127,52 @@ tooling blocks verification, report the documented setup command
 `docker compose -f docker/docker-compose.yml --profile mongodb up -d`,
 `./gradlew --stop` for stale Gradle daemons, and the exact blocked command and
 error rather than treating setup as a product blocker.
+
+Director implementation review accepted on 2026-05-01:
+- Accepted claude-1 implementation commit `c0a926c`.
+- Scope check passed against claude-1's base assignment plus the explicit
+  `TASK-015` and `DIRECTIVES.md` implementation expansion. The merge changed
+  only `docs/agents/claude-1-changes.md`,
+  `docs/architecture/kafka-transaction-message-vocabulary.md`,
+  `ContentsLinkReadService.groovy`, `ContentsLinkRecord.groovy`, and
+  `ContentsLinkReadServiceSpec.groovy`. The code/doc edits are outside
+  claude-1's base report-only paths but inside the active task's owned
+  implementation paths; no `TASK-012` integration implementation was included.
+- Acceptance criteria are satisfied. `ContentsLinkReadService` resolves
+  canonical `contents` link-type ids from root-shaped `typ` documents using
+  `properties.kind == "link_type"` and `properties.name == "contents"`.
+  `lnk` reads still use top-level `type_id`, `left`, `right`, and
+  `properties`, preserve `_id` ASC sorting, and do not join endpoints to
+  `loc` or `ent`.
+- `ContentsLinkRecord.provenance` is now populated from `_head.provenance`,
+  with a narrow explicit fallback to legacy top-level `_jt_provenance` when
+  the canonical location is absent. Missing provenance still maps to `null`.
+- Focused service coverage was updated for root-shaped `typ` query criteria,
+  unchanged `lnk` query/mapping, `_head.provenance` mapping, legacy fallback,
+  missing provenance, empty-result behavior, blank-id behavior, ordering,
+  unresolved endpoint pass-through, and no Mongo writes. Controller production
+  code and controller spec stayed unchanged because the HTTP routes and JSON
+  wire shape did not change.
+- The architecture doc edit stayed scoped to the "Reading `contents` Links"
+  section. The older materialization section remains stale by design and is
+  left for a separate doc follow-up.
+- Director local verification was blocked before product compilation by
+  sandbox/tooling permissions, not by an observed product failure:
+  `./gradlew :jade-tipi:compileGroovy` failed opening the Gradle wrapper cache
+  lock at
+  `/Users/duncanscott/.gradle/wrapper/dists/gradle-8.14.3-bin/.../gradle-8.14.3-bin.zip.lck`
+  with `Operation not permitted`. In a normal developer shell, use the
+  project-documented setup command
+  `docker compose -f docker/docker-compose.yml --profile mongodb up -d` if the
+  local stack is not already running, run `./gradlew --stop` when stale Gradle
+  daemons are implicated, then run the required Gradle verification commands.
+- Credited developer verification: claude-1 reported the Docker stack healthy
+  and `./gradlew :jade-tipi:compileGroovy`, `./gradlew
+  :jade-tipi:compileTestGroovy`, `./gradlew :jade-tipi:test --tests
+  '*ContentsLinkReadServiceSpec*'`, `./gradlew :jade-tipi:test --tests
+  '*ContentsLinkReadControllerSpec*'`, and `./gradlew :jade-tipi:test` all
+  passing, with the focused service spec at 20 tests, the controller spec at
+  10 tests, and the full unit suite at 113 tests.
+- Follow-up: `TASK-016` was created for pre-work on rewriting the paused
+  contents HTTP integration coverage around the accepted root-shaped
+  materializer and read service.

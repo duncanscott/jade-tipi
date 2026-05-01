@@ -11,11 +11,12 @@ Report file: docs/agents/claude-1-changes.md
 
 ## Current Assignment
 
-- Active task: none while `TASK-013` is in progress.
+- Active task: `TASK-016 - Plan root-shaped contents HTTP integration
+  coverage`, currently `READY_FOR_PREWORK`.
 - `TASK-012 - Plan contents HTTP read integration coverage` has accepted
-  pre-work but is paused. Do not implement it until the director explicitly
-  reauthorizes, rewrites, or replaces it after `TASK-013` defines the
-  materialized root document contract.
+  pre-work but remains paused as historical context. Do not implement it
+  as-is; use `TASK-016` and `DIRECTIVES.md` as the current source of truth for
+  the rewritten root-shaped integration task.
 - Record pre-work in `docs/agents/claude-1-next-step.md`; record implementation
   outcomes in `docs/agents/claude-1-changes.md` only after implementation is
   approved.

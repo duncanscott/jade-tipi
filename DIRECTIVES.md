@@ -4,18 +4,18 @@ SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
-The active bounded unit is `TASK-015`: plan the smallest update to
-`ContentsLinkReadService`, `ContentsLinkRecord`, and focused HTTP/service
-assertions so the contents read path understands the root-shaped materialized
-documents accepted in `TASK-014`.
+The active bounded unit is `TASK-016`: pre-work for the smallest opt-in
+contents HTTP integration coverage that uses the accepted root-shaped
+materializer and contents read service.
 
 Product direction is recorded in `DIRECTION.md`: Jade-Tipi objects are logical
 JSON objects; the first materializer should use a root-document-only physical
 shape with explicit `properties`, denormalized `links`, and reserved `_head`
 metadata; extension property/link pages remain future storage work. New
-materialized writes now use the root-shaped contract, and readers should be
-moved to `_head.provenance` and root `properties` before any contents HTTP
-integration coverage is resumed.
+materialized writes now use the root-shaped contract, and the contents read
+service now resolves `typ.properties.kind/name` and `_head.provenance`. The
+paused contents HTTP integration coverage must be rewritten around this
+accepted root-shaped path before implementation resumes.
 
 ## Active Task
 
@@ -23,49 +23,91 @@ integration coverage is resumed.
 - `TASK-014 - Implement root-shaped materialized documents` is
   accepted.
 - `TASK-015 - Update contents read service for root-shaped documents` is
+  accepted.
+- `TASK-016 - Plan root-shaped contents HTTP integration coverage` is
   READY_FOR_PREWORK and assigned to claude-1.
 - `TASK-012 - Plan contents HTTP read integration coverage` remains prepared
   but is paused. Do not implement `TASK-012` as-is.
 
 ## Scope Expansion
 
-Pre-work is requested for `TASK-015`. Use
-`docs/orchestrator/tasks/TASK-015-root-shaped-contents-read-service.md` as the
-task-specific source of truth. Do not route `TASK-012` implementation until
-the root-shaped materializer and contents read-service follow-up are accepted
-and the director explicitly rewrites or replaces the integration task.
+Pre-work is requested for `TASK-016`. Use
+`docs/orchestrator/tasks/TASK-016-root-shaped-contents-http-integration.md` as
+the task-specific source of truth. Treat `TASK-012` as historical context only;
+do not route or implement it as-is.
 
-## TASK-015 Pre-work Direction
+## TASK-016 Pre-work Direction
 
-- Inspect `TASK-013`, accepted `TASK-014`, `CommittedTransactionMaterializer`,
-  `ContentsLinkReadService`, `ContentsLinkRecord`,
-  `ContentsLinkReadController`, their focused specs, and the "Reading
-  `contents` Links" architecture documentation.
-- Propose the smallest read-service update for root-shaped documents:
-  `typ` resolution should use `properties.kind == "link_type"` and
-  `properties.name == "contents"`; `lnk` mapping should continue to use
-  top-level `type_id`, `left`, `right`, and `properties`.
-- Propose how `ContentsLinkRecord.provenance` should read
-  `_head.provenance`. A short fallback to legacy `_jt_provenance` is allowed if
-  the pre-work keeps it explicit and covered.
-- Keep the existing HTTP routes and flat JSON array response shape unless
-  source inspection reveals a blocking contradiction:
-  `GET /api/contents/by-container/{id}` and
-  `GET /api/contents/by-content/{id}`.
-- Do not change materialization, Kafka listener behavior, DTO schemas,
-  canonical examples, Docker/Gradle files, security, frontend, response
-  envelopes, pagination, endpoint joins, semantic reference validation,
-  endpoint projection maintenance, extension pages, update/delete replay,
-  backfill, transaction-overlay reads, required/default properties, or
-  `TASK-012`.
+- Inspect accepted `TASK-014` and `TASK-015`, the historical `TASK-012`
+  pre-work, `TransactionMessageKafkaIngestIntegrationSpec`,
+  `KeycloakTestHelper`, existing WebTestClient integration tests, canonical
+  examples `10-create-location.json`, `11-create-contents-type.json`, and
+  `12-create-contents-link-plate-sample.json`,
+  `CommittedTransactionMaterializer`, `ContentsLinkReadService`,
+  `ContentsLinkReadController`, Docker Compose service names, and
+  integration-test Gradle wiring.
+- Propose one narrow opt-in integration spec using the project-documented
+  Docker stack and existing `JADETIPI_IT_KAFKA` flag. Use isolated per-run
+  Kafka topic/consumer group, transaction id, and materialized object ids.
+- The eventual implementation should publish one canonical transaction with
+  one container `loc`, one `typ + create` `contents` declaration, and one
+  `lnk + create` with `properties.position`; wait for committed `txn`
+  visibility and root-shaped materialized `typ`/`lnk` rows; then assert both
+  existing HTTP routes return the expected flat JSON array and an empty-result
+  request returns HTTP 200 `[]`.
+- Keep cleanup exact and local to this spec's Kafka topic, `txn` rows, and
+  materialized `loc`/`typ`/`lnk` ids. Do not require a globally clean database.
+- Do not change read service/controller/materializer semantics, Kafka listener
+  behavior, DTO schemas, canonical examples, Docker/Gradle files, security,
+  frontend, response envelopes, pagination, endpoint joins, authorization,
+  semantic validation, update/delete replay, backfill, UI/API projections, or
+  broad architecture documentation.
 - Required verification proposal should include `./gradlew
   :jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`,
-  focused `ContentsLinkReadServiceSpec` and `ContentsLinkReadControllerSpec`
-  runs, and `./gradlew :jade-tipi:test`. If local setup blocks verification,
-  report the documented setup command
-  `docker compose -f docker/docker-compose.yml --profile mongodb up -d`,
-  `./gradlew --stop` when stale Gradle daemons are implicated, and the exact
-  blocked command/error.
+  `./gradlew :jade-tipi:compileIntegrationTestGroovy`,
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*ContentsHttpReadIntegrationSpec*'`, and `./gradlew :jade-tipi:test`. If
+  local setup blocks verification, report the documented setup command
+  `docker compose -f docker/docker-compose.yml up -d`, `./gradlew --stop`
+  when stale Gradle daemons are implicated, and the exact blocked
+  command/error.
+
+## TASK-015 Director Review
+
+- `TASK-015` is accepted on 2026-05-01. Scope check passed against claude-1's
+  base assignment plus the active task expansion. The implementation changed
+  only `docs/agents/claude-1-changes.md`,
+  `docs/architecture/kafka-transaction-message-vocabulary.md`,
+  `ContentsLinkReadService.groovy`, `ContentsLinkRecord.groovy`, and
+  `ContentsLinkReadServiceSpec.groovy`.
+- Required behavior is present: canonical `contents` type ids are resolved from
+  root-shaped `typ` documents using `properties.kind == "link_type"` and
+  `properties.name == "contents"`, while `lnk` reads still use top-level
+  `type_id`, `left`, `right`, and `properties`.
+- Provenance now reads `_head.provenance`, with a narrow covered fallback to
+  legacy top-level `_jt_provenance` when the canonical location is absent.
+  Missing provenance still maps to `null`.
+- Existing HTTP route shape and flat JSON response shape are preserved. No
+  controller production change, materializer change, Kafka listener change,
+  integration coverage, semantic validation, endpoint join, response envelope,
+  pagination, Docker/Gradle, security, frontend, or `TASK-012` implementation
+  was added.
+- Required service assertions are present for root-shaped `typ` criteria,
+  unchanged `lnk` query/mapping, `_head.provenance`, legacy fallback, missing
+  provenance, empty-result behavior, blank-id behavior, ordering, unresolved
+  endpoint pass-through, and no writes.
+- Director local verification was blocked before product compilation by
+  sandbox/tooling permissions, not by an observed product failure:
+  `./gradlew :jade-tipi:compileGroovy` failed opening the Gradle wrapper cache
+  lock under `/Users/duncanscott/.gradle` with `Operation not permitted`. In a
+  normal developer shell, use
+  `docker compose -f docker/docker-compose.yml --profile mongodb up -d` when
+  the local stack is needed, `./gradlew --stop` when stale Gradle daemons are
+  implicated, then run the remaining `TASK-015` Gradle verification commands.
+- Credited developer verification: claude-1 reported the required compile,
+  focused service/controller spec, and full unit suite commands passing.
+- Follow-up: `TASK-016` was created for pre-work on root-shaped contents HTTP
+  integration coverage. Keep `TASK-012` paused as historical context.
 
 ## TASK-014 Director Review
 
