@@ -2,8 +2,10 @@
 
 ID: TASK-010
 TYPE: implementation
-STATUS: READY_FOR_REVIEW
+STATUS: ACCEPTED
 OWNER: claude-1
+NEXT_TASK:
+  - TASK-011
 OWNED_PATHS:
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/controller/
@@ -73,6 +75,66 @@ DEPENDENCIES:
   `typ` link-type declarations, and `lnk` records.
 
 LATEST_REPORT:
+Director implementation review on 2026-05-01:
+- Accepted claude-1 implementation commit `aead1f3`.
+- Findings: no blocking bugs, regressions, or missing assertions found.
+- Acceptance criteria are satisfied. The implementation adds a Kafka-free,
+  HTTP-free `ContentsLinkReadService` over materialized `typ` and `lnk`,
+  with `findContents(containerId)` for `contents` links whose `left` is the
+  container and `findLocations(objectId)` for `contents` links whose `right`
+  is the object.
+- The implementation honors the TASK-010 directives. It resolves canonical
+  `contents` type ids by querying `typ` for `kind == "link_type"` and
+  `name == "contents"`, filters `lnk.type_id` with all matching ids, sorts
+  both query surfaces by `_id` ASC, returns one `ContentsLinkRecord` per
+  materialized link, and preserves link id, `type_id`, `left`, `right`,
+  `properties`, and `_jt_provenance` verbatim.
+- Missing declarations and no matching links produce empty results. Endpoint
+  strings are returned without joining to `loc` or `ent`; duplicates are not
+  deduplicated or hidden; blank inputs fail at the service boundary with
+  `IllegalArgumentException`.
+- Required assertions are present in `ContentsLinkReadServiceSpec`: forward
+  and reverse query behavior, typ criteria, lnk `$in` and endpoint criteria,
+  `_id` ASC sort objects, no-contents short-circuit without an `lnk` query,
+  no endpoint join, unresolved endpoint pass-through, missing provenance
+  pass-through, blank input rejection before Mongo access, and no write calls.
+- Scope check passed against claude-1's base assignment plus the active
+  TASK-010 expansion. Against the base report-only paths
+  (`docs/agents/claude-1.md`, `docs/agents/claude-1-next-step.md`,
+  `docs/agents/claude-1-changes.md`), only
+  `docs/agents/claude-1-changes.md` changed. The source, test, architecture
+  doc, and task-file edits are outside the base report-only paths but inside
+  the explicit TASK-010 owned-path expansion authorized by this file and
+  `DIRECTIVES.md`.
+- Out-of-scope boundaries were preserved: no controller, integration spec,
+  semantic write validation, endpoint join, materializer/read-service
+  changes, DTO/schema/example changes, Kafka listener/topic changes, build
+  changes, Docker Compose changes, security changes, `parent_location_id`,
+  update/delete replay, backfill, authorization, or UI work.
+- Director local verification was blocked before product tests by sandbox
+  tooling permissions, not by an observed product failure. The command
+  `./gradlew :jade-tipi:test --tests '*ContentsLinkReadServiceSpec*'` failed
+  opening
+  `/Users/duncanscott/.gradle/wrapper/dists/gradle-8.14.3-bin/.../gradle-8.14.3-bin.zip.lck`
+  (`Operation not permitted`). In a normal developer shell, use the
+  project-documented setup command
+  `docker compose -f docker/docker-compose.yml --profile mongodb up -d`, then
+  run the required verification commands:
+  `./gradlew :jade-tipi:compileGroovy`,
+  `./gradlew :jade-tipi:compileTestGroovy`,
+  `./gradlew :jade-tipi:test --tests '*ContentsLinkReadServiceSpec*'`,
+  and `./gradlew :jade-tipi:test`.
+- Credited developer verification: claude-1 reported the Docker stack healthy
+  and `./gradlew :jade-tipi:compileGroovy`,
+  `./gradlew :jade-tipi:compileTestGroovy`,
+  `./gradlew :jade-tipi:test --tests '*ContentsLinkReadServiceSpec*'`, and
+  `./gradlew :jade-tipi:test` all passing, with the new spec at
+  `tests=18, failures=0, errors=0, skipped=0`.
+- Follow-up: `TASK-011` was created for pre-work on the next bounded unit:
+  the smallest WebFlux/HTTP read adapter over `ContentsLinkReadService`.
+  Service semantics, semantic validation, authorization/scoping, UI, and
+  write-path changes remain out of scope until separately directed.
+
 Implementation done by claude-1 on 2026-05-01 against the director's
 accepted pre-work decisions; awaiting review.
 

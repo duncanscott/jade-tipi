@@ -11,18 +11,18 @@ Report file: docs/agents/claude-1-changes.md
 
 ## Current Assignment
 
-- Active task: `TASK-010 - Plan contents location query reads`.
+- Active task: `TASK-011 - Plan contents location HTTP read adapter`.
 - Current phase: pre-work. Read `DIRECTIVES.md` and the task file, then
-  propose the smallest read/query path over the materialized `loc`, `typ`, and
-  `lnk` collections for the accepted `contents` link vocabulary. The proposal
-  should identify the backend boundary, supported query shapes, response shape,
-  edge-case behavior, tests, and verification commands.
+  propose the smallest HTTP/WebFlux adapter over the accepted
+  `ContentsLinkReadService`. The proposal should identify the route shape for
+  both query directions, response shape, empty-result behavior, blank-id/error
+  handling, tests, and verification commands.
   Do not implement until the director moves the task to
   `READY_FOR_IMPLEMENTATION`.
 - Record pre-work in `docs/agents/claude-1-next-step.md`; record implementation
   outcomes in `docs/agents/claude-1-changes.md` only after implementation is
   approved.
-- Use `docs/orchestrator/tasks/TASK-010-contents-location-query-read-prework.md`
+- Use `docs/orchestrator/tasks/TASK-011-contents-location-http-read-adapter-prework.md`
   as the task-specific source of truth for pre-work paths and acceptance
   criteria.
 
