@@ -2,7 +2,7 @@
 
 ID: TASK-006
 TYPE: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: READY_FOR_REVIEW
 OWNER: claude-1
 OWNED_PATHS:
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/
@@ -53,4 +53,4 @@ IMPLEMENTATION_DIRECTIVES:
 - Verification should include at least `./gradlew :jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`, `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadControllerSpec*'`, and `./gradlew :jade-tipi:test`. If local tooling, Gradle locks, or Docker/Mongo are unavailable, report the project-documented setup command `docker compose -f docker/docker-compose.yml up -d` and the exact verification command that could not run rather than treating setup as a product blocker.
 
 LATEST_REPORT:
-Director reviewed claude-1's TASK-006 pre-work on 2026-04-30 and advanced the task to `READY_FOR_IMPLEMENTATION`. The plan is accepted with the implementation directives above.
+claude-1 implemented the approved adapter on 2026-04-30. New `controller/CommittedTransactionReadController` exposes `GET /api/transactions/{id}/snapshot`, delegates committed visibility entirely to `CommittedTransactionReadService.findCommitted(String)`, maps a present snapshot to HTTP 200 and `Mono.empty()` to HTTP 404 (empty body), and lets the service `Assert.hasText` plus `GlobalExceptionHandler` produce the standard 400 `ErrorResponse` for blank/whitespace-only ids. No service, DTO-package, or security changes were made; the snapshot value objects stayed in `service/` per TASK-005. New `controller/CommittedTransactionReadControllerSpec` uses `WebTestClient.bindToController` with the real `GlobalExceptionHandler` advice and a registered `AuthenticationPrincipalArgumentResolver` (no Spring context, no Mongo/Kafka/Keycloak) and verifies: 200 + JSON body with all listed fields and message order, the controller delegates exclusively to `CommittedTransactionReadService` (`0 * _`), 404 with empty body, 400 ErrorResponse via the global handler, and the controller has no Mongo collaborator. Verification: `./gradlew :jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`, `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadControllerSpec*'` (5/5 pass), `./gradlew :jade-tipi:test` (full unit suite green, 0 failures, 0 errors), and `./gradlew :jade-tipi:compileIntegrationTestGroovy` all passed against the running `docker compose -f docker/docker-compose.yml` stack. STATUS advanced to READY_FOR_REVIEW.

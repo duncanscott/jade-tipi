@@ -2,7 +2,135 @@
 
 The developer writes completed work reports here.
 
-STATUS: COMPLETED
+STATUS: READY_FOR_REVIEW
+TASK: TASK-006 — Add committed transaction snapshot HTTP read adapter
+DATE: 2026-04-30
+SUMMARY: New thin WebFlux read adapter `CommittedTransactionReadController`
+exposes `GET /api/transactions/{id}/snapshot`, delegates committed
+visibility entirely to `CommittedTransactionReadService.findCommitted`,
+maps a present snapshot to HTTP 200 and `Mono.empty()` to HTTP 404 (empty
+body), and lets the service `Assert.hasText` plus `GlobalExceptionHandler`
+produce the standard 400 `ErrorResponse` for blank/whitespace-only ids.
+No service, DTO-package, or security changes. New
+`CommittedTransactionReadControllerSpec` uses
+`WebTestClient.bindToController` with the real `GlobalExceptionHandler`
+advice and a registered `AuthenticationPrincipalArgumentResolver` (no
+Spring context, no Mongo/Kafka/Keycloak) and exercises the actual route,
+JSON body serialization, the 404 empty-body path, the 400
+`ErrorResponse`, service delegation, and the absence of a Mongo
+collaborator.
+VERIFICATION: docker compose stack healthy. `./gradlew
+:jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`,
+`./gradlew :jade-tipi:test --tests '*CommittedTransactionReadControllerSpec*'`
+(5/5 features green), `./gradlew :jade-tipi:test` (full unit suite,
+0 failures, 0 errors), and `./gradlew :jade-tipi:compileIntegrationTestGroovy`
+all passed.
+
+## TASK-006 — Add committed transaction snapshot HTTP read adapter
+
+Director moved `TASK-006` to `READY_FOR_IMPLEMENTATION` on 2026-04-30 with
+the implementation directives in
+`docs/orchestrator/tasks/TASK-006-committed-transaction-snapshot-http-read-adapter.md`
+(route `GET /api/transactions/{id}/snapshot`, return the existing
+`CommittedTransactionSnapshot` service-boundary object directly with
+default Jackson camelCase, delegate committed visibility entirely to
+`CommittedTransactionReadService.findCommitted`, map empty service result
+to HTTP 404 with no body, let blank/whitespace ids fall through the
+service `Assert.hasText` to the `GlobalExceptionHandler` 400 path, mirror
+existing controller/security patterns, and add narrow `WebTestClient`
+controller coverage). Implementation done on 2026-04-30.
+
+### Production change
+
+- New `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/controller/CommittedTransactionReadController.groovy`.
+  - `@RestController`, `@RequestMapping('/api/transactions')`, `@Slf4j`.
+  - One method: `Mono<ResponseEntity<CommittedTransactionSnapshot>>
+    getSnapshot(@PathVariable('id') String id, @AuthenticationPrincipal Jwt jwt)`
+    on `@GetMapping('/{id}/snapshot')`.
+  - Body is literally `readService.findCommitted(id) ...
+    .map { snapshot -> ResponseEntity.ok(snapshot) }
+    .defaultIfEmpty(ResponseEntity.notFound().build())`. No duplicated
+    WAL gate, no inline blank-id check, no per-id authorization, no
+    redaction, no pagination, no list endpoint, no Mongo collaborator.
+  - Logs only the `id` and the message count.
+
+### What did not change
+
+- `CommittedTransactionReadService`, `CommittedTransactionSnapshot`,
+  `CommittedTransactionMessage`, and `KafkaProvenance` are unchanged
+  (no fields, annotations, or package moves). Per the TASK-005
+  director decision the snapshot value objects stay in `service/`;
+  this task did not relocate them to `dto/` or add snake_case
+  annotations.
+- `TransactionController`, `DocumentController`, `TransactionService`,
+  `TransactionMessagePersistenceService`,
+  `TransactionMessageListener`, `GlobalExceptionHandler`,
+  `ErrorResponse`, `SecurityConfig`, `application.yml`,
+  `build.gradle`, and the `txn` write-ahead log shape from TASK-003
+  are unchanged.
+- No new authentication, authorization, redaction, pagination, list,
+  or bulk policy was added.
+
+### New test coverage
+
+New `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/controller/CommittedTransactionReadControllerSpec.groovy`.
+
+- Pattern: `WebTestClient.bindToController(controller)` (no Spring
+  context, no Mongo/Kafka/Keycloak), wired with the real
+  `GlobalExceptionHandler` via `.controllerAdvice(...)` and a
+  registered `AuthenticationPrincipalArgumentResolver` so the
+  `@AuthenticationPrincipal Jwt jwt` parameter resolves to `null`
+  without a security context. The
+  `CommittedTransactionReadService` collaborator is `Mock(...)`-ed.
+- Five Spock features, all green:
+  1. Committed snapshot returns 200 with the JSON body (`txnId`,
+     `commitId`, `state`, `openData.hint`, `commitData.reason`,
+     `messages.length()=2`, and the first message's `msgUuid`,
+     `collection`, `action`, `data.name`, `kafka.topic`,
+     `kafka.partition`, `kafka.offset`, `kafka.timestampMs`) plus the
+     ordering of the second message's `msgUuid`, exercising the
+     actual route and Jackson serialization (incl. `Instant` round-trip
+     via `JavaTimeModule`).
+  2. Controller delegates exclusively to
+     `CommittedTransactionReadService` for committed lookups
+     (`1 * readService.findCommitted(TXN_ID) >> Mono.just(...)`,
+     `0 * _`).
+  3. Missing or non-committed service result returns HTTP 404 with an
+     empty body (`expectBody().isEmpty()`).
+  4. Whitespace-only id surfaces the service's `Assert.hasText`
+     `IllegalArgumentException` as the standard 400 `ErrorResponse`
+     through `GlobalExceptionHandler` (`status=400`,
+     `error='Bad Request'`, `message='txnId must not be blank'`).
+  5. The controller's only constructor argument is
+     `CommittedTransactionReadService`, proving no direct Mongo
+     collaborator at the type level.
+
+### Verification
+
+`docker compose -f docker/docker-compose.yml ps` showed mongodb, kafka,
+and keycloak healthy. Then:
+
+- `./gradlew :jade-tipi:compileGroovy` — BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:compileTestGroovy` — BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadControllerSpec*'`
+  — 5/5 features green (`tests=5 failures=0 errors=0` in the JUnit XML).
+- `./gradlew :jade-tipi:test` — full unit suite green; aggregated 54
+  tests across all `:jade-tipi` specs, 0 failures, 0 errors.
+- `./gradlew :jade-tipi:compileIntegrationTestGroovy` — BUILD
+  SUCCESSFUL (no integration spec was added in this task).
+
+### Files changed in this turn
+
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/controller/CommittedTransactionReadController.groovy`
+  — new file, the WebFlux read adapter described above.
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/controller/CommittedTransactionReadControllerSpec.groovy`
+  — new file, the controller-level Spock spec described above.
+- `docs/orchestrator/tasks/TASK-006-committed-transaction-snapshot-http-read-adapter.md`
+  — STATUS flipped from `READY_FOR_IMPLEMENTATION` to `READY_FOR_REVIEW`,
+  `LATEST_REPORT` rewritten to record the implementation outcome.
+- `docs/agents/claude-1-changes.md` — this report.
+
+STATUS: READY_FOR_REVIEW
 
 ## TASK-005 — Director-review fix: coerce raw Mongo timestamps to Instant
 
