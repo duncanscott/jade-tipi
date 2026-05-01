@@ -1,22 +1,39 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
-The active bounded unit is `TASK-008`: pre-work for canonical `contents` link vocabulary examples. The goal is to propose the smallest DTO/example/documentation unit for declaring a `contents` link type in `typ` and a concrete containment relationship in `lnk`, building on the accepted `loc` collection from `TASK-007`.
+The active bounded unit is `TASK-008`: implement canonical `contents` link vocabulary examples. The goal is to add the smallest DTO/example/documentation unit for declaring a `contents` link type in `typ` and a concrete containment relationship in `lnk`, building on the accepted `loc` collection from `TASK-007`.
 
 New product direction is recorded in `DIRECTION.md`: add a first-class `loc` collection for laboratory locations, keep containment relationships canonical in `lnk`, define `contents` as a typed link/class through `typ`, and model plate well coordinates as instance properties on `contents` links unless wells need independent lifecycle.
 
 ## Active Task
 
-- `TASK-008 - Add contents link vocabulary examples` is READY_FOR_PREWORK and assigned to claude-1.
+- `TASK-008 - Add contents link vocabulary examples` is READY_FOR_IMPLEMENTATION and assigned to claude-1.
 
 ## Scope Expansion
 
-claude-1 may perform pre-work only in `docs/agents/claude-1-next-step.md`; do not implement until the director moves `TASK-008` to `READY_FOR_IMPLEMENTATION`. Follow the pre-work directives in `docs/orchestrator/tasks/TASK-008-contents-link-vocabulary-examples.md`.
+claude-1 may implement inside the paths owned by `docs/orchestrator/tasks/TASK-008-contents-link-vocabulary-examples.md` and may append the implementation report to `docs/agents/claude-1-changes.md`. Follow the implementation decisions in the active task file.
+
+## TASK-008 Director Pre-work Review
+
+- `TASK-008` pre-work is accepted on 2026-05-01. Scope check passed: claude-1 changed only `docs/agents/claude-1-next-step.md`, inside the developer-owned pre-work paths.
+- Implement exactly two canonical examples: `11-create-contents-type.json` for the `contents` `typ + create` declaration and `12-create-contents-link-plate-sample.json` for a concrete `lnk + create` containment relationship.
+- Use `~typ~contents`, `~lnk~...`, and `~loc~...` ID segments. Do not rewrite the older `04-create-entity-type.json` `~ty~` example.
+- Reuse the current canonical example transaction UUID for the two new examples, matching `10-create-location.json`.
+- Use the `DIRECTION.md` plate-well value casing (`"A1"` and `"A"`); the snake_case rule applies to property names, not values.
+- Put the `contents` explanation in `docs/architecture/kafka-transaction-message-vocabulary.md`; leave `docs/Jade-Tipi.md` unchanged unless implementation reveals a direct contradiction.
+- Do not add supporting endpoint create examples. Unresolved `left` and `right` references are acceptable in this task because semantic reference validation remains out of scope.
+- Include `data.kind: "link_type"` and all six declarative facts from `DIRECTION.md`: `left_role`, `right_role`, `left_to_right_label`, `right_to_left_label`, `allowed_left_collections`, and `allowed_right_collections`.
+- Extend `MessageSpec` through the existing example path coverage and add focused assertions for the `contents` `typ` declaration and concrete `lnk` shape.
+- Do not change `Collection`, `Action`, `Message`, `message.schema.json`, backend services/listeners/controllers/initializers, build files, Docker Compose, security policy, HTTP wrappers, materialization, semantic validation, plate/well read APIs, `parent_location_id`, or the committed-snapshot surface.
+- Required verification after implementation includes `./gradlew :libraries:jade-tipi-dto:test`. If local tooling, Gradle locks, or Docker/Mongo are unavailable, report the documented setup command and exact command that could not run instead of treating setup as a product blocker.
 
 ## TASK-008 Pre-work Direction
+
+Historical context only; implementation is now authorized by the accepted
+director decisions above.
 
 - Inspect `DIRECTION.md`, `docs/Jade-Tipi.md`, `docs/architecture/kafka-transaction-message-vocabulary.md`, existing message examples, `MessageSpec`, and `message.schema.json`.
 - Propose the smallest concrete example set for `contents`, including whether to add one `typ` message for the link type declaration and one `lnk` message for a concrete containment relationship.

@@ -2,7 +2,7 @@
 
 ID: TASK-008
 TYPE: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 OWNED_PATHS:
   - docs/Jade-Tipi.md
@@ -66,6 +66,41 @@ DEPENDENCIES:
 - `TASK-007` is accepted and adds `loc` as a first-class collection.
 
 LATEST_REPORT:
-Created by the director on 2026-05-01 after accepting `TASK-007`. Ready for
-pre-work only; do not implement until the director moves this task to
-`READY_FOR_IMPLEMENTATION`.
+Director pre-work review accepted on 2026-05-01. Scope check passed:
+claude-1's latest pre-work turn changed only
+`docs/agents/claude-1-next-step.md`, inside the developer-owned pre-work paths.
+Proceed to implementation with these decisions:
+
+- Add exactly two canonical examples:
+  `11-create-contents-type.json` for `typ + create` and
+  `12-create-contents-link-plate-sample.json` for `lnk + create`.
+- Use the three-letter ID segments from `DIRECTION.md` and `TASK-007`:
+  `~typ~contents`, `~lnk~...`, and `~loc~...`. Do not rewrite the older
+  `04-create-entity-type.json` `~ty~` example in this task.
+- Reuse the current canonical example transaction UUID for the two new
+  examples, matching `10-create-location.json`.
+- Use the `DIRECTION.md` plate-well value casing (`"A1"` and `"A"`). The
+  snake_case schema rule applies to property names, not string values.
+- Keep `docs/Jade-Tipi.md` unchanged unless implementation reveals a direct
+  contradiction. Put the `contents` vocabulary explanation in
+  `docs/architecture/kafka-transaction-message-vocabulary.md`.
+- Do not add supporting endpoint create examples in this task; unresolved
+  `left`/`right` references are acceptable because semantic reference
+  validation is out of scope.
+- Include `data.kind: "link_type"` on the `typ` payload and include all six
+  declarative facts from `DIRECTION.md`: `left_role`, `right_role`,
+  `left_to_right_label`, `right_to_left_label`,
+  `allowed_left_collections`, and `allowed_right_collections`.
+- Extend `MessageSpec` through the existing example path coverage and add
+  focused assertions for the `contents` `typ` declaration and concrete `lnk`
+  shape.
+- Do not change `Collection`, `Action`, `Message`, `message.schema.json`, any
+  backend service/listener/controller/initializer, build files, Docker Compose,
+  security policy, HTTP wrappers, materialization, semantic validation,
+  plate/well read APIs, `parent_location_id`, or the committed-snapshot surface.
+
+Required verification after implementation includes
+`./gradlew :libraries:jade-tipi-dto:test`. Defensive compile/regression checks
+from the pre-work are useful if available, but if local tooling, Gradle locks,
+or Docker/Mongo are unavailable, report the documented setup command and the
+exact command that could not run instead of treating setup as a product blocker.
