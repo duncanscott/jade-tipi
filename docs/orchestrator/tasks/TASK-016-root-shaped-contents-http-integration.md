@@ -3,7 +3,7 @@
 ID: TASK-016
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-012
@@ -106,3 +106,48 @@ Created by director on 2026-05-01 after accepting `TASK-015`. This task
 replaces the paused `TASK-012` implementation path with fresh pre-work that
 must account for the accepted root-shaped materializer and contents read
 service before any integration implementation begins.
+
+Director pre-work review accepted on 2026-05-01. Scope check passed:
+claude-1's latest pre-work commit changed only
+`docs/agents/claude-1-next-step.md`, inside the base developer-owned paths.
+The plan satisfies this task's source of truth: it proposes one opt-in
+`ContentsHttpReadIntegrationSpec` under the `contents` integration-test
+package, reuses the accepted Kafka integration-test pattern, adds a local
+Keycloak readiness gate before Spring context startup, publishes one
+transaction with `loc + create`, canonical `typ + create` `contents`, and
+`lnk + create` with `properties.position`, waits for committed `txn`
+visibility plus root-shaped materialized `typ`/`lnk` rows, and asserts both
+contents HTTP routes against a real authenticated `RANDOM_PORT` context.
+
+Director decisions for implementation:
+- Keep the Keycloak reachability probe inline in the new spec; do not refactor
+  `KeycloakTestHelper` or existing integration tests.
+- Build messages with DTO helpers and inline payload maps that mirror the
+  canonical examples while using per-run ids; do not load the bundled example
+  JSON verbatim and do not add a fixture resource unless implementation proves
+  it is required.
+- It is acceptable for the `lnk.right` content id to remain an unresolved
+  `ent` id. This preserves the canonical example's passthrough semantics and
+  does not authorize endpoint joins or semantic reference validation.
+- No `application-test.yml` edit is expected. Use the existing test-profile
+  Keycloak issuer and Mongo settings unless source inspection during
+  implementation proves a blocking contradiction.
+- Assert the empty-result route as HTTP 200 with a JSON empty array; prefer a
+  direct body assertion such as `expectBody().json('[]')` or an equivalent
+  JSON-path length assertion rather than adding deserialization concerns.
+
+Implementation should add only the narrow integration spec and any strictly
+necessary cleanup/isolation code inside the task-owned paths. Preserve the
+out-of-scope boundaries above: no production service/controller/materializer,
+Kafka listener, DTO/schema/example, Docker, Gradle, security, frontend,
+response-envelope, pagination, endpoint-join, semantic-validation,
+update/delete replay, or backfill changes.
+
+After implementation, set this task to `READY_FOR_REVIEW` and append the
+implementation report to `docs/agents/claude-1-changes.md`. Required
+verification remains the Gradle command list in this task file, including the
+focused opt-in Kafka integration command. If local tooling, Gradle locks,
+Docker, Kafka, Mongo, or Keycloak setup blocks verification, report the
+documented setup command `docker compose -f docker/docker-compose.yml up -d`,
+`./gradlew --stop` when stale Gradle daemons are implicated, and the exact
+blocked command/error rather than treating setup as a product blocker.

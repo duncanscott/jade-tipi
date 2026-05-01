@@ -1,12 +1,12 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
-The active bounded unit is `TASK-016`: pre-work for the smallest opt-in
-contents HTTP integration coverage that uses the accepted root-shaped
-materializer and contents read service.
+The active bounded unit is `TASK-016`: implement the smallest opt-in contents
+HTTP integration coverage that uses the accepted root-shaped materializer and
+contents read service.
 
 Product direction is recorded in `DIRECTION.md`: Jade-Tipi objects are logical
 JSON objects; the first materializer should use a root-document-only physical
@@ -25,16 +25,65 @@ accepted root-shaped path before implementation resumes.
 - `TASK-015 - Update contents read service for root-shaped documents` is
   accepted.
 - `TASK-016 - Plan root-shaped contents HTTP integration coverage` is
-  READY_FOR_PREWORK and assigned to claude-1.
+  READY_FOR_IMPLEMENTATION and assigned to claude-1.
 - `TASK-012 - Plan contents HTTP read integration coverage` remains prepared
   but is paused. Do not implement `TASK-012` as-is.
 
 ## Scope Expansion
 
-Pre-work is requested for `TASK-016`. Use
+Implementation is approved for `TASK-016`. Use
 `docs/orchestrator/tasks/TASK-016-root-shaped-contents-http-integration.md` as
 the task-specific source of truth. Treat `TASK-012` as historical context only;
 do not route or implement it as-is.
+
+## TASK-016 Director Pre-work Review
+
+- `TASK-016` pre-work is accepted on 2026-05-01. Scope check passed:
+  claude-1 changed only `docs/agents/claude-1-next-step.md`, inside the
+  developer-owned pre-work paths.
+- Implement one narrow opt-in
+  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/contents/ContentsHttpReadIntegrationSpec.groovy`.
+  Use `@SpringBootTest(webEnvironment = RANDOM_PORT)`,
+  `@AutoConfigureWebTestClient`, `@ActiveProfiles("test")`, the existing
+  `JADETIPI_IT_KAFKA` opt-in flag, an isolated per-run Kafka topic and
+  consumer group, per-run transaction/materialized ids, authenticated
+  `WebTestClient`, and bounded Mongo/HTTP polling.
+- Publish one Kafka transaction with `open`, one `loc + create`, one
+  canonical `typ + create` declaration where `properties.kind/name` will
+  resolve as `link_type`/`contents`, one `lnk + create` with
+  `properties.position`, and `commit`. Wait for committed `txn` visibility and
+  root-shaped materialized `typ`/`lnk` rows before exercising HTTP.
+- Assert both `GET /api/contents/by-container/{id}` and
+  `GET /api/contents/by-content/{id}` return the same expected flat JSON
+  record, including `linkId`, `typeId`, `left`, `right`,
+  `properties.position`, and `provenance` fields mapped from
+  `_head.provenance` through the existing response shape. Include an
+  empty-result HTTP 200 `[]` assertion.
+- Director decisions: keep the Keycloak reachability probe inline in the new
+  spec; do not refactor `KeycloakTestHelper`. Build messages with DTO helpers
+  and inline payload maps instead of loading fixed-id bundled JSON. Do not edit
+  `application-test.yml` unless implementation discovers a blocking source
+  contradiction. It is acceptable that the `lnk.right` content id is an
+  unresolved `ent` id; endpoint joins and semantic validation remain out of
+  scope.
+- Cleanup must be exact and local: delete only this spec's Kafka topic, `txn`
+  rows by `txn_id`, and materialized `loc`/`typ`/`lnk` rows by exact `_id`.
+  Do not require a globally clean database.
+- Preserve out-of-scope boundaries: no production service/controller/
+  materializer, Kafka listener, DTO/schema/example, Docker, Gradle, security,
+  frontend, response-envelope, pagination, endpoint-join,
+  semantic-validation, update/delete replay, or backfill changes.
+- Required verification after implementation: `./gradlew
+  :jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`,
+  `./gradlew :jade-tipi:compileIntegrationTestGroovy`,
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*ContentsHttpReadIntegrationSpec*'`, and `./gradlew :jade-tipi:test`. If
+  time permits, also run `JADETIPI_IT_KAFKA=1 ./gradlew
+  :jade-tipi:integrationTest --tests
+  '*TransactionMessageKafkaIngestIntegrationSpec*'`. If setup/tooling blocks
+  verification, report `docker compose -f docker/docker-compose.yml up -d`,
+  `./gradlew --stop` when stale daemons are implicated, and the exact blocked
+  command/error instead of treating setup as a product blocker.
 
 ## TASK-016 Pre-work Direction
 
