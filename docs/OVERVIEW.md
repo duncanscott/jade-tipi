@@ -7,6 +7,11 @@ An open scientific metadata framework and reference implementation focused on fl
 ## Project Status
 
 - Early proof-of-concept: the core reactive API and web UI target basic CRUD for JSON documents stored in MongoDB.
+- Current storage-model direction is root-document-first: a materialized
+  Jade-Tipi object should normally fit in one root document with explicit
+  property values, denormalized link projections, and reserved metadata.
+- Extension/page documents for very large property or link maps are planned as
+  a future storage strategy, not as part of the first materializer.
 - MongoDB is the only persistence backend wired in today; FoundationDB profiles and integration layers are actively being explored.
 - Frontend scaffolding exists for a document manager and will evolve towards richer curation and visualization flows.
 - Expect breaking changes while the API surface, storage models, and protocol language are refined.
@@ -282,6 +287,12 @@ The realm configuration in `docker/jade-tipi-realm.json` is automatically import
 
 ## Next Steps
 
+- Define and implement the canonical materialized root document shape for
+  Jade-Tipi objects, including `type_id`, explicit `properties`, denormalized
+  `links`, and reserved `_head` metadata.
+- Keep extension property/link pages as documented future work until the
+  root-only model is proven with Kafka ingestion, commit, materialization, and
+  reads.
 - Expand API to allow creation and search of documents.
 - Finish FoundationDB adapter and transaction log streaming.
 - Build richer frontend workflows for curation, provenance, and collaboration.

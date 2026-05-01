@@ -31,6 +31,51 @@ Do not implement required properties or default values yet. If a property value
 is not explicitly assigned in a create or update message, it is absent. The
 materializer should not invent property values.
 
+## Logical Objects And Physical Documents
+
+A Jade-Tipi object is a logical JSON object. Its physical representation in
+MongoDB or another document store is not required to be a single physical
+document forever. The root document should contain the object's identity,
+`collection`, `type_id`, small `properties` and `links` maps when they fit, and
+reserved implementation metadata.
+
+Start with the simple implementation: store each materialized object in one root
+document and keep `properties` and denormalized `links` directly on that root
+document. This is the common and ideal case. Do not implement page chains,
+pending pages, background compaction, or parallel overlay reads in the initial
+materializer.
+
+Longer term, properties and links are unbounded, so an object may need extension
+documents. Treat those as physical pages belonging to the root object, not as
+separate Jade-Tipi objects. The intended shape is:
+
+- root document: object identity, small inline property/link maps, and pointers
+  to the first property and link extension pages when needed.
+- property pages: overflow entries for the object's property map.
+- link pages: overflow entries for the object's denormalized link map.
+- pending pages: unordered append-friendly pages for new property/link entries
+  waiting for a background process to merge them into sorted pages.
+
+Property and link maps should be keyed by the IDs of the property or link
+objects. Extension pages may use document IDs derived from the root object ID
+with a page suffix such as `~ppy~0`, `~ppy~1`, `~lnk~0`, or `~lnk~1`; this is a
+working convention, not yet final. Pages should keep `root_id`, `left` and
+`right` neighbor pointers when linked-list traversal is useful, plus `min_id`
+and `max_id` bounds so readers can skip irrelevant pages. The root document may
+later carry a compact page index to jump near the relevant page rather than
+always traversing from the beginning.
+
+Use a reserved header object on root and page documents to keep storage metadata
+separate from user-visible property and link maps. Working name: `_head`. The
+project currently has `_jt_provenance` in early materializer output; future
+materializer work should reconcile that with the `_head` direction rather than
+mixing implementation metadata into `properties` or `links`.
+
+Read semantics should eventually layer data from the root document, extension
+pages, pending pages, and committed transaction records that have not yet been
+materialized. That overlay model is future work; the first implementation should
+make the root-only case correct and easy to replace.
+
 ## Link-Centric Relationships
 
 Do not make `parent_location_id` canonical on `loc` records. Parentage and

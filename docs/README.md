@@ -78,6 +78,20 @@ All objects belong to a **group**, which defines ownership and read/write permis
 
 A **type** is defined as a set of properties. Types may include **validations** to determine whether instances meet requirements defined by schemas (JSON Schema, Avro, Protocol Buffers, LinkML, etc.). Types may subclass other types, inheriting their property sets and validations while adding new ones.
 
+### Logical Objects and Storage Documents
+
+A Jade-Tipi object is a logical JSON object. In the normal case, it should fit
+in one root document containing identity, type, explicit property values,
+denormalized link references, and reserved metadata. The initial implementation
+should focus on this root-only form.
+
+Large objects may later be spread across multiple physical documents. Extension
+documents can act as pages for overflow property and link map entries, with the
+root document pointing to those pages. This keeps common reads self-contained
+while preserving a path for objects with very large numbers of properties or
+links. Page bookkeeping should live in a reserved header object, currently
+called `_head`, rather than inside user property or link maps.
+
 ### Transactions
 
 Metadata objects are added and modified via **transactions**. Each transaction:
@@ -171,6 +185,10 @@ The system stores timestamps as Java `Instant` objects, which MongoDB persists a
 
 The project is evolving toward the full vision outlined in [`Jade-Tipi.md`](Jade-Tipi.md). Near-term priorities include:
 
+- Define the canonical materialized object document shape: root document,
+  explicit property map, denormalized link map, and reserved `_head` metadata.
+- Keep the first materializer root-document-only, while documenting extension
+  pages for future high-cardinality properties and links.
 - Complete FoundationDB adapter and transaction log streaming
 - Implement full transaction protocol with submission and commit streams
 - Develop richer metadata type system with validation support

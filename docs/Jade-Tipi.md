@@ -116,6 +116,21 @@ property may be assigned to an object of the type. Required properties and
 default values are not part of the initial implementation: if a value is not
 explicitly assigned in a create or update message, that value is absent.
 
+The logical Jade-Tipi object should be distinguished from its physical storage
+documents. Ideally, the whole object fits in one root JSON document containing
+its identity, type, property-value map, denormalized link map, and reserved
+metadata. Because the number of properties and links is unbounded, a large
+object may eventually be represented by a root document plus extension documents
+that hold overflow property or link map entries. Those extension documents are
+storage pages of the same logical object, not independent Jade-Tipi objects.
+
+The initial implementation should use the simple root-document form. Future
+storage layers may add sorted property pages, sorted link pages, pending
+unordered pages for recent appends, and compact page indexes on the root
+document. Page metadata such as root ID, page kind, neighbor pointers, and
+minimum/maximum entry IDs should live in a reserved header object, working name
+`_head`, so it cannot be confused with user property or link values.
+
 Some examples of types:
 
 * 96-well plate (entity type)  
