@@ -2,8 +2,10 @@
 
 ID: TASK-008
 TYPE: implementation
-STATUS: READY_FOR_REVIEW
+STATUS: ACCEPTED
 OWNER: claude-1
+NEXT_TASK:
+  - TASK-009
 OWNED_PATHS:
   - docs/Jade-Tipi.md
   - docs/architecture/kafka-transaction-message-vocabulary.md
@@ -66,6 +68,20 @@ DEPENDENCIES:
 - `TASK-007` is accepted and adds `loc` as a first-class collection.
 
 LATEST_REPORT:
+Director implementation review on 2026-05-01:
+- Accepted claude-1 implementation commit `9d43439`.
+- Findings: no blocking bugs, regressions, or missing assertions found.
+- Acceptance criteria are satisfied. The implementation adds exactly two canonical examples: `11-create-contents-type.json` for the `contents` `typ + create` declaration and `12-create-contents-link-plate-sample.json` for a concrete `lnk + create` containment relationship. Both reuse the canonical transaction UUID from `10-create-location.json`.
+- The implementation honors the TASK-008 directives. The new examples use `~typ~contents`, `~lnk~plate_b1_sample_x1`, and `~loc~plate_b1`; preserve the older `04-create-entity-type.json` `~ty~` fixture; use `DIRECTION.md` value casing (`"A1"` and `"A"`); add `data.kind: "link_type"`; and include the six required declarative facts: `left_role`, `right_role`, `left_to_right_label`, `right_to_left_label`, `allowed_left_collections`, and `allowed_right_collections`.
+- Documentation now explains that `contents` semantics are declared in `typ`, concrete containment lives in `lnk`, `loc` records do not carry canonical parentage, and semantic reference validation remains a follow-up reader/materializer concern. `docs/Jade-Tipi.md` was correctly left unchanged.
+- Required assertions are present. `MessageSpec` includes both new examples in the existing example round-trip and schema-validation paths, and adds focused assertions for the canonical `contents` `typ` declaration and the concrete `lnk` shape including the position property.
+- Scope check passed against claude-1's base assignment plus the active task expansion in this file and `DIRECTIVES.md`. The merge changed only `docs/agents/claude-1-changes.md`, this task file, `docs/architecture/kafka-transaction-message-vocabulary.md`, the two approved example resources, and `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`. These edits are outside claude-1's base report-only paths, but inside the explicit TASK-008 owned-path expansion authorized for implementation.
+- Out-of-scope boundaries were preserved: no changes to `Collection`, `Action`, `Message`, `message.schema.json`, backend services/listeners/controllers/initializers, build files, Docker Compose, security policy, HTTP wrappers, materialization, semantic validation, plate/well read APIs, `parent_location_id`, the `txn` WAL shape, or the committed-snapshot surface.
+- Director local verification was blocked before product tests by sandbox/tooling permissions, not by an observed product failure. `./gradlew :libraries:jade-tipi-dto:test --rerun-tasks` failed opening `/Users/duncanscott/.gradle/wrapper/dists/gradle-8.14.3-bin/.../gradle-8.14.3-bin.zip.lck` (`Operation not permitted`). In a normal developer shell, use the project-documented setup command `docker compose -f docker/docker-compose.yml --profile mongodb up -d` if Mongo-backed tests are needed, then run the required DTO verification command `./gradlew :libraries:jade-tipi-dto:test`.
+- Credited developer verification: claude-1 reported `./gradlew :libraries:jade-tipi-dto:test --rerun-tasks` passing with `MessageSpec` `tests=39, failures=0, errors=0, skipped=0` and `UnitSpec` `tests=8, failures=0, errors=0, skipped=0`.
+- Additional director static checks passed: `git diff --check HEAD~1..HEAD` produced no output, both new JSON resources parsed successfully with Node, and changed-file ownership was confined to task-authorized paths plus the developer report.
+- Follow-up: `TASK-009` was created for pre-work on the next bounded unit: the smallest committed-transaction materialization path for `loc`, `typ` link-type declarations, and `lnk` links. Semantic reference validation, read/query APIs, HTTP submission rebuilds, and policy changes remain out of scope until separately directed.
+
 Implementation complete on 2026-05-01. Status moved to `READY_FOR_REVIEW`.
 
 Two canonical example messages were added under

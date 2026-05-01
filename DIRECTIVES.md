@@ -1,20 +1,40 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
-The active bounded unit is `TASK-008`: implement canonical `contents` link vocabulary examples. The goal is to add the smallest DTO/example/documentation unit for declaring a `contents` link type in `typ` and a concrete containment relationship in `lnk`, building on the accepted `loc` collection from `TASK-007`.
+The active bounded unit is `TASK-009`: pre-work for the smallest committed-transaction materialization path for the accepted `loc`, `typ` link-type, and `lnk` contents-link vocabulary. The goal is to inspect the backend read/persistence/Mongo patterns and propose a narrow, testable materialization boundary before any implementation begins.
 
 New product direction is recorded in `DIRECTION.md`: add a first-class `loc` collection for laboratory locations, keep containment relationships canonical in `lnk`, define `contents` as a typed link/class through `typ`, and model plate well coordinates as instance properties on `contents` links unless wells need independent lifecycle.
 
 ## Active Task
 
-- `TASK-008 - Add contents link vocabulary examples` is READY_FOR_IMPLEMENTATION and assigned to claude-1.
+- `TASK-009 - Plan committed location/link materialization` is READY_FOR_PREWORK and assigned to claude-1.
 
 ## Scope Expansion
 
-claude-1 may implement inside the paths owned by `docs/orchestrator/tasks/TASK-008-contents-link-vocabulary-examples.md` and may append the implementation report to `docs/agents/claude-1-changes.md`. Follow the implementation decisions in the active task file.
+No implementation is authorized yet. claude-1 should read `docs/orchestrator/tasks/TASK-009-committed-location-link-materialization-prework.md`, inspect the required source files, and write the proposal in `docs/agents/claude-1-next-step.md`. Keep edits inside the developer-owned pre-work path until the director moves the task to `READY_FOR_IMPLEMENTATION`.
+
+## TASK-009 Pre-work Direction
+
+- Inspect `DIRECTION.md`, `docs/architecture/kafka-transaction-message-vocabulary.md`, canonical examples `10-create-location.json`, `11-create-contents-type.json`, and `12-create-contents-link-plate-sample.json`, `CommittedTransactionReadService`, `TransactionMessagePersistenceService`, Mongo collection/initializer code, and existing backend service/test patterns.
+- Propose the smallest committed materialization boundary for `loc`, `typ` records with `data.kind: "link_type"`, and `lnk` records using the accepted `contents` vocabulary. Consider a Kafka-free service over committed snapshots first unless source inspection shows a narrower existing integration point.
+- Specify the materialized document shape, idempotency behavior, ordering expectations, missing/duplicate/conflicting `data.id` behavior, and how the materializer preserves the accepted committed-visibility gate (`record_type=transaction`, `state=committed`, non-blank backend `commit_id`).
+- Keep semantic reference validation out of scope: do not propose enforcement that `lnk.type_id`, `left`, or `right` resolve, and do not enforce `allowed_*_collections` yet.
+- Do not propose plate/well read APIs, "what is in this plate?" queries, "where is this sample?" queries, controllers, HTTP submission rebuilds, `parent_location_id`, Kafka listener/topic changes, `txn` WAL shape changes, committed snapshot response changes, security policy, Docker Compose, or build changes.
+- Verification proposal should include focused `:jade-tipi` service tests and any necessary compile/full-test command. If local tooling, Gradle locks, or Docker/Mongo are unavailable, report the documented setup command rather than treating setup as a product blocker.
+
+## TASK-008 Director Review
+
+- `TASK-008` is accepted on 2026-05-01. The canonical DTO/example vocabulary now includes `11-create-contents-type.json` for the `contents` `typ + create` declaration and `12-create-contents-link-plate-sample.json` for a concrete `lnk + create` containment relationship.
+- Scope check passed against claude-1's base assignment plus the active task expansion. The merge changed only `docs/agents/claude-1-changes.md`, the `TASK-008` task file, `docs/architecture/kafka-transaction-message-vocabulary.md`, the two approved example resources, and `MessageSpec`.
+- Required assertions are present: both examples run through the existing `MessageSpec` round-trip/schema-validation rows, and focused features assert the `contents` `typ` declaration facts plus the concrete `lnk` shape and plate-well position values.
+- The implementation honored the directives: it used `~typ~contents`, `~lnk~...`, and `~loc~...` ID segments; preserved the older `04-create-entity-type.json` `~ty~` example; reused the `10-create-location.json` transaction UUID; kept `"A1"`/`"A"` value casing; left `docs/Jade-Tipi.md` unchanged; and did not add supporting endpoint create examples.
+- Out-of-scope boundaries were preserved: no enum/schema/backend/build/Docker/security/HTTP/materialization/semantic-validation/read-API/`parent_location_id`/committed-snapshot changes.
+- Director local verification was blocked before product tests by sandbox/tooling permissions, not by an observed product failure. `./gradlew :libraries:jade-tipi-dto:test --rerun-tasks` failed opening the Gradle wrapper cache lock in `/Users/duncanscott/.gradle`. In a normal developer shell, use the documented setup command `docker compose -f docker/docker-compose.yml --profile mongodb up -d` if Mongo-backed tests are needed, then run `./gradlew :libraries:jade-tipi-dto:test`.
+- Credited developer verification: claude-1 reported `./gradlew :libraries:jade-tipi-dto:test --rerun-tasks` passing with `MessageSpec` `tests=39, failures=0, errors=0, skipped=0` and `UnitSpec` `tests=8, failures=0, errors=0, skipped=0`.
+- Follow-up: `TASK-009` was created for pre-work on the smallest committed location/link materialization path. Semantic link validation and read/query APIs remain out of scope.
 
 ## TASK-008 Director Pre-work Review
 

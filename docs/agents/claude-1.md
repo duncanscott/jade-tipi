@@ -11,18 +11,18 @@ Report file: docs/agents/claude-1-changes.md
 
 ## Current Assignment
 
-- Active task: `TASK-008 - Add contents link vocabulary examples`.
+- Active task: `TASK-009 - Plan committed location/link materialization`.
 - Current phase: pre-work. Read `DIRECTIVES.md` and the task file, then
-  propose the smallest DTO/example/documentation unit for declaring a
-  `contents` link type in `typ` and creating a concrete containment
-  relationship in `lnk`, building on the accepted `loc` collection from
-  `TASK-007`.
+  propose the smallest committed-transaction materialization path for the
+  accepted `loc`, `typ` link-type, and `lnk` contents-link vocabulary. The
+  proposal should identify the backend boundary, materialized document shape,
+  idempotency/error behavior, tests, and verification commands.
   Do not implement until the director moves the task to
   `READY_FOR_IMPLEMENTATION`.
 - Record pre-work in `docs/agents/claude-1-next-step.md`; record implementation
   outcomes in `docs/agents/claude-1-changes.md` only after implementation is
   approved.
-- Use `docs/orchestrator/tasks/TASK-008-contents-link-vocabulary-examples.md`
+- Use `docs/orchestrator/tasks/TASK-009-committed-location-link-materialization-prework.md`
   as the task-specific source of truth for pre-work paths and acceptance
   criteria.
 
