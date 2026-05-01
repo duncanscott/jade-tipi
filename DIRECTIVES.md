@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
@@ -10,11 +10,21 @@ New product direction is recorded in `DIRECTION.md`: add a first-class `loc` col
 
 ## Active Task
 
-- `TASK-007 - Add location collection` is READY_FOR_PREWORK and assigned to claude-1.
+- `TASK-007 - Add location collection` is READY_FOR_IMPLEMENTATION and assigned to claude-1.
 
 ## Scope Expansion
 
-For pre-work only, claude-1 may inspect and propose changes within the `TASK-007` owned paths. Do not begin implementation until the task is moved to READY_FOR_IMPLEMENTATION.
+claude-1 may implement within the `TASK-007` owned paths. Follow the implementation directives in `docs/orchestrator/tasks/TASK-007-add-location-collection.md`.
+
+## TASK-007 Director Pre-work Review
+
+- `TASK-007` pre-work is accepted on 2026-05-01. Scope check passed: claude-1 changed only `docs/agents/claude-1-next-step.md`, inside the developer-owned pre-work paths.
+- Implement the small enum/schema/startup path: add `LOCATION("location", "loc")` to `Collection`, add `loc` to the message schema enum and non-transaction action conditional, and rely on the existing `MongoDbInitializer` enum loop for startup collection creation.
+- Use `10-create-location.json` for the canonical example and use `loc` consistently in example IDs (`...~loc~...`), matching `DIRECTION.md`.
+- Add DTO coverage for `Collection.fromJson("loc")`, JSON serialization as `loc`, schema acceptance for a canonical `loc` create message, and schema rejection for transaction-control actions with `loc`.
+- Add practical initializer coverage under `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/mongo/config/`, preferably with a pure Spock mock of `ReactiveMongoTemplate` proving the enum-driven initializer creates `loc`.
+- Leave `DIRECTION.md` unchanged for this task unless implementation reveals a contradiction. Do not implement materialization, `contents` links, link materializers, plate/well APIs, `parent_location_id`, Kafka/persistence shape changes, committed-snapshot API changes, or HTTP submission/security work.
+- Required verification: `./gradlew :libraries:jade-tipi-dto:test`, `./gradlew :jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`, `./gradlew :jade-tipi:test --tests '*MongoDbInitializerSpec*'`, and `./gradlew :jade-tipi:test`. If local tooling, Gradle locks, or Docker/Mongo are unavailable, report `docker compose -f docker/docker-compose.yml --profile mongodb up -d` and the exact command that could not run instead of treating setup as a product blocker.
 
 ## TASK-006 Director Review
 
