@@ -1,70 +1,101 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
-The active bounded implementation unit is `TASK-014`: update
-`CommittedTransactionMaterializer` so currently supported committed
-`loc + create`, `typ link_type + create`, and `lnk + create` messages write the
-accepted root-document shape from `TASK-013`.
+The active bounded unit is `TASK-015`: plan the smallest update to
+`ContentsLinkReadService`, `ContentsLinkRecord`, and focused HTTP/service
+assertions so the contents read path understands the root-shaped materialized
+documents accepted in `TASK-014`.
 
 Product direction is recorded in `DIRECTION.md`: Jade-Tipi objects are logical
 JSON objects; the first materializer should use a root-document-only physical
 shape with explicit `properties`, denormalized `links`, and reserved `_head`
-metadata; extension property/link pages remain future storage work. The current
-copied-data materializer output is provisional and should not be hardened by new
-integration coverage until the root document contract is defined.
+metadata; extension property/link pages remain future storage work. New
+materialized writes now use the root-shaped contract, and readers should be
+moved to `_head.provenance` and root `properties` before any contents HTTP
+integration coverage is resumed.
 
 ## Active Task
 
 - `TASK-013 - Define materialized root document contract` is accepted.
 - `TASK-014 - Implement root-shaped materialized documents` is
-  READY_FOR_IMPLEMENTATION and assigned to claude-1.
+  accepted.
+- `TASK-015 - Update contents read service for root-shaped documents` is
+  READY_FOR_PREWORK and assigned to claude-1.
 - `TASK-012 - Plan contents HTTP read integration coverage` remains prepared
-  but is paused while `TASK-014` is active. Do not implement `TASK-012` as-is.
+  but is paused. Do not implement `TASK-012` as-is.
 
 ## Scope Expansion
 
-Implementation is authorized for `TASK-014`. Use
-`docs/orchestrator/tasks/TASK-014-materialized-root-document-materializer.md`
-as the task-specific source of truth. Do not route `TASK-012` implementation
-until the root-shaped materializer and contents read-service follow-up are
-complete and the director explicitly rewrites or replaces the integration
-task.
+Pre-work is requested for `TASK-015`. Use
+`docs/orchestrator/tasks/TASK-015-root-shaped-contents-read-service.md` as the
+task-specific source of truth. Do not route `TASK-012` implementation until
+the root-shaped materializer and contents read-service follow-up are accepted
+and the director explicitly rewrites or replaces the integration task.
 
-## TASK-014 Implementation Direction
+## TASK-015 Pre-work Direction
 
-- Update only `CommittedTransactionMaterializer`,
-  `CommittedTransactionMaterializerSpec`, the `TASK-014` task file, and the
-  assigned developer report.
-- Preserve the existing materializer boundary: only `loc + create`,
-  `lnk + create`, and `typ + create` when `data.kind == "link_type"` are
-  materialized.
-- Write root-shaped documents with `_id`, `id`, `collection`, top-level
-  `type_id`, `properties`, `links`, and `_head`.
-- Move provenance from `_jt_provenance` to `_head.provenance`, including
-  `txn_id`, `commit_id`, `msg_uuid`, source `collection`, source `action`,
-  `committed_at`, and `materialized_at`.
-- For this task, write `links: {}` for every supported root. Do not create
-  endpoint stubs and do not maintain endpoint `links` projections yet.
-- Keep inline property keys for the current accepted payload examples. Do not
-  require property IDs for `name`, link-type declaration facts, or
-  `properties.position`.
-- Preserve skip, duplicate, conflict, and non-duplicate insert failure behavior.
-  Duplicate comparison should ignore only `_head.provenance.materialized_at`.
-- Do not update contents read services/controllers, integration tests, DTO
-  schemas, canonical examples, Docker/Gradle files, Kafka listener behavior,
-  security, frontend, endpoint joins, semantic reference validation, endpoint
-  projection maintenance, extension pages, required/default properties, or
+- Inspect `TASK-013`, accepted `TASK-014`, `CommittedTransactionMaterializer`,
+  `ContentsLinkReadService`, `ContentsLinkRecord`,
+  `ContentsLinkReadController`, their focused specs, and the "Reading
+  `contents` Links" architecture documentation.
+- Propose the smallest read-service update for root-shaped documents:
+  `typ` resolution should use `properties.kind == "link_type"` and
+  `properties.name == "contents"`; `lnk` mapping should continue to use
+  top-level `type_id`, `left`, `right`, and `properties`.
+- Propose how `ContentsLinkRecord.provenance` should read
+  `_head.provenance`. A short fallback to legacy `_jt_provenance` is allowed if
+  the pre-work keeps it explicit and covered.
+- Keep the existing HTTP routes and flat JSON array response shape unless
+  source inspection reveals a blocking contradiction:
+  `GET /api/contents/by-container/{id}` and
+  `GET /api/contents/by-content/{id}`.
+- Do not change materialization, Kafka listener behavior, DTO schemas,
+  canonical examples, Docker/Gradle files, security, frontend, response
+  envelopes, pagination, endpoint joins, semantic reference validation,
+  endpoint projection maintenance, extension pages, update/delete replay,
+  backfill, transaction-overlay reads, required/default properties, or
   `TASK-012`.
-- Required verification: `./gradlew :jade-tipi:compileGroovy`,
-  `./gradlew :jade-tipi:compileTestGroovy`,
-  `./gradlew :jade-tipi:test --tests '*CommittedTransactionMaterializerSpec*'`,
-  and `./gradlew :jade-tipi:test`. If local setup blocks verification, report
-  the documented setup command
-  `docker compose -f docker/docker-compose.yml --profile mongodb up -d` and the
-  exact blocked command/error.
+- Required verification proposal should include `./gradlew
+  :jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`,
+  focused `ContentsLinkReadServiceSpec` and `ContentsLinkReadControllerSpec`
+  runs, and `./gradlew :jade-tipi:test`. If local setup blocks verification,
+  report the documented setup command
+  `docker compose -f docker/docker-compose.yml --profile mongodb up -d`,
+  `./gradlew --stop` when stale Gradle daemons are implicated, and the exact
+  blocked command/error.
+
+## TASK-014 Director Review
+
+- `TASK-014` is accepted on 2026-05-01. Scope check passed against claude-1's
+  base assignment plus the active task expansion. The implementation changed
+  only `docs/agents/claude-1-changes.md`,
+  `CommittedTransactionMaterializer.groovy`, and
+  `CommittedTransactionMaterializerSpec.groovy`.
+- Required behavior is present: supported committed `loc + create`,
+  `typ link_type + create`, and `lnk + create` messages now write
+  root-shaped documents with `_id`, `id`, `collection`, top-level `type_id`,
+  `properties`, `links: {}`, and `_head.provenance`.
+- New roots do not write `_jt_provenance`. Provenance moved to
+  `_head.provenance` with `txn_id`, `commit_id`, `msg_uuid`, source
+  `collection`, source `action`, `committed_at`, and `materialized_at`.
+- Skip behavior, unsupported-message behavior, matching and conflicting
+  duplicate behavior, and non-duplicate insert failure behavior are preserved.
+  Duplicate comparison ignores only `_head.provenance.materialized_at`.
+- Director local verification partially passed: `./gradlew
+  :jade-tipi:compileGroovy` succeeded. `./gradlew
+  :jade-tipi:compileTestGroovy` was blocked by sandbox/tooling permissions
+  opening the Gradle wrapper cache lock under `/Users/duncanscott/.gradle`, not
+  by an observed product failure. In a normal developer shell, use
+  `docker compose -f docker/docker-compose.yml --profile mongodb up -d` when
+  the local stack is needed, `./gradlew --stop` when stale Gradle daemons are
+  implicated, then run the remaining `TASK-014` Gradle verification commands.
+- Credited developer verification: claude-1 reported the required compile,
+  focused materializer spec, and full unit suite commands passing.
+- Follow-up: `TASK-015` was created for pre-work on moving the contents read
+  path to root-shaped `typ` and `lnk` documents.
 
 ## TASK-013 Pre-work Direction
 
