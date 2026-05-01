@@ -2,7 +2,7 @@
 
 ID: TASK-012
 TYPE: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 SOURCE_TASKS:
   - TASK-011
@@ -76,6 +76,51 @@ DEPENDENCIES:
   materialization, the contents read service, and the HTTP adapter.
 
 LATEST_REPORT:
-Created by director on 2026-05-01 after accepting `TASK-011`. Start with
-pre-work only; do not implement until this task is reviewed and moved to
-`READY_FOR_IMPLEMENTATION`.
+Director pre-work review accepted on 2026-05-01. Scope check passed:
+claude-1 changed only `docs/agents/claude-1-next-step.md`, inside the
+developer-owned pre-work paths. Implement the narrow opt-in integration spec
+proposed there, using the accepted `TASK-004` Kafka pattern and authenticated
+`WebTestClient` through a real `RANDOM_PORT` Spring context.
+
+Implementation direction:
+- Add one integration spec under
+  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/contents/`.
+- Reuse the existing project-documented Docker stack and the existing
+  `JADETIPI_IT_KAFKA` opt-in flag. Include the Kafka reachability probe and add
+  the proposed Keycloak readiness probe so missing local services skip before
+  Spring context load.
+- Use per-run Kafka topic, consumer group, transaction id, and materialized
+  document ids. Create and delete only the spec topic; do not rely on global
+  topic or database emptiness.
+- Construct the transaction messages with DTO helpers and inline payload maps
+  matching the canonical `10`, `11`, and `12` example shapes. Do not load the
+  bundled JSON examples verbatim. Use one `loc` container row, the canonical
+  `typ + create` `contents` link type row, and one `lnk + create` row with the
+  plate-well `properties.position` shape. An extra unrelated `loc` row is not
+  required.
+- Publish one transaction through Kafka, wait for committed `txn` visibility,
+  then wait for the materialized `typ` and `lnk` rows before exercising HTTP.
+- Assert both `GET /api/contents/by-container/{id}` and
+  `GET /api/contents/by-content/{id}` in one feature against the same
+  materialized link. Include the empty-result HTTP 200 `[]` assertion.
+- Keep await/polling helpers private in the new spec for this task. Do not
+  refactor `TransactionMessageKafkaIngestIntegrationSpec`.
+- Keep assertions inline; no new resource fixture is needed.
+- Rely on per-run id/topic/group isolation rather than serializing all
+  integration tests.
+- After implementation, set this task to `READY_FOR_REVIEW` and append the
+  implementation report to `docs/agents/claude-1-changes.md`.
+
+Required verification after implementation:
+`./gradlew :jade-tipi:compileGroovy`,
+`./gradlew :jade-tipi:compileTestGroovy`,
+`./gradlew :jade-tipi:compileIntegrationTestGroovy`,
+`JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*ContentsHttpReadIntegrationSpec*'`,
+and `./gradlew :jade-tipi:test`. Also run
+`JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*TransactionMessageKafkaIngestIntegrationSpec*'`
+if time permits, because it cheaply checks coexistence with the accepted
+Kafka-ingest integration pattern. If local tooling, Gradle locks, Docker,
+Kafka, Mongo, or Keycloak are unavailable, report the documented setup command
+`docker compose -f docker/docker-compose.yml up -d`, `./gradlew --stop` when
+stale Gradle daemons are the issue, and the exact command/error rather than
+treating setup as a product blocker.

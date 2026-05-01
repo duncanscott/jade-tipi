@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
@@ -10,11 +10,24 @@ New product direction is recorded in `DIRECTION.md`: add a first-class `loc` col
 
 ## Active Task
 
-- `TASK-012 - Plan contents HTTP read integration coverage` is READY_FOR_PREWORK and assigned to claude-1.
+- `TASK-012 - Plan contents HTTP read integration coverage` is READY_FOR_IMPLEMENTATION and assigned to claude-1.
 
 ## Scope Expansion
 
-Pre-work is requested for `TASK-012`. Use `docs/orchestrator/tasks/TASK-012-contents-http-read-integration-prework.md` as the task-specific source of truth and record the pre-work proposal in `docs/agents/claude-1-next-step.md`. Do not implement until the director reviews the pre-work and moves the task to `READY_FOR_IMPLEMENTATION`.
+Implementation is approved for `TASK-012`. Use `docs/orchestrator/tasks/TASK-012-contents-http-read-integration-prework.md` as the task-specific source of truth and record implementation outcomes in `docs/agents/claude-1-changes.md`.
+
+## TASK-012 Director Pre-work Review
+
+- `TASK-012` pre-work is accepted on 2026-05-01. Scope check passed: claude-1 changed only `docs/agents/claude-1-next-step.md`, inside the developer-owned pre-work paths.
+- Implement one opt-in integration spec under `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/contents/`, using the accepted `TASK-004` Kafka integration pattern plus authenticated `WebTestClient` against a real `RANDOM_PORT` Spring context.
+- Reuse the project-documented Docker stack and the existing `JADETIPI_IT_KAFKA` opt-in flag. Keep the Kafka probe and add the proposed Keycloak readiness probe so missing services skip before Spring context load.
+- Use per-run topic, consumer group, transaction id, and materialized document ids. Cleanup must delete only this spec's Kafka topic, `txn` rows by `txn_id`, and materialized `loc`/`typ`/`lnk` rows by exact `_id`; do not drop collections or require a globally clean database.
+- Build messages with DTO helpers and inline payload maps matching the canonical examples' field shapes. Use one container `loc`, one canonical `typ + create` with `kind: "link_type"` and `name: "contents"`, and one `lnk + create` with the plate-well `properties.position` shape. Do not add an extra unrelated `loc` row or a new fixture resource.
+- Publish one transaction through Kafka, wait for committed `txn` visibility, then wait for materialized `typ` and `lnk` rows before exercising HTTP.
+- Assert both `GET /api/contents/by-container/{id}` and `GET /api/contents/by-content/{id}` in one feature against the same materialized link. Include an empty-result HTTP 200 `[]` assertion.
+- Keep polling helpers private in the new spec for this task; do not refactor `TransactionMessageKafkaIngestIntegrationSpec`.
+- Preserve all out-of-scope boundaries: no changes to read services/controllers, materializer, persistence service, Kafka listener/config, DTO schema/examples, Docker Compose, security policy, frontend, endpoint joins, semantic validation, response envelopes, pagination, backfill, or update/delete replay.
+- Required verification after implementation: `./gradlew :jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`, `./gradlew :jade-tipi:compileIntegrationTestGroovy`, `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*ContentsHttpReadIntegrationSpec*'`, and `./gradlew :jade-tipi:test`. If time permits, also run `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*TransactionMessageKafkaIngestIntegrationSpec*'`. If setup/tooling blocks verification, report `docker compose -f docker/docker-compose.yml up -d`, `./gradlew --stop` when stale daemons are implicated, and the exact blocked command/error instead of treating setup as a product blocker.
 
 ## TASK-011 Director Review
 
