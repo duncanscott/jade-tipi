@@ -1,41 +1,28 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: HUMAN_REQUIRED
 
 ## Active Focus
 
-Continue the backend Kafka-first path by exposing the accepted committed transaction snapshot read layer through the smallest useful HTTP adapter. `TASK-005` is accepted; `TASK-006` pre-work is accepted and ready for implementation.
+The backend Kafka-first slice through committed transaction snapshot HTTP reads is complete through `TASK-006`. Pause for human direction before opening the next bounded unit because viable continuations now branch into product/API choices: materialization into long-term collections, rebuilding HTTP submission over the Kafka-first persistence service, API response-shape hardening, or authorization/scoping policy.
 
 ## Active Task
 
-- `TASK-006`: Add committed transaction snapshot HTTP read adapter
-- Owner: `claude-1`
-- Current status: `READY_FOR_IMPLEMENTATION`
+- None. `TASK-006` is accepted.
 
 ## Scope Expansion
 
-For `TASK-006`, `claude-1` may inspect and propose changes within:
+No active implementation scope is currently delegated. Do not route additional developer work until the human chooses the next bounded task.
 
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/`
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/controller/`
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/dto/`
-- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/`
-- `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/`
-- `docs/orchestrator/tasks/TASK-006-committed-transaction-snapshot-http-read-adapter.md`
+## TASK-006 Director Review
 
-`claude-1` may implement the smallest HTTP read adapter accepted in pre-work. Keep the implementation within the task owned paths and the decisions below.
-
-## TASK-006 Director Decisions
-
-- Pre-work review passed on 2026-04-30. Scope check passed: the latest claude-1 pre-work commit changed only `docs/agents/claude-1-next-step.md`, inside the developer-owned pre-work paths.
-- Start from a thin WebFlux adapter over `CommittedTransactionReadService`; do not change the Kafka write path, the `txn` record shape, or the committed snapshot service semantics accepted in `TASK-005`.
-- Implement `GET /api/transactions/{id}/snapshot`.
-- Return the existing `CommittedTransactionSnapshot` service-boundary object directly with default Jackson camelCase field names. Keep the TASK-005 snapshot classes in `service/`; do not relocate them to `dto/` or add snake_case annotations in this task.
-- Map a present snapshot to HTTP 200 and `Mono.empty()` to HTTP 404 with no body. For blank/whitespace-only IDs that reach the route, rely on `CommittedTransactionReadService.findCommitted` plus `GlobalExceptionHandler` to produce the standard HTTP 400 `ErrorResponse`.
-- Mirror existing controller/security patterns unless pre-work identifies a concrete blocker. Do not introduce new authentication, authorization, or redaction policy in this task.
-- Add lightweight WebFlux/controller coverage with `WebTestClient`, either as no-server controller binding or a narrow `@WebFluxTest` slice. The tests should verify the actual route, 200 body serialization, 404 empty response, 400 handler behavior, service delegation, and no direct Mongo collaborator without requiring Mongo/Kafka/Keycloak.
-- Keep materialization into `ent`, `ppy`, `typ`, `lnk`, or other long-term collections out of scope.
-- If Docker or local Gradle tooling is unavailable during verification, report the exact documented setup command rather than treating it as a product blocker.
+- `TASK-006` is accepted on 2026-05-01. The backend now exposes `GET /api/transactions/{id}/snapshot` as a thin WebFlux adapter over `CommittedTransactionReadService`.
+- The controller delegates committed visibility entirely to `CommittedTransactionReadService.findCommitted(String)`, returns a populated `CommittedTransactionSnapshot` as HTTP 200, maps `Mono.empty()` to HTTP 404 with no body, and relies on the service `Assert.hasText` plus `GlobalExceptionHandler` for blank/whitespace-only IDs.
+- Scope check passed. The merge changed only `docs/agents/claude-1-changes.md`, the `TASK-006` task file, `CommittedTransactionReadController.groovy`, and `CommittedTransactionReadControllerSpec.groovy`; code and tests stayed within the task-owned controller/test paths and the only developer-owned report path changed was `docs/agents/claude-1-changes.md`.
+- Required controller assertions are present: actual route coverage, 200 JSON serialization with header/message/Kafka provenance fields, message order, 404 empty body, 400 `ErrorResponse` through the real global handler, service delegation, and no direct Mongo collaborator.
+- Director local verification was blocked before product tests by sandbox/tooling permissions, not by an observed product failure. `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadControllerSpec*'` failed opening the Gradle wrapper cache lock in `/Users/duncanscott/.gradle`. In a normal developer shell, use the documented setup and verification sequence: `docker compose -f docker/docker-compose.yml up -d`, then `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadControllerSpec*'` and `./gradlew :jade-tipi:test`.
+- Credited developer verification: with the Docker stack up, claude-1 reported `./gradlew :jade-tipi:compileGroovy`, `./gradlew :jade-tipi:compileTestGroovy`, `./gradlew :jade-tipi:test --tests '*CommittedTransactionReadControllerSpec*'`, `./gradlew :jade-tipi:test`, and `./gradlew :jade-tipi:compileIntegrationTestGroovy` passing.
+- No automatic next task was created because the next bounded unit is not singularly obvious. Human direction is needed to choose among materialization, HTTP submission rebuild, API response hardening, and authorization/scoping policy.
 
 ## TASK-005 Director Decisions
 
