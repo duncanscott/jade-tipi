@@ -2,7 +2,7 @@
 
 ID: TASK-010
 TYPE: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: READY_FOR_REVIEW
 OWNER: claude-1
 OWNED_PATHS:
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/
@@ -73,44 +73,87 @@ DEPENDENCIES:
   `typ` link-type declarations, and `lnk` records.
 
 LATEST_REPORT:
-Director accepted claude-1 pre-work on 2026-05-01. Scope check passed: the
-latest developer turn changed only `docs/agents/claude-1-next-step.md`, inside
-claude-1's pre-work-owned paths.
+Implementation done by claude-1 on 2026-05-01 against the director's
+accepted pre-work decisions; awaiting review.
 
-Implementation is authorized with these decisions:
-- Build a Kafka-free, HTTP-free `ContentsLinkReadService` over materialized
-  `typ` and `lnk`; do not add a controller in this task.
-- Support both directions in the first unit: `findContents(containerId)` for
-  `contents` links whose `left` is the container, and `findLocations(objectId)`
-  for `contents` links whose `right` is the object.
-- Resolve the canonical `contents` link type by querying `typ` records where
-  `kind == "link_type"` and `name == "contents"`, then filter `lnk.type_id`
-  with all matching type IDs. Do not hardcode a type ID and do not require the
-  caller to pass one.
-- Return one small service value object per matching `lnk`, preserving the link
-  id, `type_id`, `left`, `right`, `properties`, and `_jt_provenance` values
-  verbatim. Sort results by `_id` ascending and do not deduplicate or group.
-- Do not join endpoints to `loc` or `ent` in this task. Missing containers,
-  missing objects, unresolved endpoints, absent `contents` declarations, and no
-  matching links should produce an empty result or the verbatim unresolved link
-  behavior specified in the pre-work, not a product error.
-- Tolerate multiple `contents` type declarations by matching all declarations.
-  Duplicate/conflicting materialized links are already a materializer concern;
-  the reader returns the materialized `lnk` rows it finds.
-- Add focused pure Spock service coverage and the small architecture-doc
-  "Reading `contents` links" paragraph proposed in pre-work. Do not add an
-  integration test unless implementation shows the unit boundary is not
-  verifiable.
-- Keep the existing out-of-scope boundaries: no transaction persistence,
-  committed snapshot, materializer, Kafka, DTO schema/example, build, Docker,
-  security, HTTP submission, UI, update/delete replay, backfill, authorization,
-  semantic write validation, or `parent_location_id` changes.
+Production source changes (all inside the owned-path expansion):
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/ContentsLinkReadService.groovy`
+  (new) — Kafka-free / HTTP-free `@Service` taking only
+  `ReactiveMongoTemplate`. Public surface:
+  `Flux<ContentsLinkRecord> findContents(String containerId)` (forward
+  lookup, `lnk.left == containerId`) and
+  `Flux<ContentsLinkRecord> findLocations(String objectId)` (reverse
+  lookup, `lnk.right == objectId`). Both paths first resolve the
+  canonical `contents` link type by querying `typ` for documents with
+  `kind == 'link_type' AND name == 'contents'` (sorted ASC by `_id`),
+  collect the matching `_id` strings, and — when the list is non-empty
+  — query `lnk` with `Criteria.where('type_id').in(typeIds)
+  .and(<endpoint>).is(<id>)` sorted ASC by `_id`. When no `contents`
+  declaration exists, both methods short-circuit to `Flux.empty()` and
+  never query `lnk`. `Assert.hasText(...)` rejects blank/whitespace
+  input with `IllegalArgumentException` at the entry point.
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/ContentsLinkRecord.groovy`
+  (new) — Groovy `@Immutable` value object. Fields: `linkId` (Mongo
+  `_id`), `typeId`, `left`, `right`, `properties` (`Map<String, Object>`
+  verbatim), and `provenance` (`Map<String, Object>` verbatim from the
+  materialized `_jt_provenance` sub-document, including `txn_id`,
+  `commit_id`, `msg_uuid`, `committed_at`, `materialized_at`).
 
-Required verification after implementation:
-`./gradlew :jade-tipi:compileGroovy`,
-`./gradlew :jade-tipi:compileTestGroovy`,
-`./gradlew :jade-tipi:test --tests '*ContentsLinkReadServiceSpec*'`, and
-`./gradlew :jade-tipi:test`. If Mongo-backed tests fail because Mongo is not
-running, use the documented setup command
-`docker compose -f docker/docker-compose.yml --profile mongodb up -d` and
-report any setup/tooling blocker separately from product failures.
+Doc changes:
+- `docs/architecture/kafka-transaction-message-vocabulary.md` — added a
+  short "Reading `contents` Links" section between
+  "Committed Materialization Of Locations And Links" and
+  "Reference Examples". Names the service surface, the canonical-type
+  resolution rule, the `Flux.empty()` short-circuit, the `_id` ASC
+  ordering, the verbatim record fields including `provenance`, the
+  explicit non-join semantics for `loc`/`ent`, and the
+  `IllegalArgumentException` boundary behavior.
+
+Test changes (all under
+`jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/`):
+- `ContentsLinkReadServiceSpec.groovy` (new) — 18 pure Spock features
+  with `Mock(ReactiveMongoTemplate)`. Covers: forward and reverse
+  single-match round-trips with verbatim properties and
+  `_jt_provenance`; captured-`Query` proofs of typ criteria
+  (`kind=link_type AND name=contents`), typ sort `_id ASC`, lnk
+  `type_id $in [..]` (single and multiple resolved IDs), lnk endpoint
+  is-clause (`left == containerId` only on forward, `right == objectId`
+  only on reverse), and lnk sort `_id ASC` (asserted via captured
+  `sortObject`, not mock iteration order); `Flux.empty()` short-circuit
+  with `0 *` `lnk` find when no `contents` type is declared; empty
+  result without consulting `loc`/`ent` when no matching `lnk`;
+  verbatim return of a `lnk` whose `right` would not resolve in
+  `loc`/`ent`; tolerance for a materialized `lnk` missing
+  `_jt_provenance` (returned with `provenance == null`);
+  `IllegalArgumentException` for blank/whitespace inputs on both
+  methods (`where:` data table); and a no-write proof asserting zero
+  `insert`/`save`/`updateFirst`/`updateMulti`/`remove` calls on either
+  query path.
+
+Out-of-scope items confirmed not changed: no controller (no
+`jade-tipi/src/main/groovy/org/jadetipi/jadetipi/controller/` edit),
+no integration spec, no semantic write-time validation, no endpoint
+join, no `CommittedTransactionMaterializer` /
+`CommittedTransactionReadService` /
+`TransactionMessagePersistenceService` change, no
+`CommittedTransactionSnapshot` / `CommittedTransactionMessage` /
+`KafkaProvenance` / `MaterializeResult` / `PersistResult` change, no
+DTO / JSON-schema / message-example / Kafka listener / topic / build /
+Docker Compose / security / `loc.parent_location_id` / update or delete
+replay / backfill / authorization change.
+
+Verification (with the existing Docker stack already healthy —
+`jade-tipi-mongo`, `jade-tipi-kafka`, `jade-tipi-keycloak` containers
+all up; `docker compose -f docker/docker-compose.yml --profile mongodb
+up -d` was therefore not re-issued):
+- `./gradlew :jade-tipi:compileGroovy` — BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:compileTestGroovy` — BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:test --tests '*ContentsLinkReadServiceSpec*'`
+  — BUILD SUCCESSFUL. Spec report:
+  `tests=18, failures=0, errors=0, skipped=0`.
+- `./gradlew :jade-tipi:test` — BUILD SUCCESSFUL. Aggregated unit-suite
+  report: `tests=97, failures=0, errors=0, skipped=0` across 10 specs
+  (was 79 across 9 specs at the end of TASK-009; the only delta is the
+  new `ContentsLinkReadServiceSpec` adding 18 features).
+The DTO library was intentionally not rebuilt because no DTO/schema/
+example changed in this task.

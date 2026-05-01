@@ -172,6 +172,17 @@ Once a transaction commits in `txn`, a post-commit projection copies the `loc + 
 
 Materialized documents copy the committed `data` payload verbatim, set Mongo `_id` to `data.id`, keep the original `id` payload field, and add a reserved `_jt_provenance` sub-document carrying `txn_id`, `commit_id`, `msg_uuid`, `committed_at`, and `materialized_at`. Duplicate `_id` writes with an identical payload are idempotent successes; differing-payload duplicates are logged and counted but not overwritten, and missing or blank `data.id` is logged and skipped without synthesizing an id. Semantic reference validation (`type_id`, `left`, `right`, and `allowed_*_collections`) is still not enforced; that remains a follow-up reader/validator concern.
 
+## Reading `contents` Links
+
+`ContentsLinkReadService` answers the two contents questions over the materialized `lnk` collection without requiring callers to know the canonical `contents` `type_id`:
+
+- `findContents(containerId)` returns the materialized `lnk` records whose `left` is `containerId` ("what are the contents of this container?").
+- `findLocations(objectId)` returns the materialized `lnk` records whose `right` is `objectId` ("where is this object located?").
+
+Both methods first query `typ` for documents with `kind == "link_type"` and `name == "contents"` and then filter `lnk.type_id` with `$in` against every matching declaration, so a tenant or environment that has more than one `contents` link-type declaration still surfaces all matching links. When no `contents` declaration exists yet, both methods return an empty result and never query `lnk`.
+
+The service returns one `ContentsLinkRecord` per matching `lnk`, sorted by `_id` ASC. Each record carries the link `_id`, `type_id`, `left`, `right`, the verbatim `properties` map (including instance-only data such as `properties.position` for plate-well placements), and the verbatim `_jt_provenance` sub-document. Endpoints are returned as raw id strings; this iteration does not join `lnk` to `loc` or `ent`, does not deduplicate, and does not flag conflicting materialized rows. Blank or whitespace-only ids are rejected at the service boundary with `IllegalArgumentException`.
+
 ## Reference Examples
 
 A complete early transaction flow is bundled as resources under `libraries/jade-tipi-dto/src/main/resources/example/message/`:
