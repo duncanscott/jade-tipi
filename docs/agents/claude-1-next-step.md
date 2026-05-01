@@ -4,249 +4,397 @@ The developer writes pre-work plans here before implementation begins.
 
 STATUS: PRESENT
 
-## TASK-015 — Update contents read service for root-shaped documents (pre-work)
+## TASK-016 — Plan root-shaped contents HTTP integration coverage (pre-work)
 
 ### Directive summary
 
-Per `DIRECTIVES.md` (signal `REQUEST_NEXT_STEP`, active task `TASK-015`,
+Per `DIRECTIVES.md` (signal `REQUEST_NEXT_STEP`, active task `TASK-016`,
 status `READY_FOR_PREWORK`) and
-`docs/orchestrator/tasks/TASK-015-root-shaped-contents-read-service.md`,
-plan the smallest update to `ContentsLinkReadService`, `ContentsLinkRecord`,
-and the focused service/controller specs so the contents read path
-understands the root-shaped materialized `typ` and `lnk` documents written
-by accepted `TASK-014`.
+`docs/orchestrator/tasks/TASK-016-root-shaped-contents-http-integration.md`,
+plan one narrow opt-in integration spec that proves a single canonical
+contents transaction can flow through Kafka ingestion, the accepted
+root-shaped committed materialization (`TASK-014`), and the contents HTTP
+read routes hardened against root-shaped `typ`/`lnk` documents (`TASK-015`).
+The paused `TASK-012` plan is historical context only — the materialized
+shape it targeted no longer exists, so it must be rewritten, not implemented
+as-is.
 
-Required behavior shifts:
+Scope of this pre-work: one Spring Boot integration spec under
+`jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/contents/`,
+gated by `JADETIPI_IT_KAFKA` plus a new Keycloak readiness probe, using the
+project-documented Docker stack, per-run Kafka topic/consumer-group, per-run
+`txn_id`, and per-run materialized `loc`/`typ`/`lnk` ids. No production
+behavior change; no broad documentation refresh; no fixture file additions
+unless source inspection later proves one is required (it does not).
 
-- `typ` resolution must move from top-level `kind == "link_type"` /
-  `name == "contents"` to **root-shaped** `properties.kind == "link_type"` /
-  `properties.name == "contents"`. The materializer's `buildInlineProperties`
-  excludes only `id` and `type_id`, so for a `typ + create` with
-  `data.kind: "link_type"` and `data.name: "contents"` it now writes
-  `properties.kind` and `properties.name` instead of top-level fields.
-- `lnk` mapping continues to read top-level `type_id`, `left`, `right`, and
-  `properties` — `CommittedTransactionMaterializer` keeps these at the root of
-  the `lnk` document (it explicitly copies them into the root before
-  `properties`).
-- `ContentsLinkRecord.provenance` must be populated from `_head.provenance`
-  (the new reserved provenance location written by `TASK-014`) instead of
-  top-level `_jt_provenance`. A short, explicit fallback to legacy
-  `_jt_provenance` is permitted by `TASK-013`/`TASK-015` and is recommended
-  here for safe transition (see plan below).
+Out of scope for this task (per `TASK-016` `OUT_OF_SCOPE` and `DIRECTIVES.md`):
+read service/controller/materializer semantics, persistence service,
+Kafka listener behavior, DTO schemas/canonical examples, Docker Compose,
+Gradle files, security policy, frontend, response envelopes, pagination,
+endpoint joins to `loc`/`ent`, authorization/scoping policy, semantic
+write-time validation, update/delete replay, backfill jobs, plate-shaped
+UI/API projections, refactors of `TransactionMessageKafkaIngestIntegrationSpec`,
+and any global cleanup of the test database.
 
-Out-of-scope (do not touch in this task): `CommittedTransactionMaterializer`,
-`TransactionMessagePersistenceService`, Kafka listener/topic, committed
-snapshot shape, DTO schemas/examples, Docker/Gradle, security, frontend,
-response envelopes, pagination, endpoint joins to `loc`/`ent`, semantic
-reference validation, endpoint projection maintenance, extension/pending
-pages, update/delete replay, backfill, transaction-overlay reads, required
-properties, default values, `TASK-012`, and any new integration coverage.
+### Source inspection (current accepted state)
 
-### Source inspection (TASK-013, TASK-014, current read path)
+- **Existing Kafka integration pattern.**
+  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/TransactionMessageKafkaIngestIntegrationSpec.groovy`
+  is the accepted opt-in template:
+  - `@SpringBootTest` + `@ActiveProfiles('test')` + class-level
+    `@IgnoreIf({ !TransactionMessageKafkaIngestIntegrationSpec.kafkaIntegrationGateOpen() })`
+    so the Spring context is never loaded when the gate is closed.
+  - `kafkaIntegrationGateOpen()` checks `JADETIPI_IT_KAFKA in ['1','true','TRUE','yes']`
+    plus a 2-second `AdminClient.describeCluster` probe against
+    `KAFKA_BOOTSTRAP_SERVERS` (default `localhost:9092`).
+  - `@DynamicPropertySource overrideProperties(...)` flips
+    `jadetipi.kafka.enabled=true`, narrows the listener pattern to a
+    per-run topic, sets a unique consumer group, shortens
+    `metadata.max.age.ms` to 2s, and creates the topic up front.
+  - Per-run `SHORT_UUID = UUID.randomUUID().toString().substring(0, 8)`,
+    `TEST_TOPIC = "jdtp-txn-itest-${SHORT_UUID}"`,
+    `CONSUMER_GROUP = "jadetipi-itest-${SHORT_UUID}"`. Topic created in
+    `@DynamicPropertySource` and deleted best-effort in `cleanupSpec()`.
+  - Per-feature `txn = Transaction.newInstance(...)` plus a `cleanup()`
+    method that deletes only this run's `txn_id` rows from `txn`. No
+    global database cleanup.
+  - Private `awaitMongo(Supplier<Mono<T>>, Predicate<T>, String)` helper
+    with `AWAIT_TIMEOUT = 30s`, `POLL_INTERVAL = 250ms`,
+    `MONGO_BLOCK_TIMEOUT = 5s`.
+- **Auth helper.**
+  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/config/KeycloakTestHelper.groovy`
+  obtains a bearer via Keycloak `client_credentials` grant against
+  `http://localhost:8484/realms/jade-tipi` with caching. Existing
+  `DocumentCreationIntegrationTest` calls it from `@BeforeAll` and uses
+  `webTestClient.get().uri(...).header("Authorization", "Bearer ${accessToken}")`.
+  The `test` profile sets `oauth2.resourceserver.jwt.issuer-uri` to
+  Keycloak; `TestSecurityConfig` is a `@TestConfiguration` (only loaded
+  when explicitly imported), so the integration context defers to the
+  real Keycloak issuer. We will reuse the helper rather than mocking
+  the decoder, mirroring the accepted Document integration tests.
+- **Materializer (TASK-014 accepted).**
+  `CommittedTransactionMaterializer` writes root-shaped documents for
+  `loc + create`, `typ + create` with `data.kind == "link_type"`, and
+  `lnk + create`. Each root has top-level `_id == id == data.id`,
+  `collection`, `type_id`, an inline `properties` map (`data` minus `id`
+  and `type_id` for non-`lnk` roots; `data.properties` verbatim for
+  `lnk`), `links: {}`, and a reserved
+  `_head: { schema_version: 1, document_kind: 'root', root_id, provenance: { txn_id, commit_id, msg_uuid, collection, action, committed_at, materialized_at } }`.
+  No top-level `_jt_provenance` is written for new roots. Materialization
+  runs on the post-commit hook in `TransactionMessagePersistenceService`,
+  so committing the canonical transaction publishes the root-shaped rows
+  asynchronously.
+- **Contents read service + controller (TASK-015 accepted).**
+  `ContentsLinkReadService.resolveContentsTypeIds()` queries `typ` for
+  `properties.kind == 'link_type'` and `properties.name == 'contents'`,
+  then filters `lnk.type_id $in <typeIds>` and `lnk.<endpointField> == id`,
+  sorted by `_id` ASC. `toRecord(...)` reads top-level `type_id`,
+  `left`, `right`, and `properties` from the `lnk` root, and provenance
+  from `_head.provenance` with a narrow legacy `_jt_provenance` fallback.
+  `ContentsLinkReadController` exposes
+  `GET /api/contents/by-container/{id}` and
+  `GET /api/contents/by-content/{id}`, both returning a flat
+  `Flux<ContentsLinkRecord>` (`linkId`, `typeId`, `left`, `right`,
+  `properties`, `provenance`) over JSON. Empty results are HTTP 200 `[]`;
+  blank ids are 400 `ErrorResponse` via the global handler. Both routes
+  require an authenticated `Jwt`.
+- **Canonical message examples** (`libraries/jade-tipi-dto/src/main/resources/example/message/`):
+  - `10-create-location.json` — `collection: 'loc'`, `data.id`
+    `jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~freezer_a`,
+    plus `name`/`description`.
+  - `11-create-contents-type.json` — `collection: 'typ'`,
+    `data.kind: 'link_type'`, `data.id`
+    `jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents`,
+    `data.name: 'contents'`, plus the six declarative facts
+    (`left_role`, `right_role`, `left_to_right_label`,
+    `right_to_left_label`, `allowed_left_collections`,
+    `allowed_right_collections`).
+  - `12-create-contents-link-plate-sample.json` — `collection: 'lnk'`,
+    `data.id`
+    `jade-tipi-org~dev~018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~lnk~plate_b1_sample_x1`,
+    `data.type_id` matching the contents `typ`, `data.left` a `loc` id,
+    `data.right` an `ent` id, `data.properties.position` =
+    `{kind: 'plate_well', label: 'A1', row: 'A', column: 1}`. (Note:
+    `data.right` references an `ent` that is not created in this
+    transaction; semantic resolution is out of scope for both the
+    materializer and the contents read path, so this is fine.)
+- **Docker Compose service names.** `docker/docker-compose.yml` ships
+  `mongodb` (`localhost:27017`), `keycloak` (`localhost:8484`, with a
+  health probe), `kafka` (`localhost:9092`, brought up after Keycloak
+  is healthy), and `kafka-init` (creates the global `jdtp_cli_kli`
+  topic). The new spec only needs `mongodb` + `keycloak` + `kafka`
+  reachable; the global topic is irrelevant because the spec uses its
+  own per-run `jdtp-txn-itest-…` topic.
+- **Integration-test Gradle wiring.**
+  `gradle/scripts/integration-test.gradle` creates the `integrationTest`
+  source set with `resources.srcDirs = ['src/integrationTest/resources',
+  'src/test/resources']`, so `application-test.yml` already participates
+  in integration tests. The Groovy plugin auto-includes
+  `src/integrationTest/groovy`. The `integrationTest` task uses JUnit
+  Platform; Spock + Spock-Spring are available transitively via the
+  unit `test` configuration. No build wiring change is needed.
 
-- `CommittedTransactionMaterializer` writes a self-describing root for
-  supported `loc + create`, `typ + create` (`data.kind == "link_type"`), and
-  `lnk + create` messages. Each root has top-level `_id`, `id`, `collection`,
-  `type_id`, `properties`, `links: {}`, and `_head`. For non-`lnk` roots
-  (`loc`, `typ link_type`), `properties` is built by copying `data` minus the
-  reserved `id` and `type_id` keys — so a contents link-type declaration
-  yields `properties.kind == "link_type"`, `properties.name == "contents"`,
-  plus the role/label/allowed-collection facts. For `lnk` roots, top-level
-  `type_id`, `left`, `right`, and `properties` are written verbatim from
-  `data`.
-- `_head.provenance` contains `txn_id`, `commit_id`, `msg_uuid`, source
-  `collection`, source `action`, `committed_at`, and `materialized_at`. New
-  roots no longer carry top-level `_jt_provenance`. `TASK-014` accepted this
-  contract.
-- `ContentsLinkReadService.resolveContentsTypeIds()` currently builds
-  `Criteria.where("kind").is("link_type").and("name").is("contents")` against
-  `typ` — this no longer matches root-shaped `typ` rows and will return zero
-  declarations, causing every contents read to short-circuit to empty.
-- `ContentsLinkReadService.toRecord(Map row)` currently reads
-  `row.get('_jt_provenance')` for provenance — this returns `null` for new
-  root-shaped `lnk` rows.
-- `ContentsLinkReadService.findByEndpoint(...)` already filters
-  `lnk.type_id $in <typeIds>` and `lnk.<endpointField> == id` and sorts by
-  `_id` ASC; that logic is unchanged because `lnk` keeps top-level
-  `type_id`/`left`/`right`. No production controller change is needed.
-- `ContentsLinkRecord` carries `linkId`, `typeId`, `left`, `right`,
-  `properties`, and `provenance: Map<String, Object>`. Wire shape stays
-  stable — only the *source* of `provenance` moves.
-- The "Reading `contents` Links" section of
-  `docs/architecture/kafka-transaction-message-vocabulary.md` documents the
-  current pre-TASK-014 mapping (top-level `kind`/`name` and verbatim
-  `_jt_provenance`) and needs a small narrative update to match the new
-  read.
+### Proposed plan (smallest viable opt-in spec)
 
-### Proposed plan (smallest viable update)
+#### File and shape
 
-1. **`ContentsLinkReadService` — typ resolution.** Change
-   `resolveContentsTypeIds()` so the `typ` `Criteria` queries
-   `properties.kind == "link_type"` and `properties.name == "contents"`. Keep
-   `_id` ASC sort and the existing `$in` strategy on `lnk.type_id`. Update
-   the field constants to `FIELD_PROPERTIES_KIND = "properties.kind"` and
-   `FIELD_PROPERTIES_NAME = "properties.name"` (or replace the two constants
-   with a single `FIELD_PROPERTIES = "properties"` and reuse the existing
-   `FIELD_KIND` / `FIELD_NAME` via dotted strings — pick whichever keeps the
-   diff smallest; recommendation: introduce two new dotted constants and
-   delete the old `FIELD_KIND` / `FIELD_NAME` constants since they are no
-   longer used).
-2. **`ContentsLinkReadService` — `lnk` mapping.** Leave `findByEndpoint` and
-   the `lnk` query untouched. Top-level `lnk.type_id`, `lnk.left`,
-   `lnk.right`, and `lnk.properties` continue to source `ContentsLinkRecord`
-   fields verbatim.
-3. **`ContentsLinkReadService` — provenance source.** Replace
-   `row.get('_jt_provenance')` with a small private helper
-   `extractProvenance(Map row)` that:
-   - Reads `_head.provenance` (the new canonical location) when `_head` is a
-     `Map` and contains a `Map` `provenance` value, returning a copy.
-   - Falls back to top-level `_jt_provenance` only when `_head` is missing,
-     null, or has no `provenance` sub-map. Keep this fallback explicitly
-     scoped to the copied-data-shape transition allowed by `TASK-013` and
-     `TASK-015`.
-   - Returns `null` when neither source is present (preserves the current
-     "missing provenance is null" contract).
-   Add new constants
-   `FIELD_HEAD = "_head"` and `HEAD_PROVENANCE = "provenance"`. Keep
-   `FIELD_PROVENANCE_LEGACY = "_jt_provenance"` only as long as the fallback
-   exists. The fallback is small (one branch + one new test row), explicit,
-   and easy to remove once stale rows are confirmed gone.
-4. **`ContentsLinkRecord`** — no production change. Field set, types, and
-   serialization stay the same; only the source of `provenance` moves
-   inside the service. Existing `@Immutable` generated equals/hashCode and
-   the controller's JSON wire shape are unaffected.
-5. **`ContentsLinkReadController`** — no production change. Routes stay
-   `GET /api/contents/by-container/{id}` and `GET /api/contents/by-content/{id}`,
-   delegation to the service is unchanged, and the JSON array contract is
-   unchanged.
+Add one file:
 
-### Proposed spec updates
+```
+jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/contents/ContentsHttpReadIntegrationSpec.groovy
+```
 
-`ContentsLinkReadServiceSpec.groovy`:
+Shape:
 
-- Update `typRow(...)` helper to build a root-shaped `typ` document:
-  ```
-  [_id: id, id: id, collection: 'typ', type_id: null,
-   properties: [kind: 'link_type', name: 'contents', /* declarative facts optional */],
-   links: [:],
-   _head: [schema_version: 1, document_kind: 'root', root_id: id,
-           provenance: [txn_id: '...', commit_id: '...', msg_uuid: '...',
-                        collection: 'typ', action: 'create',
-                        committed_at: ..., materialized_at: ...]]]
-  ```
-- Update `lnkRow(...)` helper to drop top-level `_jt_provenance` and instead
-  attach `_head.provenance` with the same field set used today (`txn_id`,
-  `commit_id`, `msg_uuid`, `committed_at`, `materialized_at`, plus the new
-  source `collection`/`action` keys). The top-level `type_id`, `left`,
-  `right`, and `properties.position` keys remain.
-- The "queries lnk with type_id $in resolved IDs ..." features change their
-  captured `typ` query assertions from
-  `typQueryDoc.get('kind') == 'link_type'` /
-  `typQueryDoc.get('name') == 'contents'` to
-  `typQueryDoc.get('properties.kind') == 'link_type'` /
-  `typQueryDoc.get('properties.name') == 'contents'` (Spring Mongo
-  `Criteria.where("properties.kind").is(...)` serializes the path as a
-  dotted key in the query object). The `lnk` query assertions are
-  unchanged.
-- The "typ records that are not link_type..." feature similarly asserts on
-  `properties.kind` / `properties.name`.
-- Replace the existing "missing `_jt_provenance` returns null provenance"
-  case with two cases:
-  1. **Canonical provenance source**: a `lnk` row with `_head.provenance`
-     and no top-level `_jt_provenance` produces a `ContentsLinkRecord`
-     whose `provenance` carries `txn_id`, `commit_id`, `msg_uuid`,
-     `committed_at`, and `materialized_at` from `_head.provenance`.
-  2. **Legacy fallback**: a `lnk` row with no `_head` (or `_head` lacking
-     `provenance`) but a top-level `_jt_provenance` map still maps that
-     legacy map verbatim into `ContentsLinkRecord.provenance`. Add a third
-     case asserting `provenance == null` when both sources are absent.
-- Forward/reverse "verbatim fields and provenance" features assert
-  provenance fields read from `_head.provenance`.
-- Blank-id (`null`, empty, whitespace) rejection, no-Mongo-on-blank, and
-  no-write assertions are unchanged.
-- The unresolved-endpoint and no-`contents`-declared cases are unchanged
-  (typ query short-circuit when no rows, no `lnk` join to `loc`/`ent`).
+- `@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)`
+- `@AutoConfigureWebTestClient`
+- `@ActiveProfiles('test')`
+- Class-level `@IgnoreIf({ !ContentsHttpReadIntegrationSpec.integrationGateOpen() })`
+- Extends `Specification`
+- One `@Autowired ReactiveMongoTemplate mongoTemplate`
+- One `@Autowired WebTestClient webTestClient`
+- Per-run constants identical in spirit to `TransactionMessageKafkaIngestIntegrationSpec`:
+  `SHORT_UUID = UUID.randomUUID().toString().substring(0, 8)`,
+  `TEST_TOPIC = "jdtp-txn-itest-contents-${SHORT_UUID}"`,
+  `CONSUMER_GROUP = "jadetipi-itest-contents-${SHORT_UUID}"`.
+- `@DynamicPropertySource overrideProperties(...)` mirrors the accepted
+  spec: enable the listener, narrow the topic pattern to `TEST_TOPIC`,
+  set a unique consumer group, shorten `metadata.max.age.ms` to `2000`,
+  and call a private `ensureTestTopic()` helper.
 
-`ContentsLinkReadControllerSpec.groovy`:
+The spec stays Kafka-driven (no HTTP submission rebuild) because Kafka
+ingest is already the only accepted submission path and `TASK-016`
+explicitly says "publish or otherwise submit" — Kafka publish is the
+existing accepted submission and matches `TASK-012`'s accepted direction.
 
-- No production controller change is needed and the spec already builds
-  `ContentsLinkRecord` instances directly with a `provenance` map. The
-  existing JSON-path assertions on `provenance.txn_id`, `provenance.commit_id`,
-  etc. continue to pass because the wire shape is stable. **No spec change is
-  required**, but a trivial refresh (test data comments referring to
-  `_head.provenance` instead of `_jt_provenance`) is acceptable as a
-  no-behavior cleanup if it stays inside this task's owned paths.
+#### Gates
 
-### Proposed doc update
+`integrationGateOpen()` is a single static method that runs **before**
+Spring loads (via `@IgnoreIf`):
 
-Edit only the "Reading `contents` Links" section of
-`docs/architecture/kafka-transaction-message-vocabulary.md`:
+1. Env flag: `JADETIPI_IT_KAFKA in ['1','true','TRUE','yes']` (re-uses
+   the existing flag — no new env var).
+2. Kafka readiness: same 2-second `AdminClient.describeCluster` probe
+   against `KAFKA_BOOTSTRAP_SERVERS` as the accepted spec.
+3. Keycloak readiness: a new 2-second probe via `WebClient`/`HttpURLConnection`
+   to `KEYCLOAK_URL/realms/jade-tipi/.well-known/openid-configuration`
+   (default `http://localhost:8484`, env override
+   `KEYCLOAK_URL`/`TEST_KEYCLOAK_URL`). If the probe fails, the spec is
+   skipped — Spring would otherwise fail to start because the JWT
+   resource server resolves the issuer at startup.
 
-- Change "first query `typ` for documents with `kind == "link_type"` and
-  `name == "contents"`" to "first query `typ` for documents with
-  `properties.kind == "link_type"` and `properties.name == "contents"`".
-- Change "verbatim `_jt_provenance` sub-document" to "verbatim
-  `_head.provenance` sub-document, with a short transitional fallback to
-  the legacy top-level `_jt_provenance` for documents materialized before
-  TASK-014".
-- Leave the `lnk` field-mapping language unchanged (`type_id`, `left`,
-  `right`, `properties`).
+The Keycloak probe is local to this spec and does not refactor the
+accepted Kafka spec or `KeycloakTestHelper`.
 
-The existing "Committed Materialization Of Locations And Links" section
-still describes the pre-TASK-014 copied-data shape with `_jt_provenance`
-and is now stale, but updating it is materializer-shape doc work that
-belongs to a TASK-014 doc follow-up rather than this read-service task.
-**Open question (Q1 below) flags this for the director's call.**
+#### Per-run isolation
+
+- **Kafka topic/group:** per-run `TEST_TOPIC` and `CONSUMER_GROUP`,
+  identical to the accepted pattern.
+- **Transaction id:** `txn = Transaction.newInstance('jade-itest-org', 'kafka', 'jade-itest-cli', 'itest-user')` per feature; `txnId = txn.id`.
+- **Materialized object ids:** built from the per-run `txn` id so they
+  are unique per run:
+  - `containerId = "jade-itest-org~kafka~${txnId}~loc~plate_${SHORT_UUID}"`
+  - `typeId = "jade-itest-org~kafka~${txnId}~typ~contents"`
+  - `linkId = "jade-itest-org~kafka~${txnId}~lnk~plate_${SHORT_UUID}_well_A1"`
+  - `contentId = "jade-itest-org~kafka~${txnId}~ent~sample_${SHORT_UUID}"`
+    (string only — `ent` is intentionally not materialized in this task,
+    matching the canonical example `12`'s unresolved-`right` shape).
+- **MongoDB cleanup** in `cleanup()` per feature, scoped strictly to
+  the per-run ids:
+  - `txn` rows by `txn_id == txnId`.
+  - `loc` rows by `_id in [containerId]`.
+  - `typ` rows by `_id in [typeId]`.
+  - `lnk` rows by `_id in [linkId]`.
+  No collection drops, no global query. Each `remove(...)` is a single
+  `Query` with the id criteria and is `.block(Duration.ofSeconds(10))`.
+
+#### Message construction strategy
+
+Construct each message with the DTO helper
+`Message.newInstance(txn, JtpCollection.<X>, Action.<Y>, [...])` plus an
+inline `Map` payload that mirrors the canonical `10`/`11`/`12` field
+shapes. **Do not load the bundled JSON examples verbatim** — the
+canonical files use a fixed `txn` UUID and fixed object ids, which
+cannot coexist with per-run isolation in `txn`/`loc`/`typ`/`lnk`. This
+matches the prior accepted `TASK-012` direction and the accepted
+pattern in `TransactionMessageKafkaIngestIntegrationSpec`. No new
+fixture file is required, and `OWNED_PATHS` for
+`jade-tipi/src/integrationTest/resources/` will not be used in the
+narrow plan; it is listed only because it might be needed if the
+director later asks for a JSON fixture.
+
+The transaction is exactly five messages, sent in this order via the
+existing per-spec Kafka producer (`String` key = `txnId`, `byte[]`
+value via `JsonMapper.toBytes(message)`):
+
+1. `Action.OPEN` on `JtpCollection.TRANSACTION` with a small `hint`.
+2. `Action.CREATE` on `JtpCollection.LOCATION`:
+   `[id: containerId, name: "plate_${SHORT_UUID}", description: 'integration plate']`.
+3. `Action.CREATE` on `JtpCollection.TYPE`:
+   ```
+   [kind: 'link_type',
+    id: typeId,
+    name: 'contents',
+    description: 'containment relationship between a container location and its contents',
+    left_role: 'container',
+    right_role: 'content',
+    left_to_right_label: 'contains',
+    right_to_left_label: 'contained_by',
+    allowed_left_collections: ['loc'],
+    allowed_right_collections: ['loc', 'ent']]
+   ```
+4. `Action.CREATE` on `JtpCollection.LINK`:
+   ```
+   [id: linkId,
+    type_id: typeId,
+    left: containerId,
+    right: contentId,
+    properties: [position: [kind: 'plate_well', label: 'A1', row: 'A', column: 1]]]
+   ```
+5. `Action.COMMIT` on `JtpCollection.TRANSACTION` with a small `summary`.
+
+#### Wait/assert sequence (one main feature)
+
+Inside one `def 'forward and reverse contents HTTP routes return the materialized link'() { ... }`:
+
+1. `send(openMsg); send(locMsg); send(typMsg); send(lnkMsg); send(commitMsg)`.
+2. `awaitMongo(...)` for the committed `txn` header:
+   condition: `header.state == 'committed' && header.commit_id != null`.
+3. `awaitMongo(...)` for the materialized `typ` row by `_id == typeId`,
+   asserting root-shape: `_id == typeId`, `id == typeId`,
+   `collection == 'typ'`, `properties.kind == 'link_type'`,
+   `properties.name == 'contents'`, `_head.provenance.txn_id == txnId`.
+4. `awaitMongo(...)` for the materialized `lnk` row by `_id == linkId`,
+   asserting root-shape: `_id == linkId`, `id == linkId`,
+   `collection == 'lnk'`, top-level `type_id == typeId`,
+   `left == containerId`, `right == contentId`,
+   `properties.position.label == 'A1'`,
+   `_head.provenance.txn_id == txnId`,
+   `_head.provenance.materialized_at != null`.
+5. Forward HTTP read:
+   `webTestClient.get().uri('/api/contents/by-container/{id}', containerId)
+       .header('Authorization', "Bearer ${KeycloakTestHelper.accessToken}")
+       .exchange()
+       .expectStatus().isOk()
+       .expectBody()
+       .jsonPath('$.length()').isEqualTo(1)
+       .jsonPath('$[0].linkId').isEqualTo(linkId)
+       .jsonPath('$[0].typeId').isEqualTo(typeId)
+       .jsonPath('$[0].left').isEqualTo(containerId)
+       .jsonPath('$[0].right').isEqualTo(contentId)
+       .jsonPath('$[0].properties.position.label').isEqualTo('A1')
+       .jsonPath('$[0].properties.position.row').isEqualTo('A')
+       .jsonPath('$[0].properties.position.column').isEqualTo(1)
+       .jsonPath('$[0].provenance.txn_id').isEqualTo(txnId)
+       .jsonPath('$[0].provenance.commit_id').exists()
+       .jsonPath('$[0].provenance.msg_uuid').isEqualTo(lnkMsg.uuid())`.
+6. Reverse HTTP read against the same materialized link:
+   `webTestClient.get().uri('/api/contents/by-content/{id}', contentId)
+       ...
+       .jsonPath('$[0].linkId').isEqualTo(linkId)
+       .jsonPath('$[0].right').isEqualTo(contentId)`.
+
+A second feature
+`def 'empty-result contents HTTP route returns 200 with empty array'() { ... }`
+covers the empty-result HTTP 200 `[]` requirement using a fresh
+unrelated id (e.g. `"jade-itest-org~kafka~${txnId}~loc~empty_${SHORT_UUID}"`)
+that is never written, against `/api/contents/by-container/{id}`. It
+asserts `expectStatus().isOk()` and `jsonPath('$.length()').isEqualTo(0)`
+and `expectBody().json('[]')` (or equivalent — `expectBodyList(...).hasSize(0)`).
+This feature does not need to publish any Kafka messages, so it is a
+fast path and stays inside the same spec to avoid duplicating the gate.
+
+> Note: I will choose `expectBodyList(ContentsLinkRecord).hasSize(0)`
+> for the empty case if WebTestClient deserialization through Spring's
+> default Jackson works cleanly with `@Immutable Groovy`. If it
+> doesn't, I will fall back to `.expectBody().json('[]')`. Either way
+> the assertion is HTTP 200 + empty array.
+
+Polling helpers (`awaitMongo`, `awaitConditionTrue`) are private to this
+spec — the directive explicitly forbids refactoring
+`TransactionMessageKafkaIngestIntegrationSpec`. I will copy the helpers
+verbatim rather than extract a new shared helper class.
+
+#### Negative coverage (intentionally limited)
+
+The directive asks for two HTTP shapes (forward/reverse) plus the
+empty-result `[]` case. I do **not** plan to add 400 blank-id coverage,
+404 unknown-route coverage, unauthorized-token coverage, or
+duplicate/conflict materialization coverage in this spec — those are
+already covered by existing controller and materializer unit tests
+(`ContentsLinkReadControllerSpec`, `CommittedTransactionMaterializerSpec`)
+and adding them here would broaden scope without adding integration
+signal.
 
 ### Verification proposal
 
-After implementation, run the task's required Gradle verification chain
-inside the `developers/claude-1` worktree:
+After implementation, run the `TASK-016` required Gradle chain inside the
+`developers/claude-1` worktree, with the documented Docker stack up:
 
 1. `./gradlew :jade-tipi:compileGroovy`
 2. `./gradlew :jade-tipi:compileTestGroovy`
-3. `./gradlew :jade-tipi:test --tests '*ContentsLinkReadServiceSpec*'`
-4. `./gradlew :jade-tipi:test --tests '*ContentsLinkReadControllerSpec*'`
+3. `./gradlew :jade-tipi:compileIntegrationTestGroovy`
+4. `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*ContentsHttpReadIntegrationSpec*'`
 5. `./gradlew :jade-tipi:test`
+6. (If time permits) `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*TransactionMessageKafkaIngestIntegrationSpec*'`
+   to confirm coexistence with the accepted Kafka-ingest integration
+   pattern (per-run topic and consumer group should isolate the runs).
 
-If local tooling, Gradle locks, Docker, or Mongo setup blocks any of the
-above, report the documented setup commands rather than treating setup as
-a product blocker:
+If local tooling, Gradle locks, Docker, Kafka, Mongo, or Keycloak setup
+blocks any of the above, report the documented setup commands rather
+than treating setup as a product blocker:
 
-- `docker compose -f docker/docker-compose.yml --profile mongodb up -d` to
-  bring up Mongo when `:jade-tipi:test` requires it (the unit-suite Spring
-  context still tries to open a Mongo connection during `contextLoads`).
-- `./gradlew --stop` when stale Gradle daemons are implicated (e.g. a
-  Gradle wrapper cache lock under `/Users/duncanscott/.gradle`), then
-  re-run the blocked command.
-- Always report the exact blocked command and its error verbatim alongside
-  the setup command.
+- `docker compose -f docker/docker-compose.yml up -d` — brings up
+  `mongodb`, `keycloak`, and `kafka` (Kafka `depends_on` Keycloak healthy,
+  per `docker/docker-compose.yml`). The new spec gate covers the Kafka
+  and Keycloak readiness checks; the `test` profile covers Mongo at
+  `localhost:27017`.
+- `./gradlew --stop` — drop stale Gradle daemons (e.g. when the wrapper
+  cache lock at `/Users/duncanscott/.gradle/...` is held), then re-run
+  the blocked command.
+- Always report the exact blocked command and its error verbatim
+  alongside the proposed setup command.
 
 ### Blockers and open questions
 
-- **Q1 — Materialization doc currency.** The "Committed Materialization Of
-  Locations And Links" section of
-  `docs/architecture/kafka-transaction-message-vocabulary.md` still
-  describes the pre-TASK-014 copied-data shape with `_jt_provenance`. The
-  doc is on `TASK-015`'s `OWNED_PATHS`. Do you want this task to refresh
-  that section to match TASK-014's accepted root-shape contract, or keep
-  TASK-015's doc edits scoped strictly to the "Reading `contents` Links"
-  section and defer the materialization-section refresh to a separate
-  TASK-014 doc follow-up? Recommendation: defer (keep TASK-015 narrow).
-- **Q2 — Legacy `_jt_provenance` fallback.** Recommendation is to
-  implement an explicit, covered fallback per `TASK-013`/`TASK-015`'s
-  allowance, since pre-TASK-014 dev/integration runs may have left rows
-  with top-level `_jt_provenance` in `lnk`. If you would rather drop the
-  fallback now and rely on cleared collections, the implementation
-  shrinks by one branch and one Spock case. No blocker; awaiting director
-  decision.
-- **Q3 — Field-constant churn.** The current service has
-  `FIELD_KIND`/`FIELD_NAME`/`FIELD_PROVENANCE` constants used only by the
-  to-be-removed query/mapping branches. Recommendation: delete them when
-  introducing the new `properties.kind`, `properties.name`, `_head`, and
-  `_head.provenance` constants. No behavior impact; flagged so a strict
-  scope reviewer sees the constant set will narrow.
-- No external blockers identified. Implementation is straightforward
-  once `TASK-015` moves to `READY_FOR_IMPLEMENTATION`.
+- **Q1 — `expectBodyList` vs `expectBody().json('[]')` for the empty
+  case.** Recommendation: try `expectBodyList(ContentsLinkRecord).hasSize(0)`
+  first because it exercises the deserialization shape, and fall back
+  to `expectBody().json('[]')` if Groovy `@Immutable` plus Jackson
+  default mapping needs hand-tuning. Either form satisfies the
+  directive's "HTTP 200 `[]`" requirement. Flagged so the director can
+  veto the deserializer-touching variant if they prefer the pure JSON
+  shape assertion.
+- **Q2 — Unresolved `right` endpoint (`ent` id never materialized).**
+  Canonical example `12` already references an `ent` that no
+  transaction creates in this task. The materializer and contents read
+  service intentionally do not validate semantic resolution, so the
+  reverse-route assertion against a never-materialized `contentId`
+  exercises the documented "verbatim id passthrough" contract. No
+  change requested; flagged so a strict reviewer sees this is by
+  design and matches the canonical example shape.
+- **Q3 — `application-test.yml` JWT issuer.** The `test` profile
+  points the resource server at `http://localhost:8484/realms/jade-tipi`,
+  which is exactly what the new Keycloak readiness probe checks. No
+  edit to `application-test.yml` is planned. The directive lists
+  `jade-tipi/src/test/resources/application-test.yml` in
+  `OWNED_PATHS`, but I do not currently see a reason to modify it.
+  Flagged so the director can confirm "no edit" is acceptable.
+- **Q4 — Keycloak probe location.** Plan is to keep the probe inline in
+  the new spec (small static method, no new shared helper), to avoid
+  refactoring `KeycloakTestHelper`. If the director prefers to extend
+  `KeycloakTestHelper` with a `static boolean isReachable()` method, I
+  can do that instead, but it adds a touch outside the new spec file
+  and the directive explicitly says "do not refactor existing
+  integration tests". Recommendation: keep inline.
+- **Q5 — Token caching across features.** `KeycloakTestHelper` caches
+  the bearer in a static field. The cached value is reused across
+  features inside this spec and across other integration tests in the
+  same JVM run, which is fine because the token is valid for an hour.
+  No change requested.
+- No external blockers identified. Implementation is a single new
+  Groovy spec file plus per-run cleanup, mirroring an accepted pattern;
+  it should land cleanly once `TASK-016` moves to
+  `READY_FOR_IMPLEMENTATION`.
 
 STOP.
