@@ -11,18 +11,20 @@ Report file: docs/agents/claude-1-changes.md
 
 ## Current Assignment
 
-- Active task: `TASK-011 - Plan contents location HTTP read adapter`.
+- Active task: `TASK-012 - Plan contents HTTP read integration coverage`.
 - Current phase: pre-work. Read `DIRECTIVES.md` and the task file, then
-  propose the smallest HTTP/WebFlux adapter over the accepted
-  `ContentsLinkReadService`. The proposal should identify the route shape for
-  both query directions, response shape, empty-result behavior, blank-id/error
-  handling, tests, and verification commands.
+  propose the narrowest opt-in end-to-end integration coverage for the accepted
+  contents read path. The proposal should identify how to drive canonical
+  location/type/link messages through Kafka ingestion, committed
+  materialization, and the `GET /api/contents/...` HTTP routes; how to handle
+  Docker/Kafka/Mongo/Keycloak gating and cleanup; what assertions to add; and
+  the exact verification commands.
   Do not implement until the director moves the task to
   `READY_FOR_IMPLEMENTATION`.
 - Record pre-work in `docs/agents/claude-1-next-step.md`; record implementation
   outcomes in `docs/agents/claude-1-changes.md` only after implementation is
   approved.
-- Use `docs/orchestrator/tasks/TASK-011-contents-location-http-read-adapter-prework.md`
+- Use `docs/orchestrator/tasks/TASK-012-contents-http-read-integration-prework.md`
   as the task-specific source of truth for pre-work paths and acceptance
   criteria.
 

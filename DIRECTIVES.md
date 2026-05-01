@@ -1,20 +1,31 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
-The active bounded unit is `TASK-011`: plan the smallest HTTP/WebFlux adapter over the accepted `ContentsLinkReadService` so callers can answer the `DIRECTION.md` contents questions through the backend without changing materialization or service-level query semantics.
+The active bounded unit is `TASK-012`: plan opt-in end-to-end integration coverage for the accepted contents read path, proving canonical location/type/link messages can flow through Kafka ingestion, committed materialization, and the `GET /api/contents/...` HTTP read routes without changing product semantics.
 
 New product direction is recorded in `DIRECTION.md`: add a first-class `loc` collection for laboratory locations, keep containment relationships canonical in `lnk`, define `contents` as a typed link/class through `typ`, and model plate well coordinates as instance properties on `contents` links unless wells need independent lifecycle.
 
 ## Active Task
 
-- `TASK-011 - Plan contents location HTTP read adapter` is READY_FOR_IMPLEMENTATION and assigned to claude-1.
+- `TASK-012 - Plan contents HTTP read integration coverage` is READY_FOR_PREWORK and assigned to claude-1.
 
 ## Scope Expansion
 
-Implementation is authorized for `TASK-011`. Use `docs/orchestrator/tasks/TASK-011-contents-location-http-read-adapter-prework.md` as the task-specific source of truth and record implementation outcomes in `docs/agents/claude-1-changes.md`.
+Pre-work is requested for `TASK-012`. Use `docs/orchestrator/tasks/TASK-012-contents-http-read-integration-prework.md` as the task-specific source of truth and record the pre-work proposal in `docs/agents/claude-1-next-step.md`. Do not implement until the director reviews the pre-work and moves the task to `READY_FOR_IMPLEMENTATION`.
+
+## TASK-011 Director Review
+
+- `TASK-011` is accepted on 2026-05-01. The backend now exposes a thin WebFlux read adapter over `ContentsLinkReadService`: `GET /api/contents/by-container/{id}` delegates to `findContents(id)` and `GET /api/contents/by-content/{id}` delegates to `findLocations(id)`.
+- Scope check passed against claude-1's base assignment plus the active task expansion. The implementation changed only `docs/agents/claude-1-changes.md`, `docs/architecture/kafka-transaction-message-vocabulary.md`, the `TASK-011` task file, `ContentsLinkReadController.groovy`, and `ContentsLinkReadControllerSpec.groovy`; code/doc/task edits outside the base report-only paths were inside the explicit `TASK-011` owned paths.
+- Required behavior is present: both controller methods return `Flux<ContentsLinkRecord>` directly as a flat JSON array, empty service results are HTTP 200 with `[]`, blank or whitespace-only ids flow through service `Assert.hasText(...)` and `GlobalExceptionHandler` as 400 `ErrorResponse`, and `@AuthenticationPrincipal Jwt jwt` is present for parity with `CommittedTransactionReadController`.
+- The implementation honored the directives: no controller-side authorization/scoping policy, integration test, response envelope, pagination policy, controller DTO, endpoint join to `loc`/`ent`, Mongo/materializer/write-side collaborator, service query semantic change, schema/example/build/Docker/frontend change, or semantic write-time validation was added.
+- Required assertions are present in `ContentsLinkReadControllerSpec`: route binding, forward/reverse delegation, JSON serialization including nested `properties.position` and provenance content, service-order preservation, empty-array behavior, blank-id 400 handling through the real global handler, and a reflection assertion that the controller has only `ContentsLinkReadService` as a constructor collaborator.
+- Director local verification partially passed: `./gradlew :jade-tipi:compileGroovy` succeeded. Further local verification was blocked before product tests by sandbox/tooling permissions, not by an observed product failure. `./gradlew :jade-tipi:compileTestGroovy` failed opening the Gradle wrapper cache lock in `/Users/duncanscott/.gradle`. In a normal developer shell, use `docker compose -f docker/docker-compose.yml --profile mongodb up -d`, then run `./gradlew :jade-tipi:compileTestGroovy`, `./gradlew :jade-tipi:test --tests '*ContentsLinkReadControllerSpec*'`, and `./gradlew :jade-tipi:test`.
+- Credited developer verification: claude-1 reported the Docker stack healthy and all TASK-011 required Gradle commands passing, including the new `ContentsLinkReadControllerSpec` with 10 tests and the full unit suite with 107 tests, 0 failures.
+- Follow-up: `TASK-012` was created for pre-work on opt-in end-to-end contents HTTP read integration coverage. Keep product semantics, endpoint joins, semantic validation, authorization/scoping, response envelopes, pagination, UI, Docker/build changes, and write-path changes out of scope unless a later task explicitly opens them.
 
 ## TASK-011 Director Pre-work Review
 
