@@ -94,6 +94,12 @@ The basic set of Jade-Tipi collections is:
 domain collection. The other abbreviations name long-term materialized
 domain collections.
 
+A member of a long-term collection is a **Jade-Tipi object**. An object in
+`ent` is an entity, an object in `loc` is a location, an object in `lnk` is a
+link, and so on; these collections are peers rather than subclasses of
+`entity`. The `txn` collection is different: it stores transaction records, not
+normal domain objects.
+
 All objects in a Jade-Tipi belong to a **group**.  Groups are used to define ownership of metadata and to assign read and write permissions on objects owned by the group.  Members of one group may add properties to objects owned by another group.  For example, a QC group may analyze a DNA assembly owned by the assembly group and assign a quality score.  Properties are owned by the group that added them.
 
 A client accessing a Jade-Tipi will belong to one or more groups that define read and write access to objects in that repository.  Because properties are separate from the entities to which they apply, read and write permissions are granular on the level of properties.
@@ -101,6 +107,14 @@ A client accessing a Jade-Tipi will belong to one or more groups that define rea
 Groups are managed at an institutional level and play a key role in ensuring that IDs are world-unique. 
 
 A **type** is defined as a set of properties. Properties may be added to a type after its creation.  A type can include one or more **validations** used to determine whether instances of the class meet the requirements defined by those validations. Any validation mechanism may be used; schemas such as JSON Schema, Avro, and Protocol Buffers can be employed to characterize property values.  Schemas provided by [FAIR data organizations](#related-fair-data-resources) can be used to associate conforming properties with entities.  A type may subclass one or more other types. A subclass inherits the property sets and validations of its supertypes and may add new properties and validations.
+
+Current implementation direction is intentionally simpler than a full schema
+system. A Jade-Tipi object is treated as a typed collection of explicit
+property-value assignments. The object's type defines the properties that may be
+assigned to that object. A property must be added to the type before that
+property may be assigned to an object of the type. Required properties and
+default values are not part of the initial implementation: if a value is not
+explicitly assigned in a create or update message, that value is absent.
 
 Some examples of types:
 
@@ -276,7 +290,7 @@ Jade-Tipi is designed to be maximally flexible and agnostic regarding metadata s
 
 ### **Schema Integration in Jade-Tipi**
 
-In Jade-Tipi, entities are conceived as buckets of properties rather than rigid objects defined by a schema. Entities of a particular type may, however, have a required property that references a schema as a “validation” for that type. For instance, the type definition for “genome\_assembly” entities may specify a required property “linkml\_definition” which references a LinkML schema used for validation. All “genome\_assembly” entities would then be guaranteed by the Jade-Tipi protocol to have a representation conforming to a particular LinkML schema.
+In Jade-Tipi, objects are conceived as collections of property values rather than rigid objects defined by a schema. Objects of a particular type may, however, have a declared property that references a schema as a “validation” for that type. For instance, the type definition for “genome\_assembly” entities may specify a property “linkml\_definition” which references a LinkML schema used for validation. If a validation policy requires that property for a specific workflow, that requirement should be expressed by the validation layer rather than by the initial core property-assignment model.
 
 In practice, it may be advisable to define the schema-constrained type as a subtype of “genome\_assembly (for example, “genome\_assembly\_linkml”) to allow for the coexistence of both schema-constrained and unconstrained entities within the broader type.
 
@@ -294,4 +308,3 @@ Established schemas may result in representations of entities that exceed the 10
 Using Jade-Tipi world-unique IDs as the values for LinkML reference slots ensures that all references are resolvable within the Jade-Tipi repository. LinkML expects references to be IDs, not full objects, so using Jade-Tipi IDs fits perfectly with this pattern. By adopting this convention, any referenced ID can be directly retrieved from the Jade-Tipi store. The LinkML schema can validate that the “organism” slot contains a string and, if extended, that it matches a Jade-Tipi ID pattern or regex.
 
 Jade-Tipi IDs are world-unique by design and are ideal values for LinkML identifier slots. LinkML does not itself enforce the core FAIR principle that all entities should have world-unique, persistent identifiers. When you use LinkML with Jade-Tipi, you implement the unique ID principle that LinkML encourages.
-

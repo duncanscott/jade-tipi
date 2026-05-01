@@ -14,6 +14,23 @@ freezer shelves, racks, boxes, tubes, plates, and possibly individual wells.
 `uni`, `grp`, `typ`, and `vdn`. The `txn` collection remains special: it is the
 durable transaction log and staging collection, not a normal domain collection.
 
+## Objects, Types, And Properties
+
+A member of a long-term collection is a Jade-Tipi object, not necessarily an
+`ent` entity. `ent`, `loc`, `lnk`, `ppy`, `typ`, `uni`, `grp`, and `vdn` are
+peer domain collections. `txn` contains transaction records rather than normal
+domain objects.
+
+For initial implementation, model each object as a typed collection of explicit
+property-value assignments. The object's `type_id` points to a `typ` record that
+defines which properties may be assigned to objects of that type. A property
+must be added to the type before clients may assign that property to an object
+of the type.
+
+Do not implement required properties or default values yet. If a property value
+is not explicitly assigned in a create or update message, it is absent. The
+materializer should not invent property values.
+
 ## Link-Centric Relationships
 
 Do not make `parent_location_id` canonical on `loc` records. Parentage and
