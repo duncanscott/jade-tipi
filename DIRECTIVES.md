@@ -1,20 +1,20 @@
 # Director Directives
 
-SIGNAL: HUMAN_REQUIRED
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
-The backend Kafka-first slice through committed transaction snapshot HTTP reads is complete through `TASK-006`. Pause for human direction before opening the next bounded unit because viable continuations now branch into product/API choices: materialization into long-term collections, rebuilding HTTP submission over the Kafka-first persistence service, API response-shape hardening, or authorization/scoping policy.
+The active bounded unit is `TASK-007`: add `loc` as a first-class Jade-Tipi collection so DTO/schema messages can target locations and the Spring Boot Mongo initializer creates the `loc` collection at application startup.
 
 New product direction is recorded in `DIRECTION.md`: add a first-class `loc` collection for laboratory locations, keep containment relationships canonical in `lnk`, define `contents` as a typed link/class through `typ`, and model plate well coordinates as instance properties on `contents` links unless wells need independent lifecycle.
 
 ## Active Task
 
-- None. `TASK-006` is accepted.
+- `TASK-007 - Add location collection` is READY_FOR_PREWORK and assigned to claude-1.
 
 ## Scope Expansion
 
-No active implementation scope is currently delegated. Do not route additional developer work until the human chooses the next bounded task.
+For pre-work only, claude-1 may inspect and propose changes within the `TASK-007` owned paths. Do not begin implementation until the task is moved to READY_FOR_IMPLEMENTATION.
 
 ## TASK-006 Director Review
 
