@@ -6,6 +6,8 @@ SIGNAL: HUMAN_REQUIRED
 
 The backend Kafka-first slice through committed transaction snapshot HTTP reads is complete through `TASK-006`. Pause for human direction before opening the next bounded unit because viable continuations now branch into product/API choices: materialization into long-term collections, rebuilding HTTP submission over the Kafka-first persistence service, API response-shape hardening, or authorization/scoping policy.
 
+New product direction is recorded in `DIRECTION.md`: add a first-class `loc` collection for laboratory locations, keep containment relationships canonical in `lnk`, define `contents` as a typed link/class through `typ`, and model plate well coordinates as instance properties on `contents` links unless wells need independent lifecycle.
+
 ## Active Task
 
 - None. `TASK-006` is accepted.
