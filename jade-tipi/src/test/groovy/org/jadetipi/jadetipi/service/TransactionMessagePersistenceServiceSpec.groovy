@@ -35,6 +35,7 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
 
     ReactiveMongoTemplate mongoTemplate
     IdGenerator idGenerator
+    CommittedTransactionMaterializer materializer
     TransactionMessagePersistenceService service
 
     static final Transaction TXN = new Transaction(
@@ -49,7 +50,8 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
     def setup() {
         mongoTemplate = Mock(ReactiveMongoTemplate)
         idGenerator = Mock(IdGenerator)
-        service = new TransactionMessagePersistenceService(mongoTemplate, idGenerator)
+        materializer = Mock(CommittedTransactionMaterializer)
+        service = new TransactionMessagePersistenceService(mongoTemplate, idGenerator, materializer)
     }
 
     private static Message openMessage(Map data = [hint: 'open']) {
@@ -229,6 +231,7 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
             capturedUpdate = u
             return Mono.empty()
         }
+        materializer.materialize(TXN_ID) >> Mono.just(new MaterializeResult())
 
         when:
         def result = service.persist(message, source()).block()
@@ -250,12 +253,89 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
                 state: 'committed',
                 commit_id: 'COMMIT-001'
         ])
+        materializer.materialize(TXN_ID) >> Mono.just(new MaterializeResult())
 
         when:
         def result = service.persist(message, source()).block()
 
         then:
         result == PersistResult.COMMIT_DUPLICATE
+        0 * idGenerator.nextId()
+        0 * mongoTemplate.updateFirst(_, _, _)
+    }
+
+    def 'post-commit hook invokes materializer exactly once on first successful commit'() {
+        given:
+        def message = commitMessage(reason: 'done')
+        mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just([
+                _id: TXN_ID,
+                state: 'open'
+        ])
+        idGenerator.nextId() >> 'COMMIT-001'
+        mongoTemplate.updateFirst(_ as Query, _ as Update, COLLECTION) >> Mono.empty()
+
+        when:
+        def result = service.persist(message, source()).block()
+
+        then:
+        result == PersistResult.COMMITTED
+        1 * materializer.materialize(TXN_ID) >> Mono.just(new MaterializeResult())
+    }
+
+    def 'post-commit hook also invokes materializer on commit re-delivery to fill projection gaps'() {
+        given:
+        def message = commitMessage()
+        mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just([
+                _id: TXN_ID,
+                state: 'committed',
+                commit_id: 'COMMIT-001'
+        ])
+
+        when:
+        def result = service.persist(message, source()).block()
+
+        then:
+        result == PersistResult.COMMIT_DUPLICATE
+        1 * materializer.materialize(TXN_ID) >> Mono.just(new MaterializeResult())
+        0 * idGenerator.nextId()
+        0 * mongoTemplate.updateFirst(_, _, _)
+    }
+
+    def 'materializer failure on the commit path is swallowed and surface result is COMMITTED'() {
+        given:
+        def message = commitMessage(reason: 'done')
+        mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just([
+                _id: TXN_ID,
+                state: 'open'
+        ])
+        idGenerator.nextId() >> 'COMMIT-001'
+        mongoTemplate.updateFirst(_ as Query, _ as Update, COLLECTION) >> Mono.empty()
+        materializer.materialize(TXN_ID) >> Mono.error(new RuntimeException('materializer boom'))
+
+        when:
+        def result = service.persist(message, source()).block()
+
+        then: 'commit is durable in txn regardless of projection failure'
+        result == PersistResult.COMMITTED
+        noExceptionThrown()
+    }
+
+    def 'materializer failure on commit re-delivery is swallowed and surface result is COMMIT_DUPLICATE'() {
+        given:
+        def message = commitMessage()
+        mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just([
+                _id: TXN_ID,
+                state: 'committed',
+                commit_id: 'COMMIT-001'
+        ])
+        materializer.materialize(TXN_ID) >> Mono.error(new RuntimeException('materializer boom'))
+
+        when:
+        def result = service.persist(message, source()).block()
+
+        then:
+        result == PersistResult.COMMIT_DUPLICATE
+        noExceptionThrown()
         0 * idGenerator.nextId()
         0 * mongoTemplate.updateFirst(_, _, _)
     }

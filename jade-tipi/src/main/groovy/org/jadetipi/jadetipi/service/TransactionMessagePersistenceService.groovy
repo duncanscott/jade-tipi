@@ -77,10 +77,14 @@ class TransactionMessagePersistenceService {
 
     private final ReactiveMongoTemplate mongoTemplate
     private final IdGenerator idGenerator
+    private final CommittedTransactionMaterializer materializer
 
-    TransactionMessagePersistenceService(ReactiveMongoTemplate mongoTemplate, IdGenerator idGenerator) {
+    TransactionMessagePersistenceService(ReactiveMongoTemplate mongoTemplate,
+                                         IdGenerator idGenerator,
+                                         CommittedTransactionMaterializer materializer) {
         this.mongoTemplate = mongoTemplate
         this.idGenerator = idGenerator
+        this.materializer = materializer
     }
 
     /**
@@ -172,7 +176,8 @@ class TransactionMessagePersistenceService {
                     String state = existing.get(FIELD_STATE) as String
                     if (state == STATE_COMMITTED) {
                         log.info('Commit re-delivered for already-committed transaction: txnId={}', txnId)
-                        return Mono.just(PersistResult.COMMIT_DUPLICATE)
+                        return materializeQuietly(txnId)
+                                .thenReturn(PersistResult.COMMIT_DUPLICATE)
                     }
 
                     String commitId = idGenerator.nextId()
@@ -188,8 +193,24 @@ class TransactionMessagePersistenceService {
                             .doOnSuccess { log.info('Transaction committed: txnId={}, commitId={}',
                                     txnId, commitId) }
                             .doOnError { ex -> log.error('Failed to commit transaction: txnId={}', txnId, ex) }
+                            .then(materializeQuietly(txnId))
                             .thenReturn(PersistResult.COMMITTED)
                 } as Mono<PersistResult>
+    }
+
+    /**
+     * Trigger the post-commit projection for {@code txnId} and swallow any
+     * failure. The {@code txn} commit is already durable when this runs; a
+     * projection failure must not invert that durability ordering or fail the
+     * outward {@link PersistResult}. A retry on commit re-delivery will re-run
+     * the materializer because the {@code COMMIT_DUPLICATE} branch also calls
+     * this method, so a transient projection gap can self-heal.
+     */
+    private Mono<Void> materializeQuietly(String txnId) {
+        return materializer.materialize(txnId)
+                .doOnError { ex -> log.warn('Post-commit materialization failed: txnId={}', txnId, ex) }
+                .onErrorResume({ Throwable ignored -> Mono.empty() } as java.util.function.Function)
+                .then() as Mono<Void>
     }
 
     private Mono<PersistResult> appendDataMessage(String txnId, Message message, KafkaSourceMetadata source) {

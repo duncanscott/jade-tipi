@@ -2,7 +2,7 @@
 
 ID: TASK-009
 TYPE: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: READY_FOR_REVIEW
 OWNER: claude-1
 OWNED_PATHS:
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/
@@ -81,61 +81,80 @@ DEPENDENCIES:
   examples.
 
 LATEST_REPORT:
-Director reviewed claude-1's pre-work on 2026-05-01 and accepted it for
-implementation. Scope check passed: claude-1's latest pre-work commit changed
-only `docs/agents/claude-1-next-step.md`, inside the developer-owned pre-work
-paths. Source spot-checks confirmed the relevant committed-read,
-transaction-persistence, Mongo initializer, enum, example, and service-test
-patterns described by the proposal.
+Implementation done on 2026-05-01 against the director's accepted pre-work
+directives. Added a Kafka-free, HTTP-free `CommittedTransactionMaterializer`
+service that consumes a `CommittedTransactionSnapshot` (or a `txnId` resolved
+through `CommittedTransactionReadService.findCommitted`) and projects supported
+committed `create` messages — `loc`, `typ` with `data.kind == "link_type"`, and
+`lnk` — into the matching long-term collection. Other collections, other
+actions, and bare entity-type `typ` records are counted as `skippedUnsupported`
+and not materialized. A small `MaterializeResult` POGO carries
+`materialized`, `duplicateMatching`, `conflictingDuplicate`,
+`skippedUnsupported`, and `skippedInvalid` counts.
 
-Implement the Kafka-free, HTTP-free committed materializer service over
-`CommittedTransactionSnapshot`, with a convenience `materialize(String txnId)`
-path that delegates committed visibility to `CommittedTransactionReadService`.
-Materialize only committed `create` messages for `loc`, `typ` records with
-`data.kind == "link_type"`, and `lnk`; skip other collections/actions and bare
-entity-type `typ` records. Do not add semantic reference validation, readers,
-controllers, DTO/schema/example changes, Kafka listener/topic changes, build
-changes, `parent_location_id`, or update/delete replay.
+Materialized documents set Mongo `_id` to `data.id`, copy the committed `data`
+payload verbatim (the original `id` field is retained), and add a reserved
+`_jt_provenance` sub-document with `txn_id`, `commit_id`, `msg_uuid`,
+`committed_at`, and `materialized_at`. Duplicate `_id` writes with an identical
+payload (after stripping `_jt_provenance` from both sides) increment
+`duplicateMatching` without overwrite; differing payloads increment
+`conflictingDuplicate`, log at ERROR, and do not overwrite, so a single
+conflict does not block later messages in the same snapshot. Missing or blank
+`data.id` is logged at ERROR and counted as `skippedInvalid`; ids are never
+synthesized.
 
-Director decisions for the open pre-work questions:
-- Use the post-commit hook in `TransactionMessagePersistenceService`, not a
-  caller-only trigger. Invoke the materializer after the first successful
-  commit and also on commit re-delivery when the header is already committed,
-  so a retry can fill a projection gap. Preserve the existing outward
-  `PersistResult` (`COMMITTED` for the first commit, `COMMIT_DUPLICATE` for a
-  duplicate commit).
-- Materializer failures on the commit path should be logged and swallowed; the
-  `txn` commit remains durable and authoritative. Log enough txn/commit context
-  to diagnose projection failures.
-- Use `data.id` as Mongo `_id` and keep the payload `id` field in the
-  materialized document. The materialized document should copy the committed
-  `data` payload verbatim, plus provenance, rather than silently dropping a
-  user-visible payload field.
-- Store projection metadata under a reserved `_jt_provenance` sub-document
-  (`txn_id`, `commit_id`, `msg_uuid`, `committed_at`, `materialized_at`) to
-  avoid collision with schema-valid payload keys. Do not validate or resolve
-  `type_id`, `left`, `right`, or `allowed_*_collections`.
-- For duplicate `_id` writes, treat an identical payload as idempotent success
-  without overwrite. For a differing payload, log/count the conflict and do not
-  overwrite; continue processing later snapshot messages.
-- Missing or blank `data.id` should be counted separately from unsupported
-  messages if the result object has room for it (for example `skippedInvalid`);
-  otherwise log it clearly and include it in the skipped count. Never synthesize
-  an id.
-- Ship focused unit coverage in this task. Do not add the optional Docker/Kafka
-  integration spec yet.
-- Add only a short architecture note if it helps future readers understand the
-  projection; keep it narrowly about committed `loc` / link-type `typ` / `lnk`
-  materialization and preserve the semantic-validation caveat.
+`TransactionMessagePersistenceService.commitHeader` gained a single
+`materializeQuietly(txnId)` post-commit step that runs after the successful
+header `updateFirst` and also on the `COMMIT_DUPLICATE` re-delivery branch (so
+a retry can fill a projection gap). Materializer errors are logged at WARN and
+swallowed; the outward `PersistResult` is unchanged (`COMMITTED` and
+`COMMIT_DUPLICATE` respectively). The constructor now takes the materializer
+as a third dependency. The `txn` write-ahead log shape, listener wiring,
+Kafka topic configuration, schema, examples, DTOs, build files, and Docker
+Compose are all unchanged.
 
-Required verification after implementation:
-- `./gradlew :jade-tipi:compileGroovy`
-- `./gradlew :jade-tipi:compileTestGroovy`
+Tests added under `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/`:
+- `CommittedTransactionMaterializerSpec` (19 features) — pure Spock with
+  `Mock(ReactiveMongoTemplate)` and `Mock(CommittedTransactionReadService)`.
+  Covers `loc`, link-type `typ`, and `lnk` materialization with provenance
+  assertions; skips unsupported collections (`ppy`, `ent`); skips
+  unsupported actions (update/delete); skips entity-type `typ` records;
+  identical-payload duplicate (idempotent success); differing-payload
+  duplicate (counted, not overwritten); conflict does not block later
+  messages; missing/blank `data.id` skipped; mixed-message snapshot ordering
+  (asserts insert order matches snapshot order); `materialize(txnId)`
+  delegates to the read service and returns `Mono.empty()` when not visible;
+  null snapshot returns `Mono.empty()`; blank `txnId` rejected.
+- `TransactionMessagePersistenceServiceSpec` extended with four new features
+  pinning the post-commit hook: materializer invoked exactly once on first
+  commit, also invoked on commit re-delivery, and that materializer failure
+  is swallowed on both paths so the outward `PersistResult` is preserved.
+
+Documentation updated:
+- `docs/architecture/kafka-transaction-message-vocabulary.md` gained a short
+  "Committed Materialization Of Locations And Links" section describing the
+  post-commit projection, the supported message set, the provenance shape,
+  the duplicate/conflict/missing-id behavior, and the standing
+  semantic-validation-deferred caveat.
+
+Verification (Docker stack confirmed up via `docker compose -f
+docker/docker-compose.yml ps`: `jade-tipi-mongo`, `jade-tipi-kafka`, and
+`jade-tipi-keycloak` all healthy):
+- `./gradlew :jade-tipi:compileGroovy` — BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:compileTestGroovy` — BUILD SUCCESSFUL.
 - `./gradlew :jade-tipi:test --tests '*CommittedTransactionMaterializerSpec*'`
+  — BUILD SUCCESSFUL (`tests=19, failures=0, errors=0`).
 - `./gradlew :jade-tipi:test --tests '*TransactionMessagePersistenceServiceSpec*'`
-- `./gradlew :jade-tipi:test`
-
-If verification is blocked by local setup, report the documented setup command
-`docker compose -f docker/docker-compose.yml --profile mongodb up -d` and the
-exact Gradle command that could not run rather than treating it as a product
-blocker.
+  — BUILD SUCCESSFUL (`tests=15, failures=0, errors=0`; was 11, +4 new
+  post-commit features).
+- `./gradlew :jade-tipi:test` — BUILD SUCCESSFUL. 79 unit tests across
+  `JadetipiApplicationTests` (1), `TransactionMessageListenerSpec` (4),
+  `DocumentServiceMongoDbImplSpec` (9),
+  `CommittedTransactionMaterializerSpec` (19),
+  `CommittedTransactionReadServiceSpec` (12),
+  `CommittedTransactionReadControllerSpec` (5),
+  `TransactionMessagePersistenceServiceSpec` (15),
+  `TransactionServiceSpec` (12), and `MongoDbInitializerSpec` (2). All green;
+  `failures=0, errors=0`.
+- `./gradlew :jade-tipi:compileIntegrationTestGroovy` — BUILD SUCCESSFUL
+  (no integration spec was added in this task).

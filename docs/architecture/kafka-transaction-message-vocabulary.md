@@ -166,6 +166,12 @@ A concrete `contents` link references the type and the two endpoints, and stores
 
 The schema accepts this envelope today on the strength of `lnk + create` and the snake_case property-name rule. Semantic checks — that `lnk.type_id` resolves to a committed `typ` record, that `left` and `right` resolve, and that the endpoint collections match the type's `allowed_left_collections` / `allowed_right_collections` — are not enforced by `message.schema.json` and remain a follow-up reader/materializer concern. Property-name values such as `position.label` ("A1") are stored verbatim; the snake_case rule applies to property keys, not to their string values.
 
+## Committed Materialization Of Locations And Links
+
+Once a transaction commits in `txn`, a post-commit projection copies the `loc + create`, `typ + create` (where `data.kind == "link_type"`), and `lnk + create` messages into their long-term collections (`loc`, `typ`, `lnk`). The projection is a read-after-commit step over the existing committed-snapshot read service; the `txn` write-ahead log remains the durable, authoritative record. Other collections, other actions, and bare entity-type `typ` records are intentionally not materialized in this iteration.
+
+Materialized documents copy the committed `data` payload verbatim, set Mongo `_id` to `data.id`, keep the original `id` payload field, and add a reserved `_jt_provenance` sub-document carrying `txn_id`, `commit_id`, `msg_uuid`, `committed_at`, and `materialized_at`. Duplicate `_id` writes with an identical payload are idempotent successes; differing-payload duplicates are logged and counted but not overwritten, and missing or blank `data.id` is logged and skipped without synthesizing an id. Semantic reference validation (`type_id`, `left`, `right`, and `allowed_*_collections`) is still not enforced; that remains a follow-up reader/validator concern.
+
 ## Reference Examples
 
 A complete early transaction flow is bundled as resources under `libraries/jade-tipi-dto/src/main/resources/example/message/`:
