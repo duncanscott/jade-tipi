@@ -3,6 +3,168 @@
 The developer writes completed work reports here.
 
 STATUS: READY_FOR_REVIEW
+TASK: TASK-015 — Update contents read service for root-shaped documents
+DATE: 2026-05-01
+SUMMARY: Updated `ContentsLinkReadService` so the contents read path
+understands the root-shaped materialized `typ` and `lnk` documents
+written by accepted `TASK-014`. Canonical `contents` link-type
+declarations are now resolved against root-shaped `typ` documents using
+the dotted criteria `properties.kind == "link_type"` AND
+`properties.name == "contents"` (Spring Mongo
+`Criteria.where("properties.kind").is(...)` /
+`Criteria.where("properties.name").is(...)` over the `typ` collection,
+sorted by `_id` ASC); the materializer copies every `typ + create`
+payload field other than `id` and `type_id` into root `properties`, so a
+`typ` declaration with `data.kind: "link_type"` and `data.name:
+"contents"` now exposes those facts at `properties.kind` and
+`properties.name`. The pre-`TASK-014` top-level `kind` / `name`
+filtering would have returned zero declarations against root-shaped
+`typ` rows and caused every contents read to short-circuit to empty.
+`lnk` reads are unchanged in shape: the service continues to filter
+`lnk.type_id $in <resolved type IDs>` and the requested endpoint field
+(`left` for `findContents`, `right` for `findLocations`), sorts by `_id`
+ASC, and never joins to `loc` or `ent`. Each materialized `lnk` row is
+mapped verbatim into `ContentsLinkRecord` carrying the link `_id`,
+top-level `type_id`, `left`, `right`, and instance `properties`
+sub-document (including plate-well `properties.position`). Provenance
+mapping moved off legacy top-level `_jt_provenance` to the new reserved
+`_head.provenance` location written by `CommittedTransactionMaterializer`
+(carrying `txn_id`, `commit_id`, `msg_uuid`, source `collection`, source
+`action`, `committed_at`, and `materialized_at`). A small explicit
+fallback to legacy top-level `_jt_provenance` is preserved for documents
+materialized before the root shape was adopted, per the accepted
+`TASK-013`/`TASK-015` allowance — the fallback is a single private
+helper branch (`extractProvenance(Map row)`) that reads
+`_head.provenance` first when `_head` is a map containing a `provenance`
+sub-map and falls back to top-level `_jt_provenance` only when the
+canonical location is missing or has no `provenance` sub-map. When
+neither source is present, `provenance` is `null`, preserving the
+existing wire contract. No production change was made to
+`ContentsLinkReadController` (routes still bind to
+`GET /api/contents/by-container/{id}` and
+`GET /api/contents/by-content/{id}`, both delegate to the read service,
+both return a flat `Flux<ContentsLinkRecord>` JSON array, blank/whitespace
+ids still flow through service `Assert.hasText(...)` and
+`GlobalExceptionHandler` as 400 `ErrorResponse`, and the controller has
+only `ContentsLinkReadService` as a constructor collaborator). No
+production change was made to `ContentsLinkRecord` either; the
+serialized field set, types, and `provenance` map shape stay the same,
+so the controller spec's existing JSON-path assertions on
+`provenance.txn_id`, `provenance.commit_id`, `provenance.msg_uuid`,
+`provenance.committed_at`, and `provenance.materialized_at` keep
+passing — only the source of `provenance` moves inside the service. The
+`ContentsLinkRecord` doc comment was refreshed to point at
+`_head.provenance` with the legacy fallback note. Internally the
+service's static field constants were retargeted: `FIELD_KIND` and
+`FIELD_NAME` were removed (no longer used as top-level criteria) and
+replaced with dotted constants `FIELD_PROPERTIES_KIND =
+"properties.kind"` and `FIELD_PROPERTIES_NAME = "properties.name"`;
+`FIELD_PROVENANCE = "_jt_provenance"` was replaced with
+`FIELD_HEAD = "_head"`, `HEAD_PROVENANCE = "provenance"`, and
+`FIELD_PROVENANCE_LEGACY = "_jt_provenance"` (kept only while the
+fallback exists). Field constants for `lnk` mapping (`FIELD_TYPE_ID`,
+`FIELD_LEFT`, `FIELD_RIGHT`, `FIELD_PROPERTIES`) and the canonical
+`COLLECTION_TYP`, `COLLECTION_LNK`, `LINK_TYPE_KIND`,
+`CONTENTS_TYPE_NAME`, and `FIELD_ID` constants are unchanged.
+`ContentsLinkReadServiceSpec` was rewritten to drive the service with
+root-shaped fixtures: `typRow(...)` now builds a self-describing root
+with top-level `_id`, `id`, `collection: 'typ'`, `type_id: null`, root
+`properties: [kind: 'link_type', name: 'contents']`, empty `links`, and
+`_head.provenance` carrying `txn_id`, `commit_id`, `msg_uuid`,
+source `collection`, source `action`, `committed_at`, and
+`materialized_at`. `lnkRow(...)` now writes a root-shaped `lnk` with
+top-level `_id`, `id`, `collection: 'lnk'`, `type_id`, `left`, `right`,
+verbatim `properties.position` plate-well shape, empty `links`, and
+`_head.provenance` (no top-level `_jt_provenance` on new root rows). A
+new `legacyLnkRow(...)` helper builds the pre-`TASK-014` copied-data
+shape (no `_head`, top-level `_jt_provenance`) for fallback coverage.
+Captured-criteria assertions were updated to assert the dotted typ
+criteria keys: `typQueryDoc.get('properties.kind') == 'link_type'` and
+`typQueryDoc.get('properties.name') == 'contents'`; lnk query
+assertions (`type_id $in`, endpoint key, `_id` ASC sort) are unchanged.
+Provenance coverage was expanded from the old single
+"missing-`_jt_provenance` returns null" case to four cases:
+(1) canonical provenance read from `_head.provenance` on
+forward and reverse lookups including the new source `collection`/
+`action` keys; (2) legacy fallback to top-level `_jt_provenance` when
+the document has no `_head`; (3) `_head: null` on an otherwise
+root-shaped `lnk` (with no `_jt_provenance`) returns `null`
+provenance; (4) `_head` present but with no `provenance` sub-map and no
+`_jt_provenance` returns `null` provenance. Forward/reverse "verbatim
+fields and provenance" features assert provenance fields read from
+`_head.provenance`. The remaining features
+(empty-typ short-circuit, empty-lnk results, no `loc`/`ent` joins,
+unresolved-endpoint pass-through, mixed-collection forward results,
+non-matching `typ` rows ignored, blank-id rejection, and
+no-write assertions) preserve their behavior on the new root-shaped
+fixtures. `ContentsLinkReadController` and
+`ContentsLinkReadControllerSpec` are unchanged because the wire shape
+is stable. `docs/architecture/kafka-transaction-message-vocabulary.md`
+was updated only inside the "Reading `contents` Links" section: the
+typ resolution language now describes
+`properties.kind == "link_type"` and
+`properties.name == "contents"` against root-shaped documents and
+explains why dotted-path criteria match the materializer's root
+shape; the per-record description now points at the
+`_head.provenance` sub-document and notes the explicit narrow
+fallback to legacy `_jt_provenance` for pre-`TASK-014` rows. The
+adjacent "Committed Materialization Of Locations And Links" section
+still describes the pre-`TASK-014` copied-data shape; that
+materialization-section currency work was deferred from this task per
+director decision and remains a separate `TASK-014` doc follow-up.
+No changes were made to `CommittedTransactionMaterializer`,
+`TransactionMessagePersistenceService`, Kafka listener behavior,
+committed snapshot shape, DTO schemas, canonical examples, Docker
+Compose, Gradle files, security, frontend, response envelopes,
+pagination, endpoint joins to `loc`/`ent`, semantic reference
+validation, endpoint projection maintenance, extension pages, pending
+pages, update/delete replay, backfill, transaction-overlay reads,
+required properties, default values, or integration coverage.
+`TASK-012` was not resumed. Owned-paths boundary was respected: edits
+stayed within
+`jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/ContentsLinkReadService.groovy`,
+`jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/ContentsLinkRecord.groovy`,
+`jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/ContentsLinkReadServiceSpec.groovy`,
+`docs/architecture/kafka-transaction-message-vocabulary.md`, and
+`docs/agents/claude-1-changes.md`.
+`ContentsLinkReadController.groovy`,
+`ContentsLinkReadControllerSpec.groovy`, and
+`docs/orchestrator/tasks/TASK-015-root-shaped-contents-read-service.md`
+are also on the task's `OWNED_PATHS` and were left untouched in this
+turn (no production controller change was needed; the existing
+controller spec already exercises the stable wire shape).
+VERIFICATION: docker compose stack already healthy
+(`jade-tipi-mongo`, `jade-tipi-kafka`, `jade-tipi-keycloak` all up;
+`docker compose -f docker/docker-compose.yml ps` confirmed).
+`./gradlew :jade-tipi:compileGroovy` BUILD SUCCESSFUL.
+`./gradlew :jade-tipi:compileTestGroovy` BUILD SUCCESSFUL.
+`./gradlew :jade-tipi:test --tests '*ContentsLinkReadServiceSpec*'`
+BUILD SUCCESSFUL with the rewritten spec at
+`tests=20, failures=0, errors=0, skipped=0` (was 14 features yielding
+18 tests after `TASK-010`; the rewrite adds the legacy-fallback case
+plus the `_head` null and `_head` without `provenance` cases on top of
+the dotted-criteria refresh).
+`./gradlew :jade-tipi:test --tests '*ContentsLinkReadControllerSpec*'`
+BUILD SUCCESSFUL with the unchanged spec at
+`tests=10, failures=0, errors=0, skipped=0`.
+`./gradlew :jade-tipi:test` BUILD SUCCESSFUL with the full unit suite
+at `tests=113, failures=0, errors=0, skipped=0` (113 = 107 from
+post-`TASK-011` baseline plus the +6 `ContentsLinkReadServiceSpec`
+delta noted above).
+NOTES: The legacy `_jt_provenance` fallback is a single explicit
+branch in `ContentsLinkReadService.extractProvenance(Map row)` that
+runs only when the canonical `_head.provenance` location is missing
+or non-map. It was retained per the accepted pre-work allowance for
+the copied-data-shape transition and can be removed in a focused
+follow-up once stale legacy `lnk` rows are confirmed gone (one branch
+plus one Spock case to delete). The "Committed Materialization Of
+Locations And Links" section of
+`docs/architecture/kafka-transaction-message-vocabulary.md` still
+reflects the pre-`TASK-014` copied-data shape and is now stale; per
+director direction this remains a separate doc follow-up to
+`TASK-014` rather than in-scope for `TASK-015`.
+
+STATUS: READY_FOR_REVIEW
 TASK: TASK-014 — Implement root-shaped materialized documents
 DATE: 2026-05-01
 SUMMARY: Updated `CommittedTransactionMaterializer` so the currently

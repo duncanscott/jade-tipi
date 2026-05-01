@@ -47,41 +47,110 @@ class ContentsLinkReadServiceSpec extends Specification {
         service = new ContentsLinkReadService(mongoTemplate)
     }
 
-    private static Map typRow(String id, Map overrides = [:]) {
-        Map base = [
-                _id : id,
-                id  : id,
+    /**
+     * Build a root-shaped {@code typ} document as written by
+     * {@link CommittedTransactionMaterializer} for a {@code typ + create}
+     * with {@code data.kind == "link_type"} and {@code data.name == "contents"}.
+     * The materializer copies every payload field other than {@code id} and
+     * {@code type_id} into root {@code properties}, so {@code kind} and
+     * {@code name} live under {@code properties} on a root-shaped document.
+     */
+    private static Map typRow(String id, Map propertyOverrides = [:]) {
+        Map properties = [
                 kind: 'link_type',
                 name: 'contents'
         ]
-        base.putAll(overrides)
-        return base
+        properties.putAll(propertyOverrides)
+        return [
+                _id       : id,
+                id        : id,
+                collection: 'typ',
+                type_id   : null,
+                properties: properties,
+                links     : [:],
+                _head     : [
+                        schema_version: 1,
+                        document_kind : 'root',
+                        root_id       : id,
+                        provenance    : [
+                                txn_id         : 'aaaaaaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee',
+                                commit_id      : 'COMMIT-TYP',
+                                msg_uuid       : '018fd849-2a49-7999-8a09-cccccccccccc',
+                                collection     : 'typ',
+                                action         : 'create',
+                                committed_at   : Instant.parse('2026-01-01T00:00:01Z'),
+                                materialized_at: Instant.parse('2026-01-01T00:00:02Z')
+                        ]
+                ]
+        ]
     }
 
+    /**
+     * Build a root-shaped {@code lnk} document. The materializer keeps
+     * top-level {@code type_id}, {@code left}, {@code right}, and the
+     * verbatim {@code properties} sub-document at the root, and writes
+     * provenance to {@code _head.provenance}; new roots no longer carry
+     * top-level {@code _jt_provenance}.
+     */
     private static Map lnkRow(String id, String left, String right,
                               Map overrides = [:]) {
         Map base = [
                 _id       : id,
                 id        : id,
+                collection: 'lnk',
                 type_id   : CONTENTS_TYPE_ID,
                 left      : left,
                 right     : right,
                 properties: [
                         position: [kind: 'plate_well', label: 'A1', row: 'A', column: 1]
                 ],
-                _jt_provenance: [
-                        txn_id         : 'aaaaaaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee',
-                        commit_id      : 'COMMIT-001',
-                        msg_uuid       : '018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb',
-                        committed_at   : Instant.parse('2026-01-01T00:00:05Z'),
-                        materialized_at: Instant.parse('2026-01-01T00:00:06Z')
+                links     : [:],
+                _head     : [
+                        schema_version: 1,
+                        document_kind : 'root',
+                        root_id       : id,
+                        provenance    : [
+                                txn_id         : 'aaaaaaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee',
+                                commit_id      : 'COMMIT-001',
+                                msg_uuid       : '018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb',
+                                collection     : 'lnk',
+                                action         : 'create',
+                                committed_at   : Instant.parse('2026-01-01T00:00:05Z'),
+                                materialized_at: Instant.parse('2026-01-01T00:00:06Z')
+                        ]
                 ]
         ]
         base.putAll(overrides)
         return base
     }
 
-    def 'findContents returns one record per matching lnk with verbatim fields and provenance'() {
+    /**
+     * Build a legacy copied-data-shape {@code lnk} document materialized
+     * before TASK-014 — top-level {@code _jt_provenance} is present and
+     * there is no {@code _head} sub-document. Used to verify the explicit
+     * fallback path in the service.
+     */
+    private static Map legacyLnkRow(String id, String left, String right) {
+        return [
+                _id           : id,
+                id            : id,
+                type_id       : CONTENTS_TYPE_ID,
+                left          : left,
+                right         : right,
+                properties    : [
+                        position: [kind: 'plate_well', label: 'A1', row: 'A', column: 1]
+                ],
+                _jt_provenance: [
+                        txn_id         : 'legacy-bbbb-7ccc-8ddd-eeeeeeeeeeee',
+                        commit_id      : 'COMMIT-LEGACY',
+                        msg_uuid       : '018fd849-2a4a-7aaa-8b0a-cccccccccccc',
+                        committed_at   : Instant.parse('2025-12-01T00:00:05Z'),
+                        materialized_at: Instant.parse('2025-12-01T00:00:06Z')
+                ]
+        ]
+    }
+
+    def 'findContents returns one record per matching lnk with verbatim fields and provenance from _head.provenance'() {
         given:
         Map typ = typRow(CONTENTS_TYPE_ID)
         Map lnk = lnkRow(LNK_ID_A, CONTAINER_ID, OBJECT_ID)
@@ -104,11 +173,13 @@ class ContentsLinkReadServiceSpec extends Specification {
         position.row == 'A'
         position.column == 1
 
-        and: 'provenance is preserved verbatim from the materialized _jt_provenance sub-document'
+        and: 'provenance is read from the root-shaped _head.provenance sub-document'
         r.provenance != null
         r.provenance.txn_id == 'aaaaaaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee'
         r.provenance.commit_id == 'COMMIT-001'
         r.provenance.msg_uuid == '018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb'
+        r.provenance.collection == 'lnk'
+        r.provenance.action == 'create'
         r.provenance.committed_at == Instant.parse('2026-01-01T00:00:05Z')
         r.provenance.materialized_at == Instant.parse('2026-01-01T00:00:06Z')
     }
@@ -133,11 +204,11 @@ class ContentsLinkReadServiceSpec extends Specification {
         when:
         List<ContentsLinkRecord> results = service.findContents(CONTAINER_ID).collectList().block()
 
-        then: 'the typ query filters on kind=link_type AND name=contents and sorts by _id ASC'
+        then: 'the typ query filters on properties.kind=link_type AND properties.name=contents and sorts by _id ASC'
         capturedTypQuery != null
         Map typQueryDoc = capturedTypQuery.queryObject
-        typQueryDoc.get('kind') == 'link_type'
-        typQueryDoc.get('name') == 'contents'
+        typQueryDoc.get('properties.kind') == 'link_type'
+        typQueryDoc.get('properties.name') == 'contents'
         capturedTypQuery.sortObject == new Document('_id', 1)
 
         and: 'the lnk query carries an $in filter on type_id with both resolved IDs and is left-keyed'
@@ -207,7 +278,7 @@ class ContentsLinkReadServiceSpec extends Specification {
         0 * mongoTemplate.findById(_, _, 'ent')
     }
 
-    def 'findLocations returns one record per matching lnk with verbatim fields and provenance'() {
+    def 'findLocations returns one record per matching lnk with verbatim fields and provenance from _head.provenance'() {
         given:
         Map typ = typRow(CONTENTS_TYPE_ID)
         Map lnk = lnkRow(LNK_ID_A, CONTAINER_ID, OBJECT_ID)
@@ -226,6 +297,8 @@ class ContentsLinkReadServiceSpec extends Specification {
         r.right == OBJECT_ID
         (r.properties.position as Map).label == 'A1'
         r.provenance.commit_id == 'COMMIT-001'
+        r.provenance.collection == 'lnk'
+        r.provenance.action == 'create'
     }
 
     def 'findLocations queries lnk with type_id $in resolved IDs, right == objectId, sorted by _id ASC'() {
@@ -287,7 +360,7 @@ class ContentsLinkReadServiceSpec extends Specification {
     }
 
     def 'typ records that are not link_type or are not named contents are not used as type filters'() {
-        given: 'four typ rows: only the link_type/contents row should match'
+        given: 'the service builds the criteria; the unit spec captures and asserts them'
         Query capturedTypQuery = null
         Query capturedLnkQuery = null
         mongoTemplate.find(_ as Query, Map.class, 'typ') >> { Query q, Class _t, String _c ->
@@ -304,11 +377,11 @@ class ContentsLinkReadServiceSpec extends Specification {
         when:
         List<ContentsLinkRecord> results = service.findContents(CONTAINER_ID).collectList().block()
 
-        then: 'the typ criteria require BOTH kind=link_type AND name=contents'
+        then: 'the typ criteria require BOTH properties.kind=link_type AND properties.name=contents'
         capturedTypQuery != null
         Map typDoc = capturedTypQuery.queryObject
-        typDoc.get('kind') == 'link_type'
-        typDoc.get('name') == 'contents'
+        typDoc.get('properties.kind') == 'link_type'
+        typDoc.get('properties.name') == 'contents'
 
         and: 'the lnk type_id $in only contains the resolved canonical contents type IDs'
         capturedLnkQuery != null
@@ -317,10 +390,52 @@ class ContentsLinkReadServiceSpec extends Specification {
         results*.typeId == [CONTENTS_TYPE_ID]
     }
 
-    def 'a materialized lnk missing _jt_provenance is still returned with a null provenance map'() {
+    def 'a materialized lnk with no _head sub-document falls back to legacy top-level _jt_provenance verbatim'() {
         given:
         mongoTemplate.find(_ as Query, Map.class, 'typ') >> Flux.just(typRow(CONTENTS_TYPE_ID))
-        Map lnk = lnkRow(LNK_ID_A, CONTAINER_ID, OBJECT_ID, [_jt_provenance: null])
+        Map legacy = legacyLnkRow(LNK_ID_A, CONTAINER_ID, OBJECT_ID)
+        mongoTemplate.find(_ as Query, Map.class, 'lnk') >> Flux.just(legacy)
+
+        when:
+        List<ContentsLinkRecord> results = service.findContents(CONTAINER_ID).collectList().block()
+
+        then:
+        results.size() == 1
+        ContentsLinkRecord r = results[0]
+        r.linkId == LNK_ID_A
+        r.left == CONTAINER_ID
+        r.right == OBJECT_ID
+
+        and: 'provenance is sourced from the legacy _jt_provenance sub-document verbatim'
+        r.provenance != null
+        r.provenance.txn_id == 'legacy-bbbb-7ccc-8ddd-eeeeeeeeeeee'
+        r.provenance.commit_id == 'COMMIT-LEGACY'
+        r.provenance.msg_uuid == '018fd849-2a4a-7aaa-8b0a-cccccccccccc'
+        r.provenance.committed_at == Instant.parse('2025-12-01T00:00:05Z')
+        r.provenance.materialized_at == Instant.parse('2025-12-01T00:00:06Z')
+    }
+
+    def 'a materialized lnk with neither _head.provenance nor _jt_provenance returns null provenance'() {
+        given:
+        mongoTemplate.find(_ as Query, Map.class, 'typ') >> Flux.just(typRow(CONTENTS_TYPE_ID))
+        Map lnk = lnkRow(LNK_ID_A, CONTAINER_ID, OBJECT_ID, [_head: null])
+        mongoTemplate.find(_ as Query, Map.class, 'lnk') >> Flux.just(lnk)
+
+        when:
+        List<ContentsLinkRecord> results = service.findContents(CONTAINER_ID).collectList().block()
+
+        then:
+        results.size() == 1
+        results[0].linkId == LNK_ID_A
+        results[0].provenance == null
+    }
+
+    def 'a root-shaped lnk whose _head has no provenance sub-map and no legacy _jt_provenance returns null provenance'() {
+        given:
+        mongoTemplate.find(_ as Query, Map.class, 'typ') >> Flux.just(typRow(CONTENTS_TYPE_ID))
+        Map lnk = lnkRow(LNK_ID_A, CONTAINER_ID, OBJECT_ID, [
+                _head: [schema_version: 1, document_kind: 'root', root_id: LNK_ID_A]
+        ])
         mongoTemplate.find(_ as Query, Map.class, 'lnk') >> Flux.just(lnk)
 
         when:

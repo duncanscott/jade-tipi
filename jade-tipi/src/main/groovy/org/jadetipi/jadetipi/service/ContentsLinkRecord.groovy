@@ -22,8 +22,11 @@ import groovy.transform.Immutable
  * id (Mongo {@code _id}, equal to the original {@code data.id}), the
  * {@code type_id}, the {@code left} and {@code right} endpoint id strings,
  * the instance {@code properties} (e.g. {@code properties.position} for a
- * plate-well placement), and the reserved {@code _jt_provenance}
- * sub-document written by {@link CommittedTransactionMaterializer}.
+ * plate-well placement), and the {@code _head.provenance} sub-document
+ * written by {@link CommittedTransactionMaterializer}. For documents
+ * materialized before the root shape was adopted, the service falls back to
+ * the legacy top-level {@code _jt_provenance} sub-document; the wire field
+ * is {@code provenance} either way.
  *
  * <p>Endpoint resolution against {@code loc} or {@code ent} is intentionally
  * not performed at this boundary; callers receive the raw id strings.

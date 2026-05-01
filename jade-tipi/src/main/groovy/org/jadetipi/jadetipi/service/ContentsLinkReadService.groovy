@@ -36,11 +36,26 @@ import reactor.core.publisher.Flux
  *       and {@code type_id} matches the same canonical declaration.</li>
  * </ul>
  *
- * <p>The canonical {@code contents} link type is resolved by querying
- * {@code typ} for documents with {@code kind == "link_type"} and
- * {@code name == "contents"} and using all matching {@code _id}s in an
- * {@code $in} filter on {@code lnk.type_id}. No type id is hardcoded and
- * the caller is not required to supply one.
+ * <p>The canonical {@code contents} link type is resolved against root-shaped
+ * {@code typ} documents written by {@link CommittedTransactionMaterializer}:
+ * a {@code typ + create} with {@code data.kind == "link_type"} and
+ * {@code data.name == "contents"} carries those facts as
+ * {@code properties.kind} and {@code properties.name}, so the service queries
+ * {@code typ} for {@code properties.kind == "link_type"} and
+ * {@code properties.name == "contents"} and uses every matching {@code _id}
+ * in an {@code $in} filter on {@code lnk.type_id}. No type id is hardcoded
+ * and the caller is not required to supply one.
+ *
+ * <p>{@code lnk} reads stay on the canonical top-level fields written by the
+ * materializer ({@code type_id}, {@code left}, {@code right}, and the
+ * instance {@code properties} sub-document); the service does not depend on
+ * any endpoint {@code links} projection.
+ *
+ * <p>Provenance for each returned record is read from {@code _head.provenance}
+ * (the new reserved location). For documents materialized before the root
+ * shape was adopted, the service falls back to the legacy top-level
+ * {@code _jt_provenance} sub-document. The fallback is intentional and
+ * narrow; it can be removed once stale legacy rows are confirmed gone.
  *
  * <p>The service is intentionally Kafka-free and HTTP-free, mirroring
  * {@link CommittedTransactionReadService}. It does not join {@code lnk}
@@ -57,13 +72,15 @@ class ContentsLinkReadService {
     static final String COLLECTION_LNK = 'lnk'
 
     static final String FIELD_ID = '_id'
-    static final String FIELD_KIND = 'kind'
-    static final String FIELD_NAME = 'name'
     static final String FIELD_TYPE_ID = 'type_id'
     static final String FIELD_LEFT = 'left'
     static final String FIELD_RIGHT = 'right'
     static final String FIELD_PROPERTIES = 'properties'
-    static final String FIELD_PROVENANCE = '_jt_provenance'
+    static final String FIELD_PROPERTIES_KIND = 'properties.kind'
+    static final String FIELD_PROPERTIES_NAME = 'properties.name'
+    static final String FIELD_HEAD = '_head'
+    static final String HEAD_PROVENANCE = 'provenance'
+    static final String FIELD_PROVENANCE_LEGACY = '_jt_provenance'
 
     static final String LINK_TYPE_KIND = 'link_type'
     static final String CONTENTS_TYPE_NAME = 'contents'
@@ -116,8 +133,8 @@ class ContentsLinkReadService {
 
     private Flux<String> resolveContentsTypeIds() {
         Query query = Query.query(
-                Criteria.where(FIELD_KIND).is(LINK_TYPE_KIND)
-                        .and(FIELD_NAME).is(CONTENTS_TYPE_NAME)
+                Criteria.where(FIELD_PROPERTIES_KIND).is(LINK_TYPE_KIND)
+                        .and(FIELD_PROPERTIES_NAME).is(CONTENTS_TYPE_NAME)
         ).with(Sort.by(Sort.Direction.ASC, FIELD_ID))
         return mongoTemplate.find(query, Map.class, COLLECTION_TYP)
                 .map { Map row -> row.get(FIELD_ID) as String }
@@ -131,7 +148,29 @@ class ContentsLinkReadService {
                 left: row.get(FIELD_LEFT) as String,
                 right: row.get(FIELD_RIGHT) as String,
                 properties: row.get(FIELD_PROPERTIES) as Map<String, Object>,
-                provenance: row.get(FIELD_PROVENANCE) as Map<String, Object>
+                provenance: extractProvenance(row)
         )
+    }
+
+    /**
+     * Reads provenance from the new {@code _head.provenance} location, falling
+     * back to legacy top-level {@code _jt_provenance} for documents
+     * materialized before the root shape was adopted. Returns {@code null}
+     * when neither source is present, preserving the existing
+     * "missing provenance is null" wire contract.
+     */
+    private static Map<String, Object> extractProvenance(Map row) {
+        Object headValue = row?.get(FIELD_HEAD)
+        if (headValue instanceof Map) {
+            Object provenanceValue = ((Map) headValue).get(HEAD_PROVENANCE)
+            if (provenanceValue instanceof Map) {
+                return (Map<String, Object>) provenanceValue
+            }
+        }
+        Object legacy = row?.get(FIELD_PROVENANCE_LEGACY)
+        if (legacy instanceof Map) {
+            return (Map<String, Object>) legacy
+        }
+        return null
     }
 }
