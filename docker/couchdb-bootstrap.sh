@@ -159,6 +159,30 @@ upsert_replicator() {
   return 1
 }
 
+# Probe whether each replication source is reachable from this sidecar. The
+# replicator runs inside the CouchDB container, which shares the host's
+# network stack via Docker Desktop, so failures here predict "crashing" jobs
+# in /_scheduler/jobs (replication_auth_error / econnrefused) that are
+# otherwise invisible from the docker compose log.
+probe_source() {
+  label="$1"
+  url="$2"
+  rc=0
+  out=$(curl -sS -o /dev/null -m 8 \
+    --user "${JADE_TIPI_COUCHDB_ADMIN_USERNAME}:${JADE_TIPI_COUCHDB_ADMIN_PASSWORD}" \
+    -w '%{http_code} in %{time_total}s' "$url" 2>&1) || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "${label} source: unreachable (curl exit ${rc}): ${out}" >&2
+    echo "  the replicator will register but crash on each retry until this is fixed;" >&2
+    echo "  inspect /_scheduler/jobs for the live failure reason" >&2
+    return 0
+  fi
+  echo "${label} source: reachable (HTTP ${out})"
+}
+
+probe_source "bootstrap-clarity"    "$JADE_TIPI_COUCHDB_CLARITY_URL"
+probe_source "bootstrap-esp-entity" "$JADE_TIPI_COUCHDB_ESP_ENTITY_URL"
+
 upsert_replicator "bootstrap-clarity"    "$JADE_TIPI_COUCHDB_CLARITY_URL"    "${COUCH_TARGET_BASE_URL}/clarity"
 upsert_replicator "bootstrap-esp-entity" "$JADE_TIPI_COUCHDB_ESP_ENTITY_URL" "${COUCH_TARGET_BASE_URL}/esp-entity"
 
