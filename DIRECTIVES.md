@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: HUMAN_REQUIRED
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
@@ -39,6 +39,12 @@ capability.
 
 ## Active Task
 
+- `TASK-020 - Define and materialize group records` remains
+  `READY_FOR_PREWORK`. claude-1's latest pre-work stayed within its base owned
+  paths, but it must revise the plan before implementation because the proposed
+  permissions list conflicts with the active task's required permissions map
+  and existing project docs. See the `PREWORK_REVIEW` section in
+  `docs/orchestrator/tasks/TASK-020-group-record-model-and-materialization.md`.
 - `TASK-013 - Define materialized root document contract` is accepted.
 - `TASK-014 - Implement root-shaped materialized documents` is
   accepted.

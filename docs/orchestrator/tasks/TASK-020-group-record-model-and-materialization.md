@@ -92,3 +92,33 @@ VERIFICATION:
   `./gradlew --stop` when stale Gradle daemons are implicated, and the exact
   blocked command/error rather than treating setup as a product blocker.
 
+PREWORK_REVIEW:
+- 2026-05-02 director review keeps this task at `READY_FOR_PREWORK`.
+  claude-1 stayed within its base pre-work ownership boundary: the latest
+  developer commit changed only `docs/agents/claude-1-next-step.md`.
+- Do not proceed to implementation from the revision-1 plan as written. The
+  proposed `data.permissions` list of `{grp_id, level}` rows does not satisfy
+  this task's accepted requirement for a group permissions map. Existing
+  project direction in `DIRECTION.md`, `docs/README.md`,
+  `docs/Jade-Tipi.md`, and `docs/user-authentication.md` also describes a
+  permissions map, so an implementation that documents only a list would create
+  model drift.
+- Next pre-work must resolve the map/schema compatibility issue before
+  implementation. Answer these concrete questions:
+  - What exact canonical `grp + create` payload shape will preserve a
+    permissions map granting other group IDs `rw` or `r` while still passing
+    `MessageSpec` validation against `message.schema.json`?
+  - If the existing `SnakeCaseObject.propertyNames` rule makes the accepted map
+    shape impossible for world-unique group IDs, should this task request an
+    explicit owned-path expansion to update `message.schema.json` and its
+    focused tests, or should the task be revised by the director/human to accept
+    a list-shaped permissions representation?
+  - Which relevant docs will be updated so `DIRECTION.md`, `docs/README.md`,
+    `docs/Jade-Tipi.md`, `docs/user-authentication.md`, and
+    `docs/architecture/kafka-transaction-message-vocabulary.md` do not
+    contradict each other on map versus list semantics?
+- The rest of the proposed materializer approach is directionally sound:
+  adding `grp + create` to the existing root-document materializer whitelist
+  should reuse the accepted TASK-014 root shape and `_head.provenance` behavior,
+  with focused tests for success, unsupported actions, missing/blank IDs, and
+  any duplicate behavior not already covered by the generic insert path.
