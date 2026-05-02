@@ -406,8 +406,13 @@ class ContentsHttpReadIntegrationSpec extends Specification {
                 .jsonPath('$[0].typeId').isEqualTo(typeId)
                 .jsonPath('$[0].left').isEqualTo(containerId)
                 .jsonPath('$[0].right').isEqualTo(contentId)
+                .jsonPath('$[0].properties.position.kind').isEqualTo('plate_well')
                 .jsonPath('$[0].properties.position.label').isEqualTo('A1')
+                .jsonPath('$[0].properties.position.row').isEqualTo('A')
+                .jsonPath('$[0].properties.position.column').isEqualTo(1)
                 .jsonPath('$[0].provenance.txn_id').isEqualTo(txnId)
+                .jsonPath('$[0].provenance.commit_id').exists()
+                .jsonPath('$[0].provenance.msg_uuid').isEqualTo(lnkMsg.uuid())
     }
 
     def 'empty-result contents HTTP routes return 200 with an empty array'() {

@@ -3,8 +3,52 @@
 The developer writes completed work reports here.
 
 STATUS: READY_FOR_REVIEW
-TASK: TASK-016 — Plan root-shaped contents HTTP integration coverage
+TASK: TASK-016 — Plan root-shaped contents HTTP integration coverage (director-requested follow-up fix)
 DATE: 2026-05-02
+SUMMARY: Applied the director's narrow follow-up fix to the existing
+`ContentsHttpReadIntegrationSpec.forward and reverse contents HTTP routes
+return the materialized link` reverse-route assertion so it proves the same
+expected flat JSON record as the forward route. The reverse-route block at
+`jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/contents/ContentsHttpReadIntegrationSpec.groovy:401-415`
+now asserts the missing required fields:
+`$[0].properties.position.kind == 'plate_well'`,
+`$[0].properties.position.row == 'A'`,
+`$[0].properties.position.column == 1`,
+`$[0].provenance.commit_id` exists, and
+`$[0].provenance.msg_uuid == lnkMsg.uuid()` — in addition to the existing
+`linkId`, `typeId`, `left`, `right`, `properties.position.label`, and
+`provenance.txn_id` checks. The forward-route block remains unchanged.
+Scope was strictly the assertion gap: no production code, test resources,
+fixtures, materializer/read-service/controller, Kafka listener, DTO/schema/
+canonical examples, Docker/Gradle/security config, frontend, response
+envelopes, pagination, endpoint joins, semantic validation, update/delete
+replay, or backfill changes were made.
+
+Local verification (Docker stack `docker compose -f docker/docker-compose.yml ps`
+showed `jade-tipi-kafka`, `jade-tipi-keycloak`, and `jade-tipi-mongo` healthy):
+- `./gradlew :jade-tipi:compileIntegrationTestGroovy` — BUILD SUCCESSFUL.
+- `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*ContentsHttpReadIntegrationSpec*'` — BUILD SUCCESSFUL.
+  Per `jade-tipi/build/test-results/integrationTest/TEST-org.jadetipi.jadetipi.contents.ContentsHttpReadIntegrationSpec.xml`:
+  `tests="2" skipped="0" failures="0" errors="0"` (forward/reverse feature
+  4.803s; empty-result feature 0.024s).
+- `./gradlew :jade-tipi:compileGroovy` and
+  `./gradlew :jade-tipi:compileTestGroovy` — BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:test --rerun-tasks` — BUILD SUCCESSFUL.
+
+FILES CHANGED:
+- `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/contents/ContentsHttpReadIntegrationSpec.groovy`
+  — added five missing reverse-route JSON-path assertions to match the
+  forward-route contract (one feature, one then-block; ~5 lines added).
+- `docs/agents/claude-1-changes.md` — this status block.
+
+The previous TASK-016 implementation report (initial spec creation) is
+preserved in full below for review history.
+
+---
+
+ORIGINAL TASK-016 IMPLEMENTATION REPORT (2026-05-02):
+
 SUMMARY: Added one narrow opt-in integration spec
 `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/contents/ContentsHttpReadIntegrationSpec.groovy`
 that proves a single canonical contents transaction can flow through
