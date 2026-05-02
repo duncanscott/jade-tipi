@@ -204,8 +204,8 @@ top-level `_id`, `id`, `collection: "grp"`, `type_id` (currently `null` because
 the canonical example does not declare a group type), inline `properties`
 (`name`, `description`, and the verbatim `permissions` map), an empty `links`
 map, and the reserved `_head` block with `provenance.collection == "grp"` and
-`provenance.action == "create"`. Other `grp` actions and bare entity-type
-`grp` payloads with missing or blank `data.id` are skipped without error.
+`provenance.action == "create"`. Other `grp` actions and `grp + create`
+payloads with missing or blank `data.id` are skipped without error.
 
 This iteration intentionally does not enforce read or write permissions on
 HTTP, Kafka, materializer, or read-service paths, does not synchronize group
@@ -214,11 +214,11 @@ introduce object-level or property-value-level permission overrides.
 
 ## Committed Materialization Of Locations And Links
 
-Once a transaction commits in `txn`, a post-commit projection currently copies the `loc + create`, `typ + create` (where `data.kind == "link_type"`), `lnk + create`, and `grp + create` messages into their long-term collections (`loc`, `typ`, `lnk`, `grp`). The projection is a read-after-commit step over the existing committed-snapshot read service; the `txn` write-ahead log remains the durable, authoritative record. Other collections, other actions, and bare entity-type `typ` records are intentionally not materialized in this iteration.
+Once a transaction commits in `txn`, a post-commit projection currently materializes `loc + create`, `typ + create` (where `data.kind == "link_type"`), `lnk + create`, and `grp + create` messages into their long-term collections (`loc`, `typ`, `lnk`, `grp`). The projection is a read-after-commit step over the existing committed-snapshot read service; the `txn` write-ahead log remains the durable, authoritative record. Other collections, other actions, and bare entity-type `typ` records are intentionally not materialized in this iteration.
 
-The first materializer uses a provisional physical shape: materialized documents copy the committed `data` payload verbatim, set Mongo `_id` to `data.id`, keep the original `id` payload field, and add a reserved `_jt_provenance` sub-document carrying `txn_id`, `commit_id`, `msg_uuid`, `committed_at`, and `materialized_at`. Duplicate `_id` writes with an identical payload are idempotent successes; differing-payload duplicates are logged and counted but not overwritten, and missing or blank `data.id` is logged and skipped without synthesizing an id. Semantic reference validation (`type_id`, `left`, `right`, and `allowed_*_collections`) is still not enforced; that remains a follow-up reader/validator concern.
+The current materializer writes the accepted root-document shape from `DIRECTION.md`: one logical Jade-Tipi object normally stored as one root document with top-level `_id`, `id`, `collection`, `type_id`, explicit `properties`, denormalized `links`, and reserved `_head.provenance` metadata. Duplicate `_id` writes with an identical payload are idempotent successes; differing-payload duplicates are logged and counted but not overwritten, and missing or blank `data.id` is logged and skipped without synthesizing an id. Semantic reference validation (`type_id`, `left`, `right`, and `allowed_*_collections`) is still not enforced; that remains a follow-up reader/validator concern.
 
-This copied-data shape is not the intended durable object contract. The next materializer design should move toward the root-document model in `DIRECTION.md`: one logical Jade-Tipi object normally stored as one root document with `type_id`, explicit `properties`, denormalized `links`, and reserved `_head` metadata. Extension pages for overflow property/link maps are future storage work and should not be required for the initial root-only implementation.
+Rows materialized before the root-document contract may still contain the legacy copied-data shape with top-level `_jt_provenance`. New materialized writes should use `_head.provenance`; legacy fallback behavior exists only where explicitly documented by readers that still need to tolerate stale rows.
 
 ## Reading `contents` Links
 

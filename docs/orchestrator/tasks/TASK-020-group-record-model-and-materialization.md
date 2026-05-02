@@ -3,7 +3,7 @@
 ID: TASK-020
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: ACCEPTED
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-014
@@ -92,6 +92,45 @@ VERIFICATION:
   `docker compose -f docker/docker-compose.yml --profile mongodb up -d`,
   `./gradlew --stop` when stale Gradle daemons are implicated, and the exact
   blocked command/error rather than treating setup as a product blocker.
+
+IMPLEMENTATION_REVIEW:
+- 2026-05-02 director implementation review accepts `TASK-020`.
+  claude-1's merged implementation stayed within the base report path plus
+  the task-owned implementation paths: `docs/agents/claude-1-changes.md`,
+  `docs/architecture/kafka-transaction-message-vocabulary.md`,
+  `libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json`,
+  `libraries/jade-tipi-dto/src/main/resources/example/message/13-create-group.json`,
+  `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`,
+  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`,
+  and `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`.
+- The implementation satisfies the accepted Shape A: `grp + create` carries a
+  `data.permissions` map keyed by world-unique `grp` IDs with values limited
+  to `rw` or `r`, the DTO schema exception is scoped to `grp` data, and
+  non-`grp` data continues to use the recursive snake_case payload schema.
+- `CommittedTransactionMaterializer` now treats `grp + create` as a supported
+  root materialization path and reuses the accepted `_head.provenance`
+  root-document builder. Unsupported `grp` actions and missing or blank
+  `data.id` are covered by focused tests; generic duplicate behavior remains
+  covered by the existing insert-path tests.
+- Director review applied one small documentation correction after merge:
+  the vocabulary doc's shared materialization section no longer describes the
+  obsolete copied-data `_jt_provenance` shape as the current materializer
+  contract.
+- Director verification: `git diff --check 14788df..HEAD` passed, and `jq
+  empty` passed for `message.schema.json` and `13-create-group.json`. Gradle
+  verification was blocked by local sandbox/tooling, not by a product failure:
+  `./gradlew ...` could not write the wrapper lock under
+  `/Users/duncanscott/.gradle/.../gradle-8.14.3-bin.zip.lck` (`Operation not
+  permitted`); retrying with `GRADLE_USER_HOME=/private/tmp/jade-tipi-gradle-home`
+  reached the documented wrapper download but failed DNS for
+  `services.gradle.org`; using the local Gradle install with that writable
+  home failed before build execution with `java.net.SocketException:
+  Operation not permitted`. In a normal developer shell, run the task's
+  documented Gradle verification commands; if stale daemons are implicated,
+  run `./gradlew --stop` first.
+- No follow-up task is created automatically. The next likely unit is
+  permission evaluation/enforcement, which requires human product/security
+  direction before being bounded.
 
 PREWORK_REVIEW:
 - 2026-05-02 director review of claude-1 revision 2 advances this task to

@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: HUMAN_REQUIRED
 
 ## Active Focus
 
@@ -30,16 +30,18 @@ Clarity tube and ESP freezer/bin/plate chain can become root-shaped `loc`,
 transaction-local `typ~contents`, and `lnk` roots using the existing
 materializer.
 
-`TASK-020` is ready for implementation. The next bounded unit is to make `grp`
-records concrete as first-class root-shaped Jade-Tipi objects without adding
-permission enforcement.
+`TASK-020` is accepted. `grp` records are now concrete first-class root-shaped
+Jade-Tipi objects: the canonical wire shape uses a grp-id-keyed permissions
+map with `rw`/`r` values, DTO/schema examples validate that shape, and the
+committed materializer writes `grp + create` roots into the `grp` collection
+with `_head.provenance`. Permission enforcement remains intentionally
+unimplemented.
 
 ## Active Task
 
-- `TASK-020 - Define and materialize group records` is
-  `READY_FOR_IMPLEMENTATION`. Implement the accepted grp-id-keyed permissions
-  map shape from the latest pre-work with the schema correction recorded in the
-  task file's `PREWORK_REVIEW` section.
+- `TASK-020 - Define and materialize group records` is accepted. Do not add
+  permission enforcement, membership synchronization, object-level overrides,
+  or property-value-level overrides without a new bounded task.
 - `TASK-013 - Define materialized root document contract` is accepted.
 - `TASK-014 - Implement root-shaped materialized documents` is
   accepted.
@@ -54,6 +56,28 @@ permission enforcement.
 - `TASK-019 - Prototype Clarity/ESP container materialization` is accepted.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
+
+No active implementation task is currently assigned. The next likely unit
+requires human product/security direction around permission evaluation and
+enforcement semantics.
+
+## TASK-020 Director Acceptance Review
+
+- Accepted on 2026-05-02. The implementation stayed within claude-1's base
+  report path plus the explicit `TASK-020` owned paths.
+- The accepted Shape A is now implemented: `data.permissions` is a map keyed
+  by world-unique `grp` IDs, values are exactly `rw` or `r`, non-`grp`
+  message payloads retain recursive snake_case validation, and the canonical
+  `13-create-group.json` example round-trips through the DTO tests according
+  to the developer report.
+- `CommittedTransactionMaterializer` supports `grp + create` and reuses the
+  root-document `_head.provenance` contract. Unsupported `grp` actions,
+  missing/blank ids, and the success path have focused tests; duplicate
+  behavior remains covered by the existing generic insert-path tests.
+- Director static checks passed for whitespace and JSON syntax. Gradle
+  verification was blocked by local sandbox/tooling permissions around the
+  Gradle wrapper cache and local socket creation, so the documented commands
+  should be rerun in a normal developer shell before any release gate.
 
 ## Scope Expansion
 

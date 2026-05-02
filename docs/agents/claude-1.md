@@ -13,9 +13,10 @@ Report file: docs/agents/claude-1-changes.md
 
 - No active task is currently assigned. `TASK-016 - Plan root-shaped contents
   HTTP integration coverage`, `TASK-017 - Add local CouchDB replication
-  bootstrap`, and `TASK-019 - Prototype Clarity/ESP container materialization`
-  are accepted, and `TASK-012 - Plan contents HTTP read integration coverage`
-  is accepted historical context only.
+  bootstrap`, `TASK-019 - Prototype Clarity/ESP container materialization`,
+  and `TASK-020 - Define and materialize group records` are accepted, and
+  `TASK-012 - Plan contents HTTP read integration coverage` is accepted
+  historical context only.
 - Do not implement `TASK-012` as-is. Wait for the director to create or assign
   a new bounded task after human product/architecture selection.
 - Record pre-work in `docs/agents/claude-1-next-step.md`; record implementation
