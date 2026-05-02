@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: HUMAN_REQUIRED
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
@@ -24,6 +24,11 @@ from local environment files, not committed project files. No Spring Boot
 CouchDB initialization layer is currently needed; Docker-level replication is
 the accepted mechanism for keeping the local CouchDB populated.
 
+Next product direction: full Clarity and ESP import/synchronization are already
+underway elsewhere. Jade-Tipi's next useful unit is to inspect a tiny sample of
+already-replicated local CouchDB container records and map one or two real LIMS
+containers into the accepted `loc`/`lnk` root-document model.
+
 ## Active Task
 
 - `TASK-013 - Define materialized root document contract` is accepted.
@@ -37,13 +42,45 @@ the accepted mechanism for keeping the local CouchDB populated.
   accepted.
 - `TASK-018 - Plan Spring CouchDB initialization` is accepted as superseded by
   human direction. Do not route it.
+- `TASK-019 - Prototype Clarity/ESP container materialization` is
+  `READY_FOR_PREWORK` and prioritized next.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
 ## Scope Expansion
 
-No current task-specific scope expansion is active. Treat `TASK-012` and
-`TASK-018` as historical context only; do not route or implement them as-is.
+For `TASK-019`, claude-1 may inspect and propose changes within:
+
+- `docs/architecture/clarity-esp-container-mapping.md`
+- `docs/orchestrator/tasks/TASK-019-clarity-esp-container-materialization.md`
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/`
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/`
+- `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/containers/`
+- `jade-tipi/src/integrationTest/resources/`
+
+Pre-work only is authorized. Implementation must not begin until the director
+reviews the pre-work and moves `TASK-019` to `READY_FOR_IMPLEMENTATION`.
+Treat `TASK-012` and `TASK-018` as historical context only; do not route or
+implement them as-is.
+
+## TASK-019 Pre-work Direction
+
+- Use local CouchDB only. Read from `http://127.0.0.1:5984/clarity` and
+  `http://127.0.0.1:5984/esp-entity` with local credentials from the
+  materialized environment; do not write to CouchDB or remote services.
+- Sample a small number of likely container documents from Clarity and ESP.
+  Clarity documents are JSON translations of XML API entities and may not have
+  physical location data. ESP may have migrated entities and may include
+  locations or containment.
+- Propose the smallest mapping that persists one or two real containers into
+  MongoDB as Jade-Tipi root-shaped documents: `loc` for containers/positions
+  and `lnk` of type `contents` for containment. Use `ent` only if the sampled
+  source clearly represents a biological/sample entity.
+- Explicitly address plate wells. Either model wells as child `loc` objects,
+  model well position as a `contents` link property such as `well: "A1"`, or
+  defer the decision with evidence from the source samples.
+- Do not build import/synchronization machinery, Spring CouchDB initialization,
+  or broad source schema support.
 
 ## TASK-018 Director Acceptance Review
 
