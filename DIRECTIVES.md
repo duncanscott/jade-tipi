@@ -88,14 +88,22 @@ them as-is.
 
 ## TASK-019 Director Pre-work Review
 
-- Director correction on 2026-05-02 moves `TASK-019` back to
-  `READY_FOR_PREWORK` with `SIGNAL: REQUEST_NEXT_STEP`. The earlier move to
-  implementation was premature because the Jade-Tipi object JSON format is
-  still a design question.
-- Claude's existing sampled-data mapping remains useful evidence, but it is not
-  accepted as the final object model. The next claude-1 turn should receive the
-  broader human design discussion and produce a revised proposal with
-  alternatives and tradeoffs.
+- Director review on 2026-05-02 keeps `TASK-019` at `READY_FOR_PREWORK` with
+  `SIGNAL: REQUEST_NEXT_STEP`. claude-1's latest pre-work commit stayed within
+  its base owned paths: only `docs/agents/claude-1-next-step.md` changed, and
+  `git diff --check origin/director..HEAD` passed.
+- The response correctly identifies the human design brief and the required
+  issues, but it stops at a plan for a later mapping-doc revision instead of
+  producing the required TASK-019 proposal. The next claude-1 turn must update
+  `docs/architecture/clarity-esp-container-mapping.md` directly with the
+  design-brief alignment, D6/D7 decisions, type-definition shape, and wells
+  alternatives/tradeoffs.
+- Default director answers for claude-1's open questions: the brief wins over
+  revision-2 phrasing; prototype wells remain `lnk.properties.position` while
+  documenting child-`loc` and hybrid alternatives; `typ` roots declare only
+  assignable property names plus link-type metadata; parentage is single-sourced
+  in `lnk`; append alignment/tradeoff sections and make narrow consistency
+  edits to existing decisions. No implementation is authorized.
 
 ## TASK-019 Historical Pre-work Review
 

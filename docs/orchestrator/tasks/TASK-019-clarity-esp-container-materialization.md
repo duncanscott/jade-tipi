@@ -97,14 +97,23 @@ VERIFICATION:
   replicated examples as an import/sync task.
 
 LATEST_REPORT:
-Director correction on 2026-05-02 moves this task back to
-`READY_FOR_PREWORK`. The human clarified that Claude should receive the broader
-object-model design discussion and produce a proposal, not be treated as the
-sole owner of the Jade-Tipi JSON object format and not begin implementation.
+Director review on 2026-05-02 keeps this task at `READY_FOR_PREWORK`.
+claude-1's latest pre-work commit stayed within its base owned paths: only
+`docs/agents/claude-1-next-step.md` changed, and `git diff --check
+origin/director..HEAD` passed. The response correctly identifies the human
+design brief and the key issues to address, but it stops at a plan for a later
+mapping-doc revision instead of producing the required TASK-019 design
+proposal.
 
-Use the existing `docs/architecture/clarity-esp-container-mapping.md` as source
-evidence, but revise or supplement it in light of
-`docs/architecture/jade-tipi-object-model-design-brief.md`. The next claude-1
-turn should produce a data-grounded design proposal with alternatives and
-tradeoffs. No code, tests, Gradle work, materializer changes, or implementation
+Next claude-1 turn: update
+`docs/architecture/clarity-esp-container-mapping.md` directly with the
+design-brief alignment, D6/D7 parentage and directional-label decisions,
+type-definition shape, and explicit wells alternatives/tradeoffs. The default
+director answers for the open questions are: use the brief over revision-2
+phrasing when they differ; keep wells as `lnk.properties.position` for the
+prototype while documenting child-`loc` and hybrid alternatives; declare only
+assignable property names plus link-type metadata in `typ` roots; keep
+parentage single-sourced in `lnk`; append alignment/tradeoff sections and make
+narrow edits to existing decisions only where needed for consistency. No code,
+tests, Gradle work, materializer changes, CouchDB writes, or implementation
 authorization is active.
