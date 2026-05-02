@@ -4,397 +4,642 @@ The developer writes pre-work plans here before implementation begins.
 
 STATUS: PRESENT
 
-## TASK-016 — Plan root-shaped contents HTTP integration coverage (pre-work)
+## TASK-017 — Add local CouchDB replication bootstrap (pre-work)
 
 ### Directive summary
 
-Per `DIRECTIVES.md` (signal `REQUEST_NEXT_STEP`, active task `TASK-016`,
+Per `DIRECTIVES.md` (signal `REQUEST_NEXT_STEP`, active task `TASK-017`,
 status `READY_FOR_PREWORK`) and
-`docs/orchestrator/tasks/TASK-016-root-shaped-contents-http-integration.md`,
-plan one narrow opt-in integration spec that proves a single canonical
-contents transaction can flow through Kafka ingestion, the accepted
-root-shaped committed materialization (`TASK-014`), and the contents HTTP
-read routes hardened against root-shaped `typ`/`lnk` documents (`TASK-015`).
-The paused `TASK-012` plan is historical context only — the materialized
-shape it targeted no longer exists, so it must be rewritten, not implemented
-as-is.
+`docs/orchestrator/tasks/TASK-017-local-couchdb-remote-replication.md`,
+extend `docker/docker-compose.yml` so the local development stack can
+start a single-node CouchDB instance with persistent storage, create
+local databases named exactly `clarity` and `esp-entity`, and
+bootstrap resumable replication from the remote JGI CouchDB URLs in
+`JADE_TIPI_COUCHDB_CLARITY_URL` and `JADE_TIPI_COUCHDB_ESP_ENTITY_URL`
+into those local databases. Remote credentials come from the
+orchestrator-materialized worktree `.env` file via
+`JADE_TIPI_COUCHDB_ADMIN_USERNAME` and `JADE_TIPI_COUCHDB_ADMIN_PASSWORD`
+and must not be committed to the repository, written into images, or
+printed by the bootstrap.
 
-Scope of this pre-work: one Spring Boot integration spec under
-`jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/contents/`,
-gated by `JADETIPI_IT_KAFKA` plus a new Keycloak readiness probe, using the
-project-documented Docker stack, per-run Kafka topic/consumer-group, per-run
-`txn_id`, and per-run materialized `loc`/`typ`/`lnk` ids. No production
-behavior change; no broad documentation refresh; no fixture file additions
-unless source inspection later proves one is required (it does not).
+The directive explicitly scopes this task to Docker/local environment
+bootstrap. Pre-work only is authorized — no implementation until the
+director moves `TASK-017` to `READY_FOR_IMPLEMENTATION`.
 
-Out of scope for this task (per `TASK-016` `OUT_OF_SCOPE` and `DIRECTIVES.md`):
-read service/controller/materializer semantics, persistence service,
-Kafka listener behavior, DTO schemas/canonical examples, Docker Compose,
-Gradle files, security policy, frontend, response envelopes, pagination,
-endpoint joins to `loc`/`ent`, authorization/scoping policy, semantic
-write-time validation, update/delete replay, backfill jobs, plate-shaped
-UI/API projections, refactors of `TransactionMessageKafkaIngestIntegrationSpec`,
-and any global cleanup of the test database.
+Scope expansion granted by `DIRECTIVES.md` for `TASK-017`:
+
+- `docker/`
+- `.env.example`
+- `docs/orchestrator/tasks/TASK-017-local-couchdb-remote-replication.md`
+
+Plus the developer-owned report file `docs/agents/claude-1-changes.md`
+and this pre-work file (the always-owned developer paths).
+
+Out of scope per `TASK-017` `OUT_OF_SCOPE` and `DIRECTIVES.md`:
+
+- Copying remote data during the task implementation/tests (the
+  human will run the local stack and approve the multi-GB pull
+  separately).
+- Writing to the remote CouchDB databases.
+- Any application code that depends on the replicated CouchDBs
+  (no Spring Boot/Kafka/listener/DTO/materializer/contents read
+  changes).
+- Any change to MongoDB, Kafka, Keycloak, Spring Boot, frontend, or
+  Gradle/build wiring.
+- Making the unit `:jade-tipi:test` or
+  `JADETIPI_IT_KAFKA=1 :jade-tipi:integrationTest` paths require
+  remote CouchDB availability.
 
 ### Source inspection (current accepted state)
 
-- **Existing Kafka integration pattern.**
-  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/TransactionMessageKafkaIngestIntegrationSpec.groovy`
-  is the accepted opt-in template:
-  - `@SpringBootTest` + `@ActiveProfiles('test')` + class-level
-    `@IgnoreIf({ !TransactionMessageKafkaIngestIntegrationSpec.kafkaIntegrationGateOpen() })`
-    so the Spring context is never loaded when the gate is closed.
-  - `kafkaIntegrationGateOpen()` checks `JADETIPI_IT_KAFKA in ['1','true','TRUE','yes']`
-    plus a 2-second `AdminClient.describeCluster` probe against
-    `KAFKA_BOOTSTRAP_SERVERS` (default `localhost:9092`).
-  - `@DynamicPropertySource overrideProperties(...)` flips
-    `jadetipi.kafka.enabled=true`, narrows the listener pattern to a
-    per-run topic, sets a unique consumer group, shortens
-    `metadata.max.age.ms` to 2s, and creates the topic up front.
-  - Per-run `SHORT_UUID = UUID.randomUUID().toString().substring(0, 8)`,
-    `TEST_TOPIC = "jdtp-txn-itest-${SHORT_UUID}"`,
-    `CONSUMER_GROUP = "jadetipi-itest-${SHORT_UUID}"`. Topic created in
-    `@DynamicPropertySource` and deleted best-effort in `cleanupSpec()`.
-  - Per-feature `txn = Transaction.newInstance(...)` plus a `cleanup()`
-    method that deletes only this run's `txn_id` rows from `txn`. No
-    global database cleanup.
-  - Private `awaitMongo(Supplier<Mono<T>>, Predicate<T>, String)` helper
-    with `AWAIT_TIMEOUT = 30s`, `POLL_INTERVAL = 250ms`,
-    `MONGO_BLOCK_TIMEOUT = 5s`.
-- **Auth helper.**
-  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/config/KeycloakTestHelper.groovy`
-  obtains a bearer via Keycloak `client_credentials` grant against
-  `http://localhost:8484/realms/jade-tipi` with caching. Existing
-  `DocumentCreationIntegrationTest` calls it from `@BeforeAll` and uses
-  `webTestClient.get().uri(...).header("Authorization", "Bearer ${accessToken}")`.
-  The `test` profile sets `oauth2.resourceserver.jwt.issuer-uri` to
-  Keycloak; `TestSecurityConfig` is a `@TestConfiguration` (only loaded
-  when explicitly imported), so the integration context defers to the
-  real Keycloak issuer. We will reuse the helper rather than mocking
-  the decoder, mirroring the accepted Document integration tests.
-- **Materializer (TASK-014 accepted).**
-  `CommittedTransactionMaterializer` writes root-shaped documents for
-  `loc + create`, `typ + create` with `data.kind == "link_type"`, and
-  `lnk + create`. Each root has top-level `_id == id == data.id`,
-  `collection`, `type_id`, an inline `properties` map (`data` minus `id`
-  and `type_id` for non-`lnk` roots; `data.properties` verbatim for
-  `lnk`), `links: {}`, and a reserved
-  `_head: { schema_version: 1, document_kind: 'root', root_id, provenance: { txn_id, commit_id, msg_uuid, collection, action, committed_at, materialized_at } }`.
-  No top-level `_jt_provenance` is written for new roots. Materialization
-  runs on the post-commit hook in `TransactionMessagePersistenceService`,
-  so committing the canonical transaction publishes the root-shaped rows
-  asynchronously.
-- **Contents read service + controller (TASK-015 accepted).**
-  `ContentsLinkReadService.resolveContentsTypeIds()` queries `typ` for
-  `properties.kind == 'link_type'` and `properties.name == 'contents'`,
-  then filters `lnk.type_id $in <typeIds>` and `lnk.<endpointField> == id`,
-  sorted by `_id` ASC. `toRecord(...)` reads top-level `type_id`,
-  `left`, `right`, and `properties` from the `lnk` root, and provenance
-  from `_head.provenance` with a narrow legacy `_jt_provenance` fallback.
-  `ContentsLinkReadController` exposes
-  `GET /api/contents/by-container/{id}` and
-  `GET /api/contents/by-content/{id}`, both returning a flat
-  `Flux<ContentsLinkRecord>` (`linkId`, `typeId`, `left`, `right`,
-  `properties`, `provenance`) over JSON. Empty results are HTTP 200 `[]`;
-  blank ids are 400 `ErrorResponse` via the global handler. Both routes
-  require an authenticated `Jwt`.
-- **Canonical message examples** (`libraries/jade-tipi-dto/src/main/resources/example/message/`):
-  - `10-create-location.json` — `collection: 'loc'`, `data.id`
-    `jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~freezer_a`,
-    plus `name`/`description`.
-  - `11-create-contents-type.json` — `collection: 'typ'`,
-    `data.kind: 'link_type'`, `data.id`
-    `jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents`,
-    `data.name: 'contents'`, plus the six declarative facts
-    (`left_role`, `right_role`, `left_to_right_label`,
-    `right_to_left_label`, `allowed_left_collections`,
-    `allowed_right_collections`).
-  - `12-create-contents-link-plate-sample.json` — `collection: 'lnk'`,
-    `data.id`
-    `jade-tipi-org~dev~018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~lnk~plate_b1_sample_x1`,
-    `data.type_id` matching the contents `typ`, `data.left` a `loc` id,
-    `data.right` an `ent` id, `data.properties.position` =
-    `{kind: 'plate_well', label: 'A1', row: 'A', column: 1}`. (Note:
-    `data.right` references an `ent` that is not created in this
-    transaction; semantic resolution is out of scope for both the
-    materializer and the contents read path, so this is fine.)
-- **Docker Compose service names.** `docker/docker-compose.yml` ships
-  `mongodb` (`localhost:27017`), `keycloak` (`localhost:8484`, with a
-  health probe), `kafka` (`localhost:9092`, brought up after Keycloak
-  is healthy), and `kafka-init` (creates the global `jdtp_cli_kli`
-  topic). The new spec only needs `mongodb` + `keycloak` + `kafka`
-  reachable; the global topic is irrelevant because the spec uses its
-  own per-run `jdtp-txn-itest-…` topic.
-- **Integration-test Gradle wiring.**
-  `gradle/scripts/integration-test.gradle` creates the `integrationTest`
-  source set with `resources.srcDirs = ['src/integrationTest/resources',
-  'src/test/resources']`, so `application-test.yml` already participates
-  in integration tests. The Groovy plugin auto-includes
-  `src/integrationTest/groovy`. The `integrationTest` task uses JUnit
-  Platform; Spock + Spock-Spring are available transitively via the
-  unit `test` configuration. No build wiring change is needed.
+- **`docker/docker-compose.yml`** currently defines four services:
+  - `mongodb` (`mongo:8.0`) on `127.0.0.1:27017`, named volume
+    `mongodb_data` mounted at `/data/db`.
+  - `keycloak` (`quay.io/keycloak/keycloak:26.0`) on
+    `127.0.0.1:8484`, with a TCP-based `/health/ready` healthcheck on
+    container port 9000.
+  - `kafka` (`apache/kafka:4.1.1`) on `127.0.0.1:9092` (PLAINTEXT
+    host) and internal `kafka:9093`, KRaft single-node, named volume
+    `kafka_data` mounted at `/var/lib/kafka/data`,
+    `depends_on.keycloak: service_healthy`, healthcheck via
+    `kafka-broker-api-versions.sh`.
+  - `kafka-init` (one-shot, `restart: "no"`) creates the global
+    `jdtp_cli_kli` topic if absent, via `entrypoint: ["/bin/bash",
+    "-c"]` + a heredoc-style `command:`. This is the existing precedent
+    for an idempotent bootstrap sidecar in this stack.
+  - Volumes section declares `mongodb_data` and `kafka_data` as named
+    volumes (no driver, default local).
+  - No `version:` key (Compose v2 implicit), no top-level `networks:`
+    block, no `env_file:` on any service. Compose's default
+    behavior reads variables from a `.env` file in the directory that
+    holds `docker-compose.yml` (here: `docker/`), but the orchestrator
+    materializes the worktree's `.env` at the worktree root, **not**
+    inside `docker/`. Variable interpolation in compose only finds the
+    project root `.env` automatically.
+- **`.env.example`** at the worktree root currently lists exactly the
+  four CouchDB-relevant variables — no others:
+  ```
+  JADE_TIPI_COUCHDB_CLARITY_URL=https://pps-couch-prd.jgi.lbl.gov:6984/clarity
+  JADE_TIPI_COUCHDB_ESP_ENTITY_URL=https://pps-couch-prd.jgi.lbl.gov:6984/esp-entity
+  JADE_TIPI_COUCHDB_ADMIN_USERNAME=
+  JADE_TIPI_COUCHDB_ADMIN_PASSWORD=
+  ```
+  The remote URLs already include the source database name as the
+  path component (`/clarity`, `/esp-entity`), which is the URL form
+  the CouchDB `_replicator` `source` field expects.
+- **`config/env/project.env.local.example`** mirrors the four
+  variables above; the orchestrator already ships this overlay
+  (confirmed against `config/orchestrator.local.json` `env.shared`
+  pointing at `config/env/project.env.local` and `materializeAs:
+  ".env"` placing the file at the worktree root). The orchestrator is
+  the source of truth for materializing `.env` into worktrees;
+  `TASK-017` does not need to change orchestrator wiring.
+- **Worktree `.gitignore`** ignores `.env`, `.env.local`,
+  `.env.development.local`, `.env.test.local`, and
+  `.env.production.local` (lines 137–141). The materialized `.env` is
+  therefore not at risk of accidental commit, but a `docker/.env`
+  symlink/copy would NOT be covered by this ignore unless the
+  ignore is broadened. Recommendation below avoids creating a
+  `docker/.env` for that reason.
+- **Docker variable interpolation behavior.** `docker compose -f
+  docker/docker-compose.yml ...` resolves variable references in the
+  compose file by looking, in order, at:
+  1. The shell environment of the invoking process.
+  2. A `--env-file` flag value if passed.
+  3. A `.env` file located next to the compose file
+     (`docker/.env`), if no `--env-file` is passed and no shell var
+     is set.
+  Compose does **not** automatically read the worktree-root `.env`
+  for variable interpolation when `-f docker/docker-compose.yml` is
+  used. The materialized `.env` lives at the worktree root, so the
+  task's expected invocation
+  `docker compose -f docker/docker-compose.yml up -d` will only see
+  those variables if the operator already exported them in the
+  shell, or if compose is told where to find them. We have to choose
+  one of: (a) shipping a project-root or `--project-directory`
+  declaration, (b) requiring `--env-file` on the documented command,
+  or (c) referencing the variables only via container-side `env_file:`
+  rather than via compose interpolation.
+  - **Container env vars** (`environment:` / `env_file:` on a
+    service) are read by Docker Compose from a different lookup
+    path: `env_file:` paths are relative to the compose file
+    location (`docker/`), and unresolved `${VAR}` references inside
+    `environment:` values still go through the interpolation rules
+    above. So pulling the variables in via `env_file:` requires
+    pointing at a path the orchestrator does materialize.
+  - The orchestrator materializes `.env` at the worktree root (one
+    level above `docker/`). The cleanest, least-invasive answer is
+    to set `env_file: ["../.env"]` on the new `couchdb-init`
+    sidecar; the path is relative to the compose file location, so
+    `../.env` resolves to the worktree-root `.env` that the
+    orchestrator already writes. The `couchdb` service itself
+    (which needs `COUCHDB_USER`/`COUCHDB_PASSWORD` for first-run
+    admin creation) gets the same `env_file:` so the same materialized
+    file feeds both.
+- **CouchDB official image behavior** (`couchdb:3.x`, current series
+  3.4 as of 2026-05; image name on Docker Hub is `couchdb`, the
+  `latest` tag tracks 3.x):
+  - On first start, if `COUCHDB_USER` and `COUCHDB_PASSWORD` env vars
+    are set, the entrypoint writes them into
+    `/opt/couchdb/etc/local.d/docker.ini` as a server admin (single
+    node). Subsequent restarts do **not** overwrite that file; the
+    admin persists with the data. This is the recommended way to
+    avoid CouchDB's "admin party" insecure default mode.
+  - Default config opens HTTP API on port `5984`. There is no
+    separate HTTPS listener in the default image; we will bind to
+    `127.0.0.1:5984` on the host and not expose it publicly.
+  - Persistent paths inside the container:
+    - `/opt/couchdb/data` — database files (the actual `clarity` and
+      `esp-entity` shards/data lives here, plus `_replicator`,
+      `_users`, `_global_changes`).
+    - `/opt/couchdb/etc/local.d` — runtime-injected config and the
+      first-run admin docker.ini.
+    Both must live on a named Docker volume (or two named volumes)
+    for restart resilience and replication checkpoint persistence.
+    Replication checkpoints are persisted as documents in the
+    source/target databases by CouchDB itself, so persistence comes
+    "for free" once `/opt/couchdb/data` is on a volume.
+  - Single-node initialization: in 3.x single-node mode (default
+    when `COUCHDB_USER`/`COUCHDB_PASSWORD` are set), the special
+    system databases `_users`, `_replicator`, and `_global_changes`
+    are NOT auto-created. The recommended bootstrap is to call
+    `POST /_cluster_setup` with `{"action":"enable_single_node",
+    "bind_address":"0.0.0.0", "username":"...", "password":"...",
+    "port":5984, "singlenode":true}`, which is idempotent and
+    creates all three system DBs in one call. Re-calling it on an
+    already-set-up node is safe and returns a known status; the
+    init sidecar can swallow the second-run response.
+  - Healthcheck: `GET /_up` returns 200 with `{"status":"ok"}` once
+    the node is fully started (HTTP listener is up and the local
+    Erlang node is healthy). This is the documented liveness probe
+    and is suitable for a Compose `healthcheck:` block.
+- **CouchDB replication mechanism.**
+  - Replication state is persisted as documents in the special
+    `_replicator` database. The recommended pattern is to PUT a
+    document into `_replicator` with a deterministic id (e.g.
+    `bootstrap-clarity`) describing the source URL, target DB name,
+    `continuous: true`, and (optionally) auth.
+  - When the document exists, CouchDB starts the replication job
+    automatically. Restarting the CouchDB process resumes from the
+    last persisted checkpoint without restarting from sequence 0,
+    because replication uses `_local/<replication-id>` checkpoint
+    documents written into both source and target.
+  - Modern (3.2+) replicator doc shape supports inline auth via an
+    `auth.basic.username/password` object on `source` (and on
+    `target` if needed), avoiding embedding credentials directly in
+    the URL string. The doc body looks like:
+    ```json
+    {
+      "_id": "bootstrap-clarity",
+      "source": {
+        "url": "https://pps-couch-prd.jgi.lbl.gov:6984/clarity",
+        "auth": { "basic": { "username": "...", "password": "..." } }
+      },
+      "target": "clarity",
+      "continuous": true,
+      "create_target": false,
+      "use_checkpoints": true
+    }
+    ```
+    (Credentials remain inside the local `_replicator` DB on the
+    persistent volume; they never leave the developer machine and
+    are never committed.)
+  - Idempotency of the PUT: a deterministic doc id makes the PUT
+    return 201 on first run and 409 conflict on subsequent runs.
+    The init script handles both: 201 OK, 409 → the script then
+    fetches the existing `_rev` and either updates the doc (if
+    fields differ) or treats no-op as success. Replication state
+    survives this update because the new doc just becomes another
+    revision driving the same logical job; checkpoints in the
+    target DB are still used.
+  - Replication progress can be observed without printing
+    credentials by querying `GET /_active_tasks` (lists running
+    replication tasks with `docs_read`, `docs_written`,
+    `changes_pending`, `progress`) or
+    `GET /_scheduler/jobs` and `GET /_scheduler/docs/_replicator`
+    (3.x scheduler API). None of these endpoints print the source
+    URL credentials when auth is provided via the structured
+    `auth.basic` object — the source URL is reported without
+    embedded `user:pass`. (If credentials were embedded directly in
+    the URL string instead, `_active_tasks` would echo them; that
+    is the second reason to prefer the structured `auth` form.)
+- **Datasets (per directive).** `clarity` ≈ 40.6 GB, ≈ 4,052,016
+  documents, not growing. `esp-entity` ≈ 11.1 GB, ≈ 1,713,401
+  documents, growing. Combined ≈ 52 GB just for data files; CouchDB
+  will additionally store view indexes (none requested here) and
+  internal metadata. The persistent volume must be sized
+  accordingly. We do not pre-allocate — Docker named volumes grow on
+  the host filesystem as CouchDB writes — but the documentation
+  block needs to call this out.
+- **Existing `.env` materialization.** The current materialized
+  `developers/claude-1/.env` already contains a non-blank
+  `JADE_TIPI_COUCHDB_ADMIN_USERNAME` and
+  `JADE_TIPI_COUCHDB_ADMIN_PASSWORD` (verified by reading the file —
+  values are not reproduced here per the "do not print credentials"
+  directive). So once the proposed compose changes are merged, the
+  bootstrap will have everything it needs in this worktree without
+  any further env edits.
 
-### Proposed plan (smallest viable opt-in spec)
+### Proposed plan
 
-#### File and shape
+#### 1. Compose changes (`docker/docker-compose.yml`)
 
-Add one file:
+Add one new service and one new sidecar, plus two new named volumes.
 
+##### 1a. `couchdb` service
+
+Image: `couchdb:3.4` (pin to a 3.4 minor; that line is the current
+LTS-grade release as of 2026-05 and matches the documented
+`_cluster_setup` and structured `auth.basic` replicator behavior
+this plan relies on).
+
+```yaml
+  couchdb:
+    image: couchdb:3.4
+    container_name: jade-tipi-couchdb
+    ports:
+      - "127.0.0.1:5984:5984"
+    environment:
+      COUCHDB_USER: ${JADE_TIPI_COUCHDB_ADMIN_USERNAME:?JADE_TIPI_COUCHDB_ADMIN_USERNAME is required}
+      COUCHDB_PASSWORD: ${JADE_TIPI_COUCHDB_ADMIN_PASSWORD:?JADE_TIPI_COUCHDB_ADMIN_PASSWORD is required}
+    env_file:
+      - ../.env
+    volumes:
+      - couchdb_data:/opt/couchdb/data
+      - couchdb_config:/opt/couchdb/etc/local.d
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5984/_up >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 ```
-jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/contents/ContentsHttpReadIntegrationSpec.groovy
+
+Key choices and why:
+
+- `env_file: ["../.env"]` — relative to the compose file (`docker/`),
+  resolves to the orchestrator-materialized worktree-root `.env`.
+  Means the `${...}` interpolation also has the values, so the
+  `:?` fallback message fires loudly on a real missing-env shell
+  invocation rather than silently substituting empty strings.
+- `${VAR:?msg}` interpolation — this is compose-side interpolation,
+  not container-side. It fails the `docker compose ...` invocation
+  immediately and prints the named message **without printing the
+  value** (compose's `:?` only prints the variable name and the
+  custom message; it never echoes the value). This satisfies the
+  "fail clearly when required env vars are missing" criterion in
+  the task.
+- Two named volumes (`couchdb_data` for the actual DB data,
+  `couchdb_config` for the runtime-written `local.d/docker.ini` admin
+  password file). Splitting them makes "wipe data only" possible
+  later without losing the admin config, and avoids the gotcha where
+  recreating the data volume but keeping config leaves a stale admin
+  reference. We keep them paired in normal use.
+- `127.0.0.1:5984` only — no remote exposure of the local CouchDB.
+- `/_up` health probe — documented CouchDB readiness signal; safe to
+  poll without auth.
+- No `depends_on:` on Mongo/Kafka/Keycloak. CouchDB has no
+  dependency on the other services, and we do not want to slow the
+  rest of the stack on first run while CouchDB initializes.
+- No new top-level `networks:`. Compose's default network is fine;
+  the init sidecar will reach `http://couchdb:5984` over it.
+
+##### 1b. `couchdb-init` sidecar
+
+Image: `curlimages/curl:8.10.1` (small, has `curl`, no shell — but
+we override the entrypoint with `/bin/sh -c` since the curl image
+ships busybox sh). Alternative considered: `couchdb:3.4` itself (it
+has bash and curl), but pulling a second copy of a ~250 MB image
+just for an init script is wasteful. `curlimages/curl` is ~10 MB.
+
+```yaml
+  couchdb-init:
+    image: curlimages/curl:8.10.1
+    container_name: jade-tipi-couchdb-init
+    depends_on:
+      couchdb:
+        condition: service_healthy
+    env_file:
+      - ../.env
+    environment:
+      COUCH_URL: http://couchdb:5984
+      LOCAL_USER: ${JADE_TIPI_COUCHDB_ADMIN_USERNAME:?JADE_TIPI_COUCHDB_ADMIN_USERNAME is required}
+      LOCAL_PASS: ${JADE_TIPI_COUCHDB_ADMIN_PASSWORD:?JADE_TIPI_COUCHDB_ADMIN_PASSWORD is required}
+    volumes:
+      - ./couchdb-bootstrap.sh:/usr/local/bin/couchdb-bootstrap.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/couchdb-bootstrap.sh"]
+    restart: "no"
 ```
 
-Shape:
+The script lives at `docker/couchdb-bootstrap.sh` (committed,
+non-secret) and is mounted read-only. The script never echoes
+credentials, never `set -x`s, and uses `curl --silent --show-error
+--fail-with-body --user "$LOCAL_USER:$LOCAL_PASS" -H 'Content-Type:
+application/json'` for all admin calls. The local admin
+user/password are passed via `-u` (header form, not URL form), so
+they never appear in the script's stdout/stderr.
 
-- `@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)`
-- `@AutoConfigureWebTestClient`
-- `@ActiveProfiles('test')`
-- Class-level `@IgnoreIf({ !ContentsHttpReadIntegrationSpec.integrationGateOpen() })`
-- Extends `Specification`
-- One `@Autowired ReactiveMongoTemplate mongoTemplate`
-- One `@Autowired WebTestClient webTestClient`
-- Per-run constants identical in spirit to `TransactionMessageKafkaIngestIntegrationSpec`:
-  `SHORT_UUID = UUID.randomUUID().toString().substring(0, 8)`,
-  `TEST_TOPIC = "jdtp-txn-itest-contents-${SHORT_UUID}"`,
-  `CONSUMER_GROUP = "jadetipi-itest-contents-${SHORT_UUID}"`.
-- `@DynamicPropertySource overrideProperties(...)` mirrors the accepted
-  spec: enable the listener, narrow the topic pattern to `TEST_TOPIC`,
-  set a unique consumer group, shorten `metadata.max.age.ms` to `2000`,
-  and call a private `ensureTestTopic()` helper.
+##### 1c. `docker/couchdb-bootstrap.sh` (new file, idempotent)
 
-The spec stays Kafka-driven (no HTTP submission rebuild) because Kafka
-ingest is already the only accepted submission path and `TASK-016`
-explicitly says "publish or otherwise submit" — Kafka publish is the
-existing accepted submission and matches `TASK-012`'s accepted direction.
+Behavior:
 
-#### Gates
-
-`integrationGateOpen()` is a single static method that runs **before**
-Spring loads (via `@IgnoreIf`):
-
-1. Env flag: `JADETIPI_IT_KAFKA in ['1','true','TRUE','yes']` (re-uses
-   the existing flag — no new env var).
-2. Kafka readiness: same 2-second `AdminClient.describeCluster` probe
-   against `KAFKA_BOOTSTRAP_SERVERS` as the accepted spec.
-3. Keycloak readiness: a new 2-second probe via `WebClient`/`HttpURLConnection`
-   to `KEYCLOAK_URL/realms/jade-tipi/.well-known/openid-configuration`
-   (default `http://localhost:8484`, env override
-   `KEYCLOAK_URL`/`TEST_KEYCLOAK_URL`). If the probe fails, the spec is
-   skipped — Spring would otherwise fail to start because the JWT
-   resource server resolves the issuer at startup.
-
-The Keycloak probe is local to this spec and does not refactor the
-accepted Kafka spec or `KeycloakTestHelper`.
-
-#### Per-run isolation
-
-- **Kafka topic/group:** per-run `TEST_TOPIC` and `CONSUMER_GROUP`,
-  identical to the accepted pattern.
-- **Transaction id:** `txn = Transaction.newInstance('jade-itest-org', 'kafka', 'jade-itest-cli', 'itest-user')` per feature; `txnId = txn.id`.
-- **Materialized object ids:** built from the per-run `txn` id so they
-  are unique per run:
-  - `containerId = "jade-itest-org~kafka~${txnId}~loc~plate_${SHORT_UUID}"`
-  - `typeId = "jade-itest-org~kafka~${txnId}~typ~contents"`
-  - `linkId = "jade-itest-org~kafka~${txnId}~lnk~plate_${SHORT_UUID}_well_A1"`
-  - `contentId = "jade-itest-org~kafka~${txnId}~ent~sample_${SHORT_UUID}"`
-    (string only — `ent` is intentionally not materialized in this task,
-    matching the canonical example `12`'s unresolved-`right` shape).
-- **MongoDB cleanup** in `cleanup()` per feature, scoped strictly to
-  the per-run ids:
-  - `txn` rows by `txn_id == txnId`.
-  - `loc` rows by `_id in [containerId]`.
-  - `typ` rows by `_id in [typeId]`.
-  - `lnk` rows by `_id in [linkId]`.
-  No collection drops, no global query. Each `remove(...)` is a single
-  `Query` with the id criteria and is `.block(Duration.ofSeconds(10))`.
-
-#### Message construction strategy
-
-Construct each message with the DTO helper
-`Message.newInstance(txn, JtpCollection.<X>, Action.<Y>, [...])` plus an
-inline `Map` payload that mirrors the canonical `10`/`11`/`12` field
-shapes. **Do not load the bundled JSON examples verbatim** — the
-canonical files use a fixed `txn` UUID and fixed object ids, which
-cannot coexist with per-run isolation in `txn`/`loc`/`typ`/`lnk`. This
-matches the prior accepted `TASK-012` direction and the accepted
-pattern in `TransactionMessageKafkaIngestIntegrationSpec`. No new
-fixture file is required, and `OWNED_PATHS` for
-`jade-tipi/src/integrationTest/resources/` will not be used in the
-narrow plan; it is listed only because it might be needed if the
-director later asks for a JSON fixture.
-
-The transaction is exactly five messages, sent in this order via the
-existing per-spec Kafka producer (`String` key = `txnId`, `byte[]`
-value via `JsonMapper.toBytes(message)`):
-
-1. `Action.OPEN` on `JtpCollection.TRANSACTION` with a small `hint`.
-2. `Action.CREATE` on `JtpCollection.LOCATION`:
-   `[id: containerId, name: "plate_${SHORT_UUID}", description: 'integration plate']`.
-3. `Action.CREATE` on `JtpCollection.TYPE`:
+1. `set -eu` (no `-x`). `: "${COUCH_URL:?}"` and `: "${LOCAL_USER:?}"`
+   and `: "${LOCAL_PASS:?}"` and `: "${JADE_TIPI_COUCHDB_CLARITY_URL:?}"`
+   and `: "${JADE_TIPI_COUCHDB_ESP_ENTITY_URL:?}"` early-exit checks
+   (the `:?` form prints the name only, not the value).
+2. The remote credentials may be empty in some dev environments.
+   Treat them as required for this bootstrap (the script is run
+   only when the operator wants to start replication). Use the same
+   `:?` early-exit pattern on
+   `JADE_TIPI_COUCHDB_ADMIN_USERNAME`/`JADE_TIPI_COUCHDB_ADMIN_PASSWORD`
+   — they are already required for the local admin.
+3. POST `/_cluster_setup` with `{"action":"enable_single_node",
+   "bind_address":"0.0.0.0", "username":"$LOCAL_USER",
+   "password":"$LOCAL_PASS", "port":5984, "singlenode":true,
+   "ensure_dbs_created":["_users","_replicator","_global_changes"]}`.
+   Accept HTTP 201 on first run; on second run CouchDB returns 200
+   with a status string and the script accepts that too. Any other
+   non-2xx prints the response body (which does not contain
+   credentials) and exits non-zero.
+4. PUT `/clarity` and `/esp-entity` against the local node. CouchDB
+   returns 201 on first creation, 412 (file_exists) on subsequent
+   runs. Treat both as success. Any other status → fail loudly.
+5. Build the replicator doc body for each DB (using `printf` with
+   single-quoted format strings so credentials are never expanded
+   into `set -x` output even if `set -x` is later added):
+   ```json
+   {
+     "_id": "bootstrap-clarity",
+     "source": {
+       "url": "${JADE_TIPI_COUCHDB_CLARITY_URL}",
+       "auth": {
+         "basic": {
+           "username": "${JADE_TIPI_COUCHDB_ADMIN_USERNAME}",
+           "password": "${JADE_TIPI_COUCHDB_ADMIN_PASSWORD}"
+         }
+       }
+     },
+     "target": "clarity",
+     "continuous": true,
+     "create_target": false,
+     "use_checkpoints": true
+   }
    ```
-   [kind: 'link_type',
-    id: typeId,
-    name: 'contents',
-    description: 'containment relationship between a container location and its contents',
-    left_role: 'container',
-    right_role: 'content',
-    left_to_right_label: 'contains',
-    right_to_left_label: 'contained_by',
-    allowed_left_collections: ['loc'],
-    allowed_right_collections: ['loc', 'ent']]
-   ```
-4. `Action.CREATE` on `JtpCollection.LINK`:
-   ```
-   [id: linkId,
-    type_id: typeId,
-    left: containerId,
-    right: contentId,
-    properties: [position: [kind: 'plate_well', label: 'A1', row: 'A', column: 1]]]
-   ```
-5. `Action.COMMIT` on `JtpCollection.TRANSACTION` with a small `summary`.
+   And the analogous doc for `esp-entity`.
+6. PUT each doc to `/_replicator/<id>`. On 201 → done. On 409 →
+   `GET /_replicator/<id>`, extract `_rev` (with a small POSIX
+   `sed`/`grep` match — no jq dependency), inject `_rev` into the
+   doc, PUT again. The contents of the doc are deterministic, so
+   second-run updates are no-ops in steady state but still recover
+   from a partial first run that wrote a malformed doc.
+7. Print one line per DB to stdout: `bootstrap-clarity: ready` /
+   `bootstrap-esp-entity: ready`. Do not print URLs (they contain
+   no credentials in the structured-auth form, but printing them
+   is unnecessary noise) and do not print credentials.
 
-#### Wait/assert sequence (one main feature)
+The script is short (≈70 lines including comments), POSIX `sh`
+compatible (busybox-friendly), and uses only `curl` + busybox
+`sed`/`grep`/`printf`. No `jq` is required.
 
-Inside one `def 'forward and reverse contents HTTP routes return the materialized link'() { ... }`:
+##### 1d. New named volumes
 
-1. `send(openMsg); send(locMsg); send(typMsg); send(lnkMsg); send(commitMsg)`.
-2. `awaitMongo(...)` for the committed `txn` header:
-   condition: `header.state == 'committed' && header.commit_id != null`.
-3. `awaitMongo(...)` for the materialized `typ` row by `_id == typeId`,
-   asserting root-shape: `_id == typeId`, `id == typeId`,
-   `collection == 'typ'`, `properties.kind == 'link_type'`,
-   `properties.name == 'contents'`, `_head.provenance.txn_id == txnId`.
-4. `awaitMongo(...)` for the materialized `lnk` row by `_id == linkId`,
-   asserting root-shape: `_id == linkId`, `id == linkId`,
-   `collection == 'lnk'`, top-level `type_id == typeId`,
-   `left == containerId`, `right == contentId`,
-   `properties.position.label == 'A1'`,
-   `_head.provenance.txn_id == txnId`,
-   `_head.provenance.materialized_at != null`.
-5. Forward HTTP read:
-   `webTestClient.get().uri('/api/contents/by-container/{id}', containerId)
-       .header('Authorization', "Bearer ${KeycloakTestHelper.accessToken}")
-       .exchange()
-       .expectStatus().isOk()
-       .expectBody()
-       .jsonPath('$.length()').isEqualTo(1)
-       .jsonPath('$[0].linkId').isEqualTo(linkId)
-       .jsonPath('$[0].typeId').isEqualTo(typeId)
-       .jsonPath('$[0].left').isEqualTo(containerId)
-       .jsonPath('$[0].right').isEqualTo(contentId)
-       .jsonPath('$[0].properties.position.label').isEqualTo('A1')
-       .jsonPath('$[0].properties.position.row').isEqualTo('A')
-       .jsonPath('$[0].properties.position.column').isEqualTo(1)
-       .jsonPath('$[0].provenance.txn_id').isEqualTo(txnId)
-       .jsonPath('$[0].provenance.commit_id').exists()
-       .jsonPath('$[0].provenance.msg_uuid').isEqualTo(lnkMsg.uuid())`.
-6. Reverse HTTP read against the same materialized link:
-   `webTestClient.get().uri('/api/contents/by-content/{id}', contentId)
-       ...
-       .jsonPath('$[0].linkId').isEqualTo(linkId)
-       .jsonPath('$[0].right').isEqualTo(contentId)`.
+```yaml
+volumes:
+  mongodb_data:
+  kafka_data:
+  couchdb_data:
+  couchdb_config:
+```
 
-A second feature
-`def 'empty-result contents HTTP route returns 200 with empty array'() { ... }`
-covers the empty-result HTTP 200 `[]` requirement using a fresh
-unrelated id (e.g. `"jade-itest-org~kafka~${txnId}~loc~empty_${SHORT_UUID}"`)
-that is never written, against `/api/contents/by-container/{id}`. It
-asserts `expectStatus().isOk()` and `jsonPath('$.length()').isEqualTo(0)`
-and `expectBody().json('[]')` (or equivalent — `expectBodyList(...).hasSize(0)`).
-This feature does not need to publish any Kafka messages, so it is a
-fast path and stays inside the same spec to avoid duplicating the gate.
+##### 1e. No changes to other services
 
-> Note: I will choose `expectBodyList(ContentsLinkRecord).hasSize(0)`
-> for the empty case if WebTestClient deserialization through Spring's
-> default Jackson works cleanly with `@Immutable Groovy`. If it
-> doesn't, I will fall back to `.expectBody().json('[]')`. Either way
-> the assertion is HTTP 200 + empty array.
+`mongodb`, `keycloak`, `kafka`, and `kafka-init` blocks stay
+byte-identical. No new `depends_on` is added between CouchDB and the
+other services — they are independent.
 
-Polling helpers (`awaitMongo`, `awaitConditionTrue`) are private to this
-spec — the directive explicitly forbids refactoring
-`TransactionMessageKafkaIngestIntegrationSpec`. I will copy the helpers
-verbatim rather than extract a new shared helper class.
+#### 2. `.env.example` update (worktree root)
 
-#### Negative coverage (intentionally limited)
+The four CouchDB variables are already present and correctly named.
+**No `.env.example` change is required.** The directive's
+"Update `.env.example` only with non-secret variable names and
+placeholder values if additional variables are needed" leaves room
+for additions; the current proposal does not introduce any new
+variable. A small comment block could be added to clarify that the
+same credentials feed both the local admin and the remote-source
+auth (see open question Q1 below); I will defer that comment until
+the director confirms the credential-reuse decision.
 
-The directive asks for two HTTP shapes (forward/reverse) plus the
-empty-result `[]` case. I do **not** plan to add 400 blank-id coverage,
-404 unknown-route coverage, unauthorized-token coverage, or
-duplicate/conflict materialization coverage in this spec — those are
-already covered by existing controller and materializer unit tests
-(`ContentsLinkReadControllerSpec`, `CommittedTransactionMaterializerSpec`)
-and adding them here would broaden scope without adding integration
-signal.
+#### 3. `docs/orchestrator/tasks/TASK-017-local-couchdb-remote-replication.md`
+
+Append a `LATEST_REPORT:` follow-up paragraph during implementation
+(not now) recording: the new service/sidecar names, the bootstrap
+script path, the two named volumes, and the developer-visible
+commands for observing replication progress
+(`curl -fsS -u "$U:$P" http://127.0.0.1:5984/_active_tasks` and
+`curl -fsS -u "$U:$P" http://127.0.0.1:5984/_scheduler/jobs`). The
+task file's `OWNED_PATHS` already covers this file. No change to
+`TYPE`, `STATUS`, `OWNER`, or `ACCEPTANCE_CRITERIA` from the
+developer side.
+
+#### 4. Optional developer-facing notes
+
+The task says: "Add or update local developer documentation only as
+needed to explain how to start the stack, watch replication
+progress, and recover from interrupted replication." Recommendation:
+keep this scope-minimal. Add at most a short paragraph to
+`README.md` (which is not in claude-1's owned paths and not in the
+task's expanded `OWNED_PATHS`). Therefore: do **not** edit
+`README.md`. Instead, fold the developer guidance into the
+`LATEST_REPORT:` of the task file itself, where it lives next to
+the implementation. If the director wants the guidance in
+`README.md`, request that scope expansion explicitly. Flagged
+under Q3 below.
+
+#### 5. Files that will change (smallest set)
+
+- `docker/docker-compose.yml` — add `couchdb` service, add
+  `couchdb-init` sidecar, add two volumes.
+- `docker/couchdb-bootstrap.sh` — new file (POSIX sh,
+  ~70 lines, no secrets).
+- `docs/orchestrator/tasks/TASK-017-local-couchdb-remote-replication.md`
+  — append `LATEST_REPORT:` paragraph after acceptance.
+- `docs/agents/claude-1-changes.md` — append a short report
+  describing the change (claude-1's standing report file).
+
+No edit to `.env.example`, `README.md`, `application.yml`,
+`build.gradle`, frontend, or any source file.
 
 ### Verification proposal
 
-After implementation, run the `TASK-016` required Gradle chain inside the
-`developers/claude-1` worktree, with the documented Docker stack up:
+After implementation, with the worktree-root `.env` containing
+real values for the four `JADE_TIPI_COUCHDB_*` variables:
 
-1. `./gradlew :jade-tipi:compileGroovy`
-2. `./gradlew :jade-tipi:compileTestGroovy`
-3. `./gradlew :jade-tipi:compileIntegrationTestGroovy`
-4. `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*ContentsHttpReadIntegrationSpec*'`
-5. `./gradlew :jade-tipi:test`
-6. (If time permits) `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*TransactionMessageKafkaIngestIntegrationSpec*'`
-   to confirm coexistence with the accepted Kafka-ingest integration
-   pattern (per-run topic and consumer group should isolate the runs).
+1. `docker compose -f docker/docker-compose.yml config` — confirms
+   the file parses, all `${VAR:?...}` placeholders resolve, and
+   `env_file: ["../.env"]` is honored. Expected: full rendered
+   config printed without error. (Per directive criterion 1.)
+2. `docker compose -f docker/docker-compose.yml up -d couchdb` —
+   starts only the new service. Expected: `couchdb` container
+   reaches `(healthy)` within ~30s based on the `/_up` probe.
+3. `docker compose -f docker/docker-compose.yml up -d couchdb-init`
+   — runs the bootstrap once. Expected: container exits with status
+   `0`, logs show `bootstrap-clarity: ready` and
+   `bootstrap-esp-entity: ready`, no credential strings present.
+4. `curl -fsS -u "$JADE_TIPI_COUCHDB_ADMIN_USERNAME:$JADE_TIPI_COUCHDB_ADMIN_PASSWORD" \
+   http://127.0.0.1:5984/_all_dbs` (operator runs in their own
+   shell, with vars exported from `.env`) — expected output includes
+   `clarity` and `esp-entity` (alongside `_users`, `_replicator`,
+   `_global_changes`).
+5. `curl -fsS -u "$U:$P" http://127.0.0.1:5984/_scheduler/jobs` and
+   `curl -fsS -u "$U:$P" http://127.0.0.1:5984/_active_tasks` —
+   expected: two replication entries (one per DB) with non-zero
+   `docs_read`/`changes_pending` once replication has progressed,
+   no embedded credentials in the source URL field. The directive
+   explicitly says replication progress should be observable
+   without exposing credentials; the structured-auth replicator
+   doc form satisfies that.
+6. **Idempotency check.** Run `docker compose -f
+   docker/docker-compose.yml up -d` a second time. Expected: the
+   `couchdb` service stays running (no recreation), the
+   `couchdb-init` sidecar reruns and exits 0 with the
+   `bootstrap-{clarity,esp-entity}: ready` lines (since the local
+   DBs and replicator docs already exist, the script takes the
+   "already created" / "409 → fetch _rev → no-op PUT" branches).
+   The persistent volume is untouched; replication checkpoints in
+   the target DB make resumed replication seek to the last
+   processed sequence rather than restart from 0.
+7. **Negative env check** (no real network load). Temporarily unset
+   `JADE_TIPI_COUCHDB_ADMIN_USERNAME` in the shell and re-run
+   `docker compose -f docker/docker-compose.yml config`. Expected:
+   compose exits non-zero with the named message
+   `JADE_TIPI_COUCHDB_ADMIN_USERNAME is required` (no value
+   printed). Restore the var afterward.
+8. **Remote replication itself is not part of automated
+   verification.** The task explicitly says "Do not copy remote
+   data during task implementation or tests unless the human
+   explicitly runs the local stack and approves the network load."
+   We will document that the human can verify pull progress on
+   their own machine with the `_scheduler/jobs` query above, but
+   we will not start a multi-GB copy in any verification step.
 
-If local tooling, Gradle locks, Docker, Kafka, Mongo, or Keycloak setup
-blocks any of the above, report the documented setup commands rather
-than treating setup as a product blocker:
-
-- `docker compose -f docker/docker-compose.yml up -d` — brings up
-  `mongodb`, `keycloak`, and `kafka` (Kafka `depends_on` Keycloak healthy,
-  per `docker/docker-compose.yml`). The new spec gate covers the Kafka
-  and Keycloak readiness checks; the `test` profile covers Mongo at
-  `localhost:27017`.
-- `./gradlew --stop` — drop stale Gradle daemons (e.g. when the wrapper
-  cache lock at `/Users/duncanscott/.gradle/...` is held), then re-run
-  the blocked command.
-- Always report the exact blocked command and its error verbatim
-  alongside the proposed setup command.
+If local Docker is unavailable, report the documented setup command
+(start Docker Desktop, then `docker compose -f
+docker/docker-compose.yml config`) and the exact blocked command's
+error verbatim, instead of treating Docker unavailability as a
+product blocker. If `curl` is unavailable on the host shell, use
+`docker compose -f docker/docker-compose.yml exec couchdb curl
+-fsS -u "$U:$P" http://127.0.0.1:5984/_all_dbs` instead — the
+container has `curl` available. The unit `:jade-tipi:test` and
+`JADETIPI_IT_KAFKA=1 :jade-tipi:integrationTest` paths are
+unchanged and do not require CouchDB; no Gradle verification is
+proposed for this task.
 
 ### Blockers and open questions
 
-- **Q1 — `expectBodyList` vs `expectBody().json('[]')` for the empty
-  case.** Recommendation: try `expectBodyList(ContentsLinkRecord).hasSize(0)`
-  first because it exercises the deserialization shape, and fall back
-  to `expectBody().json('[]')` if Groovy `@Immutable` plus Jackson
-  default mapping needs hand-tuning. Either form satisfies the
-  directive's "HTTP 200 `[]`" requirement. Flagged so the director can
-  veto the deserializer-touching variant if they prefer the pure JSON
-  shape assertion.
-- **Q2 — Unresolved `right` endpoint (`ent` id never materialized).**
-  Canonical example `12` already references an `ent` that no
-  transaction creates in this task. The materializer and contents read
-  service intentionally do not validate semantic resolution, so the
-  reverse-route assertion against a never-materialized `contentId`
-  exercises the documented "verbatim id passthrough" contract. No
-  change requested; flagged so a strict reviewer sees this is by
-  design and matches the canonical example shape.
-- **Q3 — `application-test.yml` JWT issuer.** The `test` profile
-  points the resource server at `http://localhost:8484/realms/jade-tipi`,
-  which is exactly what the new Keycloak readiness probe checks. No
-  edit to `application-test.yml` is planned. The directive lists
-  `jade-tipi/src/test/resources/application-test.yml` in
-  `OWNED_PATHS`, but I do not currently see a reason to modify it.
-  Flagged so the director can confirm "no edit" is acceptable.
-- **Q4 — Keycloak probe location.** Plan is to keep the probe inline in
-  the new spec (small static method, no new shared helper), to avoid
-  refactoring `KeycloakTestHelper`. If the director prefers to extend
-  `KeycloakTestHelper` with a `static boolean isReachable()` method, I
-  can do that instead, but it adds a touch outside the new spec file
-  and the directive explicitly says "do not refactor existing
-  integration tests". Recommendation: keep inline.
-- **Q5 — Token caching across features.** `KeycloakTestHelper` caches
-  the bearer in a static field. The cached value is reused across
-  features inside this spec and across other integration tests in the
-  same JVM run, which is fine because the token is valid for an hour.
-  No change requested.
-- No external blockers identified. Implementation is a single new
-  Groovy spec file plus per-run cleanup, mirroring an accepted pattern;
-  it should land cleanly once `TASK-016` moves to
-  `READY_FOR_IMPLEMENTATION`.
+- **Q1 — Credential reuse for local admin and remote source.**
+  `.env.example` lists `JADE_TIPI_COUCHDB_ADMIN_USERNAME`/
+  `_PASSWORD` as a single credential pair. The most ergonomic
+  reading is that these credentials belong to the operator's JGI
+  account and are reused as: (a) the local CouchDB admin
+  (`COUCHDB_USER`/`COUCHDB_PASSWORD` on the container), and (b) the
+  basic-auth credentials presented to the remote JGI source URL
+  inside the replicator doc. The directive says "Use
+  `JADE_TIPI_COUCHDB_ADMIN_USERNAME` and ..._PASSWORD from local
+  environment only", which I read as "from the local env file, not
+  committed", not as "for the local CouchDB admin only".
+  - **Recommendation:** reuse the same pair for both roles. It
+    matches the existing variable naming, requires no `.env.example`
+    changes, and avoids forcing the operator to maintain two
+    distinct admin credentials.
+  - **Alternative if the director prefers separation:** introduce
+    `JADE_TIPI_LOCAL_COUCHDB_USER` and
+    `JADE_TIPI_LOCAL_COUCHDB_PASSWORD` for the container admin,
+    keep `JADE_TIPI_COUCHDB_ADMIN_USERNAME`/`_PASSWORD` for the
+    remote source. This adds two `.env.example` lines (non-secret
+    placeholders) and a small change in the bootstrap script. I
+    will not implement this unless the director directs.
+  - Flagged so the director can confirm the reuse before
+    `READY_FOR_IMPLEMENTATION`.
+- **Q2 — `couchdb:3.4` vs `couchdb:3` vs `couchdb:latest`.** Pinning
+  to `couchdb:3.4` is the safest middle ground (track the LTS
+  series, get patch updates, avoid surprise major bumps). The
+  current image series is 3.4.x as of 2026-05. The
+  `kafka-init`/`kafka` services are also pinned at minor
+  (`apache/kafka:4.1.1`), so this matches the project's pinning
+  style. **Recommendation:** `couchdb:3.4`. Flag if the director
+  prefers a specific patch (e.g. `couchdb:3.4.2`) or the rolling
+  `couchdb:3` tag.
+- **Q3 — Documentation surface.** I am proposing to keep operator
+  guidance inside the `LATEST_REPORT:` section of the task file
+  rather than touching `README.md`. The task file is in the granted
+  `OWNED_PATHS`; `README.md` is not. The task says "Add or update
+  local developer documentation **only as needed**" — the
+  task-file paragraph is the smallest viable surface. If the
+  director wants a `README.md` Quick Start update, please add
+  `README.md` to `OWNED_PATHS` for `TASK-017` explicitly.
+- **Q4 — Compose file `env_file: ["../.env"]`.** This works because
+  the orchestrator materializes `.env` at the worktree root and the
+  `.gitignore` already excludes it. It does mean a developer who
+  runs the stack from a non-orchestrator checkout (i.e. a plain
+  source clone with no orchestrator setup) needs to copy
+  `.env.example` to `.env` themselves before `docker compose ...`.
+  That matches the existing project convention and is what
+  `.env.example` is for. **Recommendation:** ship `env_file:
+  ["../.env"]` as proposed. Flag in case the director wants to
+  rely on `--env-file ../.env` on the documented command line
+  instead (less ergonomic — the operator must remember the flag).
+- **Q5 — `couchdb-init` rerun semantics.** A Compose `up -d` does
+  not, by default, restart a `restart: "no"` exited sidecar; the
+  operator has to run `docker compose up -d couchdb-init` (or `up
+  -d --force-recreate couchdb-init`) to re-trigger the bootstrap.
+  This matches `kafka-init` exactly. **Recommendation:** mirror
+  `kafka-init` precedent. Flag in case the director prefers an
+  always-on `restart: on-failure` policy with the script `exit 0`
+  on success (it would still only run once per `up`, but would
+  re-run if the script crashed).
+- **Q6 — Replicator doc on conflict.** The proposed script handles
+  `409 conflict` by fetching the existing `_rev` and writing it
+  back. An alternative is to skip the update entirely on 409
+  ("doc exists, leave it alone"), which is simpler but means a
+  malformed first-run doc would be sticky. **Recommendation:** do
+  the fetch-and-rewrite path; it is ~5 extra lines of shell and
+  makes the bootstrap self-healing. Flag if the director prefers
+  the simpler skip-on-409 form.
+- **Q7 — Bootstrap retry/wait semantics.** The init sidecar
+  `depends_on: { couchdb: { condition: service_healthy } }` already
+  waits for `/_up`. CouchDB's `/_up` returns OK before
+  `_cluster_setup` can succeed in some edge cases (a brief window
+  during first-startup). **Recommendation:** add a small in-script
+  retry loop (3 attempts, 5s each) around the
+  `/_cluster_setup` POST only. This is a few lines and avoids
+  spurious first-run failures. Flag if the director wants the loop
+  removed in favor of a longer Compose `start_period`.
+- **Q8 — Should we expose `5984` to the host?** The proposal binds
+  to `127.0.0.1:5984:5984`, matching the loopback-binding pattern
+  used by `mongodb`, `keycloak`, and `kafka`. This lets the
+  operator run `curl http://127.0.0.1:5984/...` and (later) point
+  application code at `http://localhost:5984` without going
+  through Compose. **Recommendation:** keep the loopback bind. Flag
+  if the director wants CouchDB reachable only from inside the
+  Compose network.
+- **Q9 — Disk usage warning.** ~52 GB of data is significant for
+  developer laptops. The bootstrap does not refuse to run if
+  available disk is low; CouchDB will simply fail later. We could
+  add a `df`/`stat` precheck in the script, but it is fragile (the
+  Docker volume is on the host filesystem mounted by Docker
+  Desktop, which has its own VM disk on macOS). **Recommendation:**
+  document the ~52 GB figure in the task `LATEST_REPORT:` and the
+  Q3 doc location, do not add a brittle precheck. Flag in case the
+  director wants the precheck.
+- No external blockers. Implementation is one new compose service +
+  one new sidecar + one new committed shell script + one named
+  volume pair, all inside the granted `OWNED_PATHS`. No
+  application code change, no Gradle change, no Spring Boot
+  configuration change. The change is fully reversible by removing
+  the `couchdb` and `couchdb-init` services and the two volumes
+  (the persistent volumes can be deleted by the operator with
+  `docker volume rm jade-tipi_couchdb_data
+  jade-tipi_couchdb_config` if they want a clean slate).
 
 STOP.
