@@ -1,11 +1,12 @@
 # Director Directives
 
-SIGNAL: HUMAN_REQUIRED
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
-`TASK-016` is accepted. No active bounded implementation unit is currently
-selected.
+`TASK-016` is accepted. The next prioritized bounded unit is `TASK-017`, which
+adds local CouchDB startup/replication support for the real JGI `clarity` and
+`esp-entity` databases.
 
 Product direction is recorded in `DIRECTION.md`: Jade-Tipi objects are logical
 JSON objects; the first materializer should use a root-document-only physical
@@ -16,6 +17,12 @@ service now resolves `typ.properties.kind/name` and `_head.provenance`. The
 paused contents HTTP integration coverage has been rewritten around this
 accepted root-shaped path and accepted as `TASK-016`.
 
+Infrastructure direction: the local Docker stack should be able to run a local
+CouchDB and pull remote production CouchDB datasets into same-named local
+databases for development use. Remote credentials must come from local
+environment files, not committed project files. This replication bootstrap is
+prioritized before selecting another application feature task.
+
 ## Active Task
 
 - `TASK-013 - Define materialized root document contract` is accepted.
@@ -25,17 +32,46 @@ accepted root-shaped path and accepted as `TASK-016`.
   accepted.
 - `TASK-016 - Plan root-shaped contents HTTP integration coverage` is
   accepted.
+- `TASK-017 - Add local CouchDB replication bootstrap` is
+  `READY_FOR_PREWORK` and prioritized next.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
-- No next task has been created. The next bounded unit should be selected by
-  the human because viable continuations include endpoint resolution, semantic
-  validation, response projection/pagination, UI/API plate-shaped views,
-  broader documentation cleanup, and write-path rebuilds.
 
 ## Scope Expansion
 
-No implementation expansion is currently active. Treat `TASK-012` as
-historical context only; do not route or implement it as-is.
+For `TASK-017`, claude-1 may inspect and propose changes within:
+
+- `docker/`
+- `.env.example`
+- `docs/orchestrator/tasks/TASK-017-local-couchdb-remote-replication.md`
+
+Pre-work only is authorized. Implementation must not begin until the director
+reviews the pre-work and moves `TASK-017` to `READY_FOR_IMPLEMENTATION`.
+Treat `TASK-012` as historical context only; do not route or implement it as-is.
+
+## TASK-017 Pre-work Direction
+
+- Inspect `docker/docker-compose.yml`, current environment handling, the root
+  `.env.example`, CouchDB Docker image initialization behavior, and CouchDB
+  replication mechanisms.
+- Propose the smallest Docker-native way to start local CouchDB with persistent
+  storage, create local databases named `clarity` and `esp-entity`, and
+  bootstrap resumable replication from the remote URLs in
+  `JADE_TIPI_COUCHDB_CLARITY_URL` and
+  `JADE_TIPI_COUCHDB_ESP_ENTITY_URL`.
+- Use `JADE_TIPI_COUCHDB_ADMIN_USERNAME` and
+  `JADE_TIPI_COUCHDB_ADMIN_PASSWORD` from local environment only. Do not commit
+  credentials and do not print them in logs or docs.
+- Account for the dataset sizes: `clarity` is about 40.6 GB and 4,052,016
+  documents and is not growing; `esp-entity` is about 11.1 GB and 1,713,401
+  documents and is growing.
+- Keep this task limited to Docker/local environment bootstrap. Do not add
+  Spring Boot application dependencies on CouchDB, change Mongo/Kafka/Keycloak,
+  or make integration tests require the remote CouchDBs.
+- Proposed verification should include `docker compose -f
+  docker/docker-compose.yml config`, starting the CouchDB service, confirming
+  the local `clarity` and `esp-entity` databases exist, and showing how to
+  observe replication progress without exposing credentials.
 
 ## TASK-016 Director Acceptance Review
 
