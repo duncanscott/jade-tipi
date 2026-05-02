@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
@@ -33,28 +33,47 @@ prioritized before selecting another application feature task.
 - `TASK-016 - Plan root-shaped contents HTTP integration coverage` is
   accepted.
 - `TASK-017 - Add local CouchDB replication bootstrap` is
-  `READY_FOR_PREWORK` and prioritized next.
+  `READY_FOR_IMPLEMENTATION` and prioritized next.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
 ## Scope Expansion
 
-For `TASK-017`, claude-1 may inspect and propose changes within:
+For `TASK-017`, claude-1 may implement changes within:
 
 - `docker/`
 - `.env.example`
 - `docs/orchestrator/tasks/TASK-017-local-couchdb-remote-replication.md`
 
-Pre-work only is authorized. Implementation must not begin until the director
-reviews the pre-work and moves `TASK-017` to `READY_FOR_IMPLEMENTATION`.
+Implementation is authorized after the 2026-05-02 revision 2 pre-work review.
 Treat `TASK-012` as historical context only; do not route or implement it as-is.
 
-## TASK-017 Pre-work Direction
+## TASK-017 Implementation Direction
 
-- Inspect `docker/docker-compose.yml`, current environment handling, the root
-  `.env.example`, CouchDB Docker image initialization behavior, and CouchDB
-  replication mechanisms.
-- Propose the smallest Docker-native way to start local CouchDB with persistent
+- Director review accepted claude-1's revision 2 pre-work. Proceed with the
+  bounded implementation in `docker/`, `.env.example`, the task file, and the
+  developer report file.
+- Use `couchdb:3.5` and an `alpine:3.20` bootstrap sidecar with `jq` for JSON
+  construction. Avoid compose-side interpolation for the remote credentials;
+  consume the worktree-root `.env` as container environment and enforce
+  required variables inside the bootstrap script.
+- Add separate local-only `COUCHDB_USER` and `COUCHDB_PASSWORD` placeholders to
+  `.env.example`; keep `JADE_TIPI_COUCHDB_ADMIN_USERNAME` and
+  `JADE_TIPI_COUCHDB_ADMIN_PASSWORD` only for authenticating to the remote JGI
+  CouchDB sources.
+- Do not expand this task into the orchestrator overlay
+  `config/env/project.env.local.example`. If verification is blocked because
+  the materialized worktree `.env` lacks the new local CouchDB admin variables,
+  report the documented setup action of adding them to
+  `/Users/duncanscott/orchestrator/jade-tipi/config/env/project.env.local`.
+- Preserve idempotency by comparing existing `_replicator` documents and
+  rewriting them only when meaningful replication fields differ. Do not log
+  URLs with credentials, credential values, or generated replication JSON.
+- Document progress/recovery commands and the approximate 52 GB local data-size
+  expectation in the implementation report. Do not pull the multi-GB datasets
+  during automated verification unless the human explicitly approves it.
+
+- Implement the smallest Docker-native way to start local CouchDB with persistent
   storage, create local databases named `clarity` and `esp-entity`, and
   bootstrap resumable replication from the remote URLs in
   `JADE_TIPI_COUCHDB_CLARITY_URL` and
@@ -68,7 +87,7 @@ Treat `TASK-012` as historical context only; do not route or implement it as-is.
 - Keep this task limited to Docker/local environment bootstrap. Do not add
   Spring Boot application dependencies on CouchDB, change Mongo/Kafka/Keycloak,
   or make integration tests require the remote CouchDBs.
-- Proposed verification should include `docker compose -f
+- Verification should include `docker compose -f
   docker/docker-compose.yml config`, starting the CouchDB service, confirming
   the local `clarity` and `esp-entity` databases exist, and showing how to
   observe replication progress without exposing credentials.

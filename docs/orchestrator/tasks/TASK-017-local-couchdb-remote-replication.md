@@ -3,7 +3,7 @@
 ID: TASK-017
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-016
@@ -148,3 +148,53 @@ implementation for these blockers:
 
 Keep the next pre-work response scoped to resolving those design issues. Do
 not implement until this task is moved to `READY_FOR_IMPLEMENTATION`.
+
+Director pre-work revision 2 review on 2026-05-02: READY_FOR_IMPLEMENTATION.
+
+Scope check passed: claude-1 changed only
+`docs/agents/claude-1-next-step.md`, which is inside the developer-owned
+pre-work paths. Static whitespace verification passed with
+`git diff --check origin/director..origin/claude-1`. Director local compose
+tooling is present: `docker compose version` reported v5.1.2, and the current
+pre-implementation compose file renders with
+`docker compose -f docker/docker-compose.yml config`.
+
+The revised plan resolves the prior blockers well enough for implementation:
+it avoids compose-side interpolation for remote credentials, uses container-side
+`env_file: ../.env` plus bootstrap-script required-var checks, separates local
+CouchDB admin credentials (`COUCHDB_USER`/`COUCHDB_PASSWORD`) from remote JGI
+credentials, builds replication JSON with `jq`, rewrites `_replicator`
+documents only when meaningful fields differ, pins CouchDB to the current 3.5
+line, and aligns verification with Compose one-shot service behavior. Official
+CouchDB materials confirm the Docker image uses `COUCHDB_USER` and
+`COUCHDB_PASSWORD` for the local admin user, CouchDB 3.0+ requires an admin user
+at startup, current Docker tags include `3.5.1` and `3.5`, and structured
+`auth.basic` replication endpoint credentials are supported and preferred over
+URL userinfo.
+
+Implementation direction:
+
+- Proceed with `couchdb:3.5` rather than a patch pin unless implementation
+  discovers a concrete compatibility issue.
+- Proceed with the `alpine:3.20` bootstrap sidecar and `jq` JSON construction.
+- Do not expand `TASK-017` ownership to the orchestrator overlay
+  `config/env/project.env.local.example`; keep source changes inside
+  `docker/`, `.env.example`, this task file, and the developer report file.
+- Add `COUCHDB_USER` and `COUCHDB_PASSWORD` to `.env.example` as non-secret
+  local-only placeholders. If this orchestrator worktree's materialized `.env`
+  lacks those new variables during verification, report the documented setup
+  action of adding them to
+  `/Users/duncanscott/orchestrator/jade-tipi/config/env/project.env.local`
+  and rerunning the orchestrator/materialization path, rather than treating the
+  missing local setup as a product blocker.
+- Document the approximate 52 GB data-size expectation and recovery/progress
+  commands in this task file's implementation report; skip a brittle
+  host-disk preflight unless implementation finds a simple Docker-native check.
+- Ensure the CouchDB service healthcheck and operator verification commands use
+  tools actually available in the selected container image, or run checks from
+  the bootstrap sidecar/host when appropriate.
+
+Required verification after implementation remains the task `VERIFICATION`
+section plus the revised pre-work's idempotency checks. Do not trigger a
+multi-GB remote replication beyond creating/persisting the replication jobs
+unless the human explicitly approves the network load.
