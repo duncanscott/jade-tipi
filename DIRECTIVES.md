@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
@@ -25,10 +25,9 @@ CouchDB initialization layer is currently needed; Docker-level replication is
 the accepted mechanism for keeping the local CouchDB populated.
 
 Next product direction: full Clarity and ESP import/synchronization are already
-underway elsewhere. Jade-Tipi's next useful unit is design work, not
-implementation: compare human object-model direction with sampled
-Clarity/ESP container data and propose JSON shapes for `loc`, `lnk`, contents
-links, plates, wells, and source provenance.
+underway elsewhere. Jade-Tipi's next useful unit is to turn the accepted
+Clarity/ESP container mapping proposal into a small executable prototype that
+materializes real sampled container shapes as `loc`, `typ`, and `lnk` roots.
 
 ## Active Task
 
@@ -44,7 +43,7 @@ links, plates, wells, and source provenance.
 - `TASK-018 - Plan Spring CouchDB initialization` is accepted as superseded by
   human direction. Do not route it.
 - `TASK-019 - Prototype Clarity/ESP container materialization` is
-  `READY_FOR_PREWORK` and prioritized next.
+  `READY_FOR_IMPLEMENTATION` and prioritized next.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
@@ -60,100 +59,49 @@ For `TASK-019`, claude-1 may inspect and propose changes within:
 - `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/containers/`
 - `jade-tipi/src/integrationTest/resources/`
 
-Pre-work only is authorized. Do not implement code, tests, materializer changes,
-DTO/schema changes, HTTP endpoints, or CouchDB integration in this turn. Treat
+Implementation is authorized for `TASK-019` within the paths above. Treat
 `TASK-012` and `TASK-018` as historical context only; do not route or implement
 them as-is.
 
-## TASK-019 Design Direction
+## TASK-019 Implementation Direction
 
-- Read `docs/architecture/jade-tipi-object-model-design-brief.md` first. It
-  captures human discussion that was not available to the earlier Claude pass.
-- Revisit `docs/architecture/clarity-esp-container-mapping.md` as a
-  data-grounded proposal, not as final schema. Revise or supplement it with
-  alternatives and tradeoffs where the object JSON format remains unsettled.
-- Address these specific design points:
-  - collection members are objects; not every object is an `ent`;
-  - object roots should separate `_head`, `properties`, and `links`;
-  - type definitions declare assignable properties, with no required/optional
-    property complexity and no defaults for now;
-  - `parent_location_id` should not be duplicated on `loc` if the canonical
-    relationship belongs in `lnk`;
-  - `contents` is a link type whose directional labels belong on the type;
-  - well position is a candidate property on a `contents` link, but child
-    `loc` wells may be compared as an alternative.
-- Use sampled Clarity/ESP data only as evidence. Full import/sync is out of
-  scope and already handled elsewhere.
-- Stop after writing the proposal and report. Do not begin implementation.
+- Implement the accepted mapping from
+  `docs/architecture/clarity-esp-container-mapping.md` as a narrow prototype.
+- Use only the sampled container shapes already documented there: the Clarity
+  tube and the ESP freezer/bin/plate chain. Do not broaden this into a full
+  Clarity/ESP importer.
+- Exercise the existing root-document materialization path for `loc`,
+  `typ + link_type`, and `lnk`; do not add `ent` materialization yet.
+- Preserve the human object model direction: object roots separate `_head`,
+  `properties`, and `links`; parentage is represented by `lnk` records, not
+  duplicated as `parent_location_id` on `loc`; `contents` labels belong on the
+  `typ` root; well/slot position is an instance property on the `contents`
+  link for this prototype.
+- Keep Docker/CouchDB bootstrap behavior out of this task. The
+  `docker/couchdb-bootstrap.sh` max-document-size change is already present on
+  `director` as separate human-directed infrastructure work and is not a
+  TASK-019 blocker.
+- Provide focused unit coverage for the transformation/materialization behavior
+  and run the relevant Gradle commands if local tooling permits.
 
 ## TASK-019 Director Pre-work Review
 
-- Director review on 2026-05-02 keeps `TASK-019` at `READY_FOR_PREWORK` with
-  `SIGNAL: REQUEST_NEXT_STEP`. claude-1's latest merge is rejected for
-  scope/protocol: it changed `docker/couchdb-bootstrap.sh`, which is outside
-  claude-1's base owned paths and outside TASK-019 owned paths, and this
-  pre-work turn explicitly disallowed Docker/bootstrap/code changes.
-- The in-scope mapping-doc portion now fixes the prior design blockers:
+- Director review on 2026-05-02 advances `TASK-019` to
+  `READY_FOR_IMPLEMENTATION` with `SIGNAL: PROCEED_TO_IMPLEMENTATION`.
+- The prior Docker/bootstrap objection is resolved. The
+  `docker/couchdb-bootstrap.sh` change exists on `director` as separate
+  human-directed infrastructure work (`8b54a0f`), not as a pending TASK-019
+  implementation diff. Do not revert or edit it under TASK-019.
+- The accepted mapping pre-work fixes the earlier design blockers:
   `typ~contents` declares `assignable_properties: ["position"]` in both the
-  materialized root and `typ + create` message, and D5 now uses a
-  transaction-local `typ~contents` id consistently in the proposed `lnk`
-  examples. `ContentsLinkReadService` resolves all matching `contents` type
-  ids and queries `lnk.type_id` with `$in`, so the transaction-local id
-  proposal is compatible with the accepted read path.
-- Director verification passed with `git diff --check origin/director..HEAD`,
-  `sh -n docker/couchdb-bootstrap.sh`, and
-  `docker compose -f docker/docker-compose.yml config`. No CouchDB container
-  startup, local CouchDB writes, remote CouchDB reads, Gradle work, MongoDB
-  work, or implementation tests were run.
-- The next claude-1 turn must remove the out-of-scope
-  `docker/couchdb-bootstrap.sh` change from the TASK-019 merge and resubmit
-  the in-scope mapping/report edits. If the CouchDB max-document-size change
-  is still needed, it requires a separate bounded Docker/bootstrap task or
-  explicit director/human authorization; do not include it in TASK-019
-  pre-work. No further mapping-doc blocker is currently identified.
-
-- Director review on 2026-05-02 keeps `TASK-019` at `READY_FOR_PREWORK` with
-  `SIGNAL: REQUEST_NEXT_STEP`. claude-1's latest pre-work commit stayed within
-  owned paths for this turn: only `docs/agents/claude-1-next-step.md` and
-  `docs/architecture/clarity-esp-container-mapping.md` changed, and
-  `git diff --check origin/director..HEAD` passed.
-- The revised mapping doc now addresses the design brief at a proposal level,
-  including D6/D7, wells alternatives, and parentage tradeoffs. It is not ready
-  for implementation because the proposed `typ~contents` examples contradict
-  the stated type-shape rule: the prose says the type declares assignable
-  instance property `position`, but both the materialized `typ` root and the
-  `typ + create` transaction message omit any assignable-property field.
-- The next claude-1 turn must update
-  `docs/architecture/clarity-esp-container-mapping.md` so the `typ~contents`
-  materialized root and source message actually declare `position` as an
-  assignable instance property, while still avoiding required/optional markers,
-  defaults, and per-property schema complexity.
-- Also fix D5's idempotency claim before implementation. Reusing the canonical
-  `typ~contents` id and re-sending `typ + create` is idempotent only for an
-  exact replay of the same materialized payload; a pre-existing canonical type
-  with different provenance would be a conflicting duplicate. The preferred
-  prototype correction is to mint a transaction-local `typ~contents` id for the
-  self-contained TASK-019 transaction and use it consistently in both `lnk`
-  examples. If claude-1 instead keeps the canonical id, the doc must remove the
-  self-contained-create/idempotency claim and make the pre-existing-type
-  prerequisite explicit.
-
-- Director review on 2026-05-02 keeps `TASK-019` at `READY_FOR_PREWORK` with
-  `SIGNAL: REQUEST_NEXT_STEP`. claude-1's latest pre-work commit stayed within
-  its base owned paths: only `docs/agents/claude-1-next-step.md` changed, and
-  `git diff --check origin/director..HEAD` passed.
-- The response correctly identifies the human design brief and the required
-  issues, but it stops at a plan for a later mapping-doc revision instead of
-  producing the required TASK-019 proposal. The next claude-1 turn must update
-  `docs/architecture/clarity-esp-container-mapping.md` directly with the
-  design-brief alignment, D6/D7 decisions, type-definition shape, and wells
-  alternatives/tradeoffs.
-- Default director answers for claude-1's open questions: the brief wins over
-  revision-2 phrasing; prototype wells remain `lnk.properties.position` while
-  documenting child-`loc` and hybrid alternatives; `typ` roots declare only
-  assignable property names plus link-type metadata; parentage is single-sourced
-  in `lnk`; append alignment/tradeoff sections and make narrow consistency
-  edits to existing decisions. No implementation is authorized.
+  materialized root and `typ + create` message, and the examples use a
+  transaction-local `typ~contents` id consistently. `ContentsLinkReadService`
+  resolves matching contents type ids by `properties.kind/name`, so that
+  transaction-local type id remains compatible with the accepted read path.
+- Implementation should now build the smallest executable prototype from that
+  mapping. Keep it bounded to transformation/materialization behavior for the
+  documented examples and do not add broad import, sync, endpoint, `ent`, or
+  Docker/bootstrap work.
 
 ## TASK-019 Historical Pre-work Review
 
