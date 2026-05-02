@@ -28,7 +28,7 @@ Each is matched to a specific decision below.
 |---|---|---|
 | 1. Collection members are **objects**; not every object is `ent`. | D1, framing in this section | The prototype materializes only `loc`, `typ`, and `lnk` roots — all are first-class objects under the brief's vocabulary. `ent` is the appropriate root only when the source record clearly represents a biological/sample entity rather than a container/location, and the sampled records do not require it. |
 | 2. Object roots separate `_head`, `properties`, and `links`. | Anchored constraint #1 | Every materialized root in this doc carries `_head` (functional metadata only — `schema_version`, `document_kind`, `root_id`, `provenance`), top-level `properties` (user/domain assignments), and `links: {}` (denormalized, currently empty in the prototype). No user-domain field appears under `_head`. |
-| 3. Type definitions declare assignable properties; no required/optional, no defaults. | D5, "Type definition shape" subsection | The prototype's `typ` root for `contents` declares only assignable property names (here: `position`) plus link-type metadata (`left_role`, `right_role`, directional labels, allowed collections). It carries no `required`/`optional` markers and no defaults. |
+| 3. Type definitions declare assignable properties; no required/optional, no defaults. | "Type definition shape" subsection | The prototype's `typ` root for `contents` carries `assignable_properties: ["position"]` — a flat list of names — plus link-type metadata (`left_role`, `right_role`, directional labels, allowed collections). It carries no `required`/`optional` markers and no defaults. |
 | 4. No duplicated `parent_location_id` on `loc` if parentage belongs in `lnk`. | D6 | The four `loc` roots carry no `parent_location_id`-style field. ESP's `container.uuid` is read from the source record but materialized only as the `left` pointer of the corresponding `lnk + contents`. |
 | 5. `contents` directional labels live on the link type. | D7 | `left_to_right_label = "contains"` and `right_to_left_label = "contained_by"` live on the `typ~contents` declaration only. `lnk` instances carry only `left`, `right`, `type_id`, and instance `properties`. |
 | 6. Wells: link property vs child `loc`. | D2 + "Alternatives & tradeoffs — wells" | The prototype keeps wells as `lnk.properties.position` (option A) and explicitly documents child-`loc` (B) and hybrid (C) as comparison points with stated tradeoffs. |
@@ -331,16 +331,31 @@ Short-name segments are truncated UUID prefixes for ESP (full UUID
 embedded inside `properties.source_id`); Clarity uses the LIMSID
 verbatim.
 
-### D5 — Reuse the canonical `contents` `typ` id
+### D5 — Mint a transaction-local `typ~contents` id
 
-The prototype reuses
-`jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents`
-from the canonical example so the `typ` row does not need to be
-re-asserted in prototype fixtures and `ContentsLinkReadService` keys
-off `properties.kind = "link_type"` and `properties.name = "contents"`
-regardless of id. The `typ + create` message is included in the
-prototype transaction below for self-containment; on a duplicate id
-the materializer's idempotent-duplicate path covers re-runs.
+The prototype mints a transaction-local link-type id
+`jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~typ~contents`
+that embeds the same prototype `txn-uuid`
+(`018fd849-c0c0-7000-8a01-c1a141e5e500`) used by the four `loc` and
+two `lnk` roots. The `TASK-019` transaction is therefore
+self-contained: its own `typ + create` message creates the link type
+that its two `lnk + create` messages reference, with no dependency on
+any pre-existing `typ~contents` row.
+
+Coexistence with the canonical `typ~contents` from
+`11-create-contents-type.json` is safe: `ContentsLinkReadService`
+resolves the link type by `properties.kind = "link_type"` and
+`properties.name = "contents"`, not by id. Both ids satisfy the
+resolver, so reading either set of `lnk + contents` rows (canonical or
+this prototype) works without modification.
+
+Earlier revisions of this doc reused the canonical id and claimed the
+materializer's idempotent-duplicate path covered re-runs. That claim
+holds only for an exact replay of the same materialized payload; a
+pre-existing canonical `typ~contents` with different provenance would
+be a conflicting duplicate, which the materializer would reject.
+Minting a transaction-local id avoids that ambiguity entirely without
+changing the materializer or the read service.
 
 ### D6 — Parent/child containment is single-sourced in `lnk + contents`
 
@@ -403,19 +418,22 @@ assigned to objects of that type, with no required/optional property
 complexity and no defaults. The prototype's single `typ` root
 (`contents`) follows that rule:
 
-- The `typ~contents` declaration lists only **assignable property
-  names plus link-type metadata**:
+- The `typ~contents` declaration carries one **assignable-property
+  field** plus **link-type metadata**:
+  - Assignable-property field: `assignable_properties: ["position"]`
+    — a flat list of property names that `lnk + contents` instances
+    may carry under top-level `properties`. The prototype lists
+    exactly one, `position`. Adding another assignable property in
+    a future prototype is a one-element append to this list.
   - Link-type metadata: `kind = "link_type"`, `name = "contents"`,
     `description`, `left_role`, `right_role`,
     `left_to_right_label`, `right_to_left_label`,
     `allowed_left_collections`, `allowed_right_collections`.
-  - Assignable instance properties for `lnk` rows of this type: the
-    only one used by the prototype is `position` (an object with
-    `kind`, `label`, and parent-shape-specific extras such as
-    `row`, `column`, `slot`).
 - The declaration carries **no `required: [...]` or `optional: [...]`
-  marker**, **no per-property type schema**, and **no defaults**. A
-  `lnk + contents` instance that omits `position` is a perfectly
+  marker**, **no per-property type schema**, and **no defaults**. The
+  `assignable_properties` list is names only — there is no
+  per-name shape (no `{ name, type, required, default }` objects).
+  A `lnk + contents` instance that omits `position` is a perfectly
   valid materialized root under the prototype's rules; semantic
   validation (e.g. "every plate-well link must have a `position`")
   is intentionally deferred.
@@ -425,9 +443,10 @@ complexity and no defaults. The prototype's single `typ` root
   go on the `typ` root as additional `properties` fields. The
   prototype anticipates that extension but does not encode it now.
 - The same shape rule will apply to entity-type and location-type
-  `typ` roots if they are introduced later: declare assignable
-  property names plus type-specific metadata, no required/optional,
-  no defaults. The prototype does not introduce such roots.
+  `typ` roots if they are introduced later: declare an
+  `assignable_properties` list of names plus type-specific metadata,
+  no required/optional, no defaults. The prototype does not
+  introduce such roots.
 
 ## Alternatives & tradeoffs
 
@@ -749,12 +768,12 @@ Common provenance shorthand used below:
 }
 ```
 
-### Typ — `contents` link type (reused canonical id)
+### Typ — `contents` link type (transaction-local id)
 
 ```json
 {
-  "_id":  "jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents",
-  "id":   "jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents",
+  "_id":  "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~typ~contents",
+  "id":   "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~typ~contents",
   "collection": "typ",
   "type_id": null,
   "properties": {
@@ -766,12 +785,19 @@ Common provenance shorthand used below:
     "left_to_right_label":        "contains",
     "right_to_left_label":        "contained_by",
     "allowed_left_collections":   ["loc"],
-    "allowed_right_collections":  ["loc", "ent"]
+    "allowed_right_collections":  ["loc", "ent"],
+    "assignable_properties":      ["position"]
   },
   "links": {},
   "_head": { /* as above with collection="typ" */ }
 }
 ```
+
+`assignable_properties` is a flat list of property names that `lnk`
+instances of this type may carry under top-level `properties`. It
+declares assignability only — no required/optional markers, no
+defaults, and no per-property type schema. See "Type definition shape"
+above for the full rule.
 
 ### Lnk 1 — Freezer → Bin (`Illumina 130-32` slot 2 holds `PP050`)
 
@@ -780,7 +806,7 @@ Common provenance shorthand used below:
   "_id":  "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~lnk~contents_freezer_illumina130-32_to_bin_pp050_slot2",
   "id":   "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~lnk~contents_freezer_illumina130-32_to_bin_pp050_slot2",
   "collection": "lnk",
-  "type_id":    "jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents",
+  "type_id":    "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~typ~contents",
   "left":       "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_freezer_019a3a62-8fa8",
   "right":      "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_bin_019a3a60-9628",
   "properties": {
@@ -802,7 +828,7 @@ Common provenance shorthand used below:
   "_id":  "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~lnk~contents_bin_pp050_to_plate_27-474501_a1",
   "id":   "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~lnk~contents_bin_pp050_to_plate_27-474501_a1",
   "collection": "lnk",
-  "type_id":    "jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents",
+  "type_id":    "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~typ~contents",
   "left":       "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_bin_019a3a60-9628",
   "right":      "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_plate_019a420c-728d",
   "properties": {
@@ -929,7 +955,7 @@ Loc 4 — Clarity Tube:
 }
 ```
 
-Typ — `contents` link type (reused canonical declaration):
+Typ — `contents` link type (transaction-local declaration):
 
 ```json
 {
@@ -939,7 +965,7 @@ Typ — `contents` link type (reused canonical declaration):
   "action": "create",
   "data": {
     "kind":                       "link_type",
-    "id":                         "jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents",
+    "id":                         "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~typ~contents",
     "name":                       "contents",
     "description":                "containment relationship between a container location and its contents",
     "left_role":                  "container",
@@ -947,7 +973,8 @@ Typ — `contents` link type (reused canonical declaration):
     "left_to_right_label":        "contains",
     "right_to_left_label":        "contained_by",
     "allowed_left_collections":   ["loc"],
-    "allowed_right_collections":  ["loc", "ent"]
+    "allowed_right_collections":  ["loc", "ent"],
+    "assignable_properties":      ["position"]
   }
 }
 ```
@@ -962,7 +989,7 @@ Lnk 1 — Freezer → Bin:
   "action": "create",
   "data": {
     "id":      "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~lnk~contents_freezer_illumina130-32_to_bin_pp050_slot2",
-    "type_id": "jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents",
+    "type_id": "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~typ~contents",
     "left":    "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_freezer_019a3a62-8fa8",
     "right":   "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_bin_019a3a60-9628",
     "properties": {
@@ -982,7 +1009,7 @@ Lnk 2 — Bin → Plate:
   "action": "create",
   "data": {
     "id":      "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~lnk~contents_bin_pp050_to_plate_27-474501_a1",
-    "type_id": "jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents",
+    "type_id": "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~typ~contents",
     "left":    "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_bin_019a3a60-9628",
     "right":   "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_plate_019a420c-728d",
     "properties": {
