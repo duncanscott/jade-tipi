@@ -95,3 +95,32 @@ Created by director on 2026-05-02 from human direction. Full Clarity/ESP import
 and synchronization are outside this task; Jade-Tipi should consume a tiny
 sample of already-replicated local CouchDB data and map it to `loc`/`lnk`
 materialized MongoDB documents.
+
+Director pre-work review on 2026-05-02 keeps this task at
+`READY_FOR_PREWORK`. Scope check passed for claude-1's latest pre-work commit:
+only `docs/agents/claude-1-next-step.md` changed, which is inside the
+developer's base owned paths.
+
+The plan is not ready for implementation yet. The active task requires
+pre-work to sample local CouchDB records from `clarity` and `esp-entity`, but
+the latest plan reports that sampling was not performed. The mapping remains
+hypothetical until the design doc includes one or two redacted source samples,
+field paths, selected representative container examples, and the exact
+read-only commands used to reproduce the selection.
+
+The next pre-work turn should run only the documented local CouchDB read
+inspection and write `docs/architecture/clarity-esp-container-mapping.md`.
+If CouchDB is not running, report the documented setup commands rather than a
+product blocker:
+`docker compose -f docker/docker-compose.yml up -d couchdb` and then
+`docker compose -f docker/docker-compose.yml up -d couchdb-init`. In this
+director review, local `.env` contained `COUCHDB_USER` and `COUCHDB_PASSWORD`,
+but `curl http://127.0.0.1:5984/_all_dbs` failed because no CouchDB server was
+listening on port 5984.
+
+One design issue must be resolved before implementation: the current accepted
+materializer supports only `loc + create`, `typ + create` for
+`data.kind == "link_type"`, and `lnk + create`. It does not materialize
+`ent + create`. The next plan must either choose examples that can be proven
+with `loc` and `lnk` roots only, or explicitly stop and ask for a separate task
+to add `ent` materialization before including sample entities in the prototype.

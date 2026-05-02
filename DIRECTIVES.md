@@ -82,6 +82,29 @@ implement them as-is.
 - Do not build import/synchronization machinery, Spring CouchDB initialization,
   or broad source schema support.
 
+## TASK-019 Director Pre-work Review
+
+- Director review on 2026-05-02 keeps `TASK-019` at `READY_FOR_PREWORK` with
+  `SIGNAL: REQUEST_NEXT_STEP`. claude-1 stayed within its base owned paths for
+  the latest pre-work commit: only `docs/agents/claude-1-next-step.md` changed.
+- Do not move to implementation until pre-work samples local CouchDB records
+  from `clarity` and `esp-entity` and writes
+  `docs/architecture/clarity-esp-container-mapping.md` with redacted source
+  snippets, field paths, selected tube/plate examples where available,
+  materialized root examples, transaction messages, and read-only reproduction
+  commands.
+- The next pre-work turn may run the local read-only CouchDB inspection
+  commands from the plan. If CouchDB is unavailable, report the documented
+  setup commands rather than a product blocker:
+  `docker compose -f docker/docker-compose.yml up -d couchdb` and
+  `docker compose -f docker/docker-compose.yml up -d couchdb-init`.
+- Resolve `ent` before implementation. The accepted materializer currently
+  supports only `loc + create`, `typ + create` for `data.kind == "link_type"`,
+  and `lnk + create`; it does not materialize `ent + create`. Either choose a
+  prototype that proves the sampled container mapping with `loc` and `lnk`
+  roots only, or stop and request a separate materializer-expansion task before
+  including sample entities as `ent` roots.
+
 ## TASK-018 Director Acceptance Review
 
 - `TASK-018` is accepted as superseded on 2026-05-02 before developer work
