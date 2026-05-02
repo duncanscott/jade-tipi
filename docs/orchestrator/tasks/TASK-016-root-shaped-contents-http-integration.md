@@ -3,7 +3,7 @@
 ID: TASK-016
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: ACCEPTED
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-012
@@ -206,3 +206,53 @@ Director verification:
   `./gradlew :jade-tipi:compileIntegrationTestGroovy` and
   `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
   '*ContentsHttpReadIntegrationSpec*'`.
+
+Director follow-up implementation review accepted on 2026-05-02:
+- Accepted claude-1 implementation commit `a2cc4fa`.
+- Scope check passed against claude-1's base assignment plus the explicit
+  `TASK-016`/`DIRECTIVES.md` implementation expansion. The latest merge
+  changed only `docs/agents/claude-1-changes.md` and
+  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/contents/ContentsHttpReadIntegrationSpec.groovy`.
+  The report file is inside claude-1's base owned paths, and the integration
+  spec is inside this task's expanded implementation-owned paths.
+- The requested follow-up fix is present. The reverse
+  `GET /api/contents/by-content/{id}` assertion now proves the same expected
+  flat JSON record as the forward route, including
+  `properties.position.kind`, `properties.position.row`,
+  `properties.position.column`, `provenance.commit_id` existence, and
+  `provenance.msg_uuid == lnkMsg.uuid()`.
+- The implementation continues to satisfy the task source of truth: it is
+  opt-in via `JADETIPI_IT_KAFKA`, uses the real `RANDOM_PORT` WebFlux context,
+  inline Keycloak and Kafka reachability gates, per-run Kafka topic/consumer
+  group and per-feature ids, DTO-built transaction messages, bounded Mongo
+  polling, exact local cleanup, authenticated `WebTestClient`, both contents
+  HTTP routes, and HTTP 200 `[]` empty-result coverage.
+- No production service/controller/materializer, Kafka listener, DTO/schema,
+  canonical example, Docker, Gradle, security, frontend, fixture/resource,
+  response-envelope, pagination, endpoint-join, semantic-validation,
+  update/delete replay, or backfill change was made.
+- Director static verification passed: `git diff --check origin/director..HEAD`.
+- Director local Gradle verification remained blocked before product
+  compilation by sandbox/tooling permissions:
+  `./gradlew :jade-tipi:compileIntegrationTestGroovy` failed opening
+  `/Users/duncanscott/.gradle/wrapper/dists/gradle-8.14.3-bin/cv11ve7ro1n3o1j4so8xd9n66/gradle-8.14.3-bin.zip.lck`
+  with `Operation not permitted`. A local Docker status check was also blocked
+  by Docker socket permissions. These are setup/tooling blockers, not product
+  failures.
+- Credited developer verification: claude-1 reported
+  `./gradlew :jade-tipi:compileIntegrationTestGroovy`,
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*ContentsHttpReadIntegrationSpec*'`, `./gradlew :jade-tipi:compileGroovy`,
+  `./gradlew :jade-tipi:compileTestGroovy`, and
+  `./gradlew :jade-tipi:test --rerun-tasks` all passing, with the focused
+  integration result reporting `tests="2" skipped="0" failures="0"
+  errors="0"`.
+- In a normal developer shell, use the documented setup command
+  `docker compose -f docker/docker-compose.yml up -d`, run `./gradlew --stop`
+  if stale Gradle daemons are implicated, then rerun the required Gradle
+  verification commands.
+- No automatic next task was created. The root-shaped contents HTTP
+  integration coverage goal is complete, and viable continuations such as
+  endpoint resolution, semantic validation, response projection/pagination,
+  UI/API plate-shaped views, broader documentation cleanup, or write-path
+  rebuilds require human product or architecture selection.

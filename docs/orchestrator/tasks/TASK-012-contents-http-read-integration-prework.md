@@ -2,7 +2,7 @@
 
 ID: TASK-012
 TYPE: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: ACCEPTED
 OWNER: claude-1
 SOURCE_TASKS:
   - TASK-011
@@ -135,3 +135,13 @@ Kafka, Mongo, or Keycloak are unavailable, report the documented setup command
 `docker compose -f docker/docker-compose.yml up -d`, `./gradlew --stop` when
 stale Gradle daemons are the issue, and the exact command/error rather than
 treating setup as a product blocker.
+
+Director supersession closure on 2026-05-02:
+- `TASK-012` is closed as accepted historical context after acceptance of
+  replacement task `TASK-016`.
+- Do not implement this task as-is. Its original copied-data-shape integration
+  path was paused by `TASK-013`, replaced after the root-document contract was
+  accepted, and satisfied by `TASK-016` using the accepted root-shaped
+  materializer and contents read service.
+- Keeping this task accepted prevents the orchestrator from routing obsolete
+  `TASK-012` implementation work after `TASK-016` is accepted.

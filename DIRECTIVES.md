@@ -1,12 +1,11 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: HUMAN_REQUIRED
 
 ## Active Focus
 
-The active bounded unit is `TASK-016`: implement the smallest opt-in contents
-HTTP integration coverage that uses the accepted root-shaped materializer and
-contents read service.
+`TASK-016` is accepted. No active bounded implementation unit is currently
+selected.
 
 Product direction is recorded in `DIRECTION.md`: Jade-Tipi objects are logical
 JSON objects; the first materializer should use a root-document-only physical
@@ -14,8 +13,8 @@ shape with explicit `properties`, denormalized `links`, and reserved `_head`
 metadata; extension property/link pages remain future storage work. New
 materialized writes now use the root-shaped contract, and the contents read
 service now resolves `typ.properties.kind/name` and `_head.provenance`. The
-paused contents HTTP integration coverage must be rewritten around this
-accepted root-shaped path before implementation resumes.
+paused contents HTTP integration coverage has been rewritten around this
+accepted root-shaped path and accepted as `TASK-016`.
 
 ## Active Task
 
@@ -25,17 +24,56 @@ accepted root-shaped path before implementation resumes.
 - `TASK-015 - Update contents read service for root-shaped documents` is
   accepted.
 - `TASK-016 - Plan root-shaped contents HTTP integration coverage` is
-  READY_FOR_IMPLEMENTATION and assigned to claude-1 for one focused assertion
-  fix after implementation review.
-- `TASK-012 - Plan contents HTTP read integration coverage` remains prepared
-  but is paused. Do not implement `TASK-012` as-is.
+  accepted.
+- `TASK-012 - Plan contents HTTP read integration coverage` is accepted
+  historical context only. Do not implement `TASK-012` as-is.
+- No next task has been created. The next bounded unit should be selected by
+  the human because viable continuations include endpoint resolution, semantic
+  validation, response projection/pagination, UI/API plate-shaped views,
+  broader documentation cleanup, and write-path rebuilds.
 
 ## Scope Expansion
 
-Implementation is approved for `TASK-016`. Use
-`docs/orchestrator/tasks/TASK-016-root-shaped-contents-http-integration.md` as
-the task-specific source of truth. Treat `TASK-012` as historical context only;
-do not route or implement it as-is.
+No implementation expansion is currently active. Treat `TASK-012` as
+historical context only; do not route or implement it as-is.
+
+## TASK-016 Director Acceptance Review
+
+- `TASK-016` follow-up implementation review is accepted on 2026-05-02.
+  claude-1 changed only `docs/agents/claude-1-changes.md` and
+  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/contents/ContentsHttpReadIntegrationSpec.groovy`.
+  The report file is inside claude-1's base owned paths, and the spec is
+  inside the task-expanded implementation-owned paths.
+- The requested reverse-route assertion fix is present:
+  `GET /api/contents/by-content/{id}` now asserts the missing
+  `properties.position.kind`, `properties.position.row`,
+  `properties.position.column`, `provenance.commit_id` existence, and
+  `provenance.msg_uuid == lnkMsg.uuid()` fields, matching the forward-route
+  flat JSON contract.
+- The accepted spec remains opt-in and uses the expected `RANDOM_PORT` WebFlux
+  context, `JADETIPI_IT_KAFKA` gate, inline Keycloak reachability probe,
+  per-run Kafka topic/consumer group, per-feature ids, DTO helper messages,
+  bounded Mongo polling, exact local cleanup, authenticated `WebTestClient`,
+  both HTTP routes, and HTTP 200 `[]` empty-result coverage.
+- No production service/controller/materializer, Kafka listener, DTO/schema,
+  canonical example, Docker, Gradle, security, frontend, fixture/resource,
+  response-envelope, pagination, endpoint-join, semantic-validation,
+  update/delete replay, or backfill change was made.
+- Director static verification passed with
+  `git diff --check origin/director..HEAD`. Director local Gradle verification
+  was blocked before product compilation by sandbox/tooling permissions
+  opening the Gradle wrapper cache lock under `/Users/duncanscott/.gradle`
+  with `Operation not permitted`; Docker status was also blocked by Docker
+  socket permissions. In a normal developer shell, use
+  `docker compose -f docker/docker-compose.yml up -d` for the local stack and
+  `./gradlew --stop` when stale Gradle daemons are implicated, then rerun the
+  required Gradle verification commands.
+- Credited developer verification: claude-1 reported
+  `./gradlew :jade-tipi:compileIntegrationTestGroovy`,
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*ContentsHttpReadIntegrationSpec*'`, `./gradlew :jade-tipi:compileGroovy`,
+  `./gradlew :jade-tipi:compileTestGroovy`, and
+  `./gradlew :jade-tipi:test --rerun-tasks` all passing.
 
 ## TASK-016 Director Implementation Review
 
