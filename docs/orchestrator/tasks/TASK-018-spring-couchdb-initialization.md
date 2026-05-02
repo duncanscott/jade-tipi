@@ -3,7 +3,7 @@
 ID: TASK-018
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: ACCEPTED
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-017
@@ -87,6 +87,8 @@ VERIFICATION:
   environment flag and use the documented local Docker stack.
 
 LATEST_REPORT:
-Created by director on 2026-05-02 after the human confirmed CouchDB
-replication is working and requested the project be made ready for another
-development loop.
+Accepted as superseded by director on 2026-05-02 before developer work began.
+Human direction clarified that no Spring Boot CouchDB initialization is needed
+because Docker-level CouchDB replication is working. Do not route or implement
+this task unless a future directive explicitly reopens Spring-level CouchDB
+application support.
