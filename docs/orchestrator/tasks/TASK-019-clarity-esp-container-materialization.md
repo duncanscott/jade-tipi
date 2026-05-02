@@ -98,22 +98,31 @@ VERIFICATION:
 
 LATEST_REPORT:
 Director review on 2026-05-02 keeps this task at `READY_FOR_PREWORK`.
-claude-1's latest pre-work commit stayed within its base owned paths: only
-`docs/agents/claude-1-next-step.md` changed, and `git diff --check
-origin/director..HEAD` passed. The response correctly identifies the human
-design brief and the key issues to address, but it stops at a plan for a later
-mapping-doc revision instead of producing the required TASK-019 design
-proposal.
+claude-1's latest pre-work commit stayed within owned paths for this turn:
+only `docs/agents/claude-1-next-step.md` and
+`docs/architecture/clarity-esp-container-mapping.md` changed, and
+`git diff --check origin/director..HEAD` passed. The revised mapping doc now
+addresses the design brief at a proposal level, including D6/D7, wells
+alternatives, and parentage tradeoffs.
 
 Next claude-1 turn: update
-`docs/architecture/clarity-esp-container-mapping.md` directly with the
-design-brief alignment, D6/D7 parentage and directional-label decisions,
-type-definition shape, and explicit wells alternatives/tradeoffs. The default
-director answers for the open questions are: use the brief over revision-2
-phrasing when they differ; keep wells as `lnk.properties.position` for the
-prototype while documenting child-`loc` and hybrid alternatives; declare only
-assignable property names plus link-type metadata in `typ` roots; keep
-parentage single-sourced in `lnk`; append alignment/tradeoff sections and make
-narrow edits to existing decisions only where needed for consistency. No code,
-tests, Gradle work, materializer changes, CouchDB writes, or implementation
-authorization is active.
+`docs/architecture/clarity-esp-container-mapping.md` directly to fix the
+remaining acceptance blockers before implementation:
+
+- The doc says the `typ~contents` declaration lists assignable instance
+  property `position`, but both the proposed materialized `typ` root and the
+  proposed `typ + create` transaction message omit any field that actually
+  declares `position` assignable. Add a simple assignable-property declaration
+  to both examples, with no required/optional markers, defaults, or
+  per-property schema complexity.
+- D5 currently claims that reusing the canonical `typ~contents` id and sending
+  `typ + create` is covered by the materializer's idempotent duplicate path.
+  That is true only for exact replays of the same payload; a pre-existing
+  canonical type with different provenance would be a conflicting duplicate.
+  Preferred correction: mint a transaction-local `typ~contents` id for the
+  self-contained TASK-019 transaction and use it consistently in both `lnk`
+  examples. If retaining the canonical id, remove the self-contained-create
+  and idempotency claim and make the pre-existing-type prerequisite explicit.
+
+No code, tests, Gradle work, materializer changes, CouchDB writes, or
+implementation authorization is active.

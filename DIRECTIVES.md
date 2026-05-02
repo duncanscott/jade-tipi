@@ -90,6 +90,32 @@ them as-is.
 
 - Director review on 2026-05-02 keeps `TASK-019` at `READY_FOR_PREWORK` with
   `SIGNAL: REQUEST_NEXT_STEP`. claude-1's latest pre-work commit stayed within
+  owned paths for this turn: only `docs/agents/claude-1-next-step.md` and
+  `docs/architecture/clarity-esp-container-mapping.md` changed, and
+  `git diff --check origin/director..HEAD` passed.
+- The revised mapping doc now addresses the design brief at a proposal level,
+  including D6/D7, wells alternatives, and parentage tradeoffs. It is not ready
+  for implementation because the proposed `typ~contents` examples contradict
+  the stated type-shape rule: the prose says the type declares assignable
+  instance property `position`, but both the materialized `typ` root and the
+  `typ + create` transaction message omit any assignable-property field.
+- The next claude-1 turn must update
+  `docs/architecture/clarity-esp-container-mapping.md` so the `typ~contents`
+  materialized root and source message actually declare `position` as an
+  assignable instance property, while still avoiding required/optional markers,
+  defaults, and per-property schema complexity.
+- Also fix D5's idempotency claim before implementation. Reusing the canonical
+  `typ~contents` id and re-sending `typ + create` is idempotent only for an
+  exact replay of the same materialized payload; a pre-existing canonical type
+  with different provenance would be a conflicting duplicate. The preferred
+  prototype correction is to mint a transaction-local `typ~contents` id for the
+  self-contained TASK-019 transaction and use it consistently in both `lnk`
+  examples. If claude-1 instead keeps the canonical id, the doc must remove the
+  self-contained-create/idempotency claim and make the pre-existing-type
+  prerequisite explicit.
+
+- Director review on 2026-05-02 keeps `TASK-019` at `READY_FOR_PREWORK` with
+  `SIGNAL: REQUEST_NEXT_STEP`. claude-1's latest pre-work commit stayed within
   its base owned paths: only `docs/agents/claude-1-next-step.md` changed, and
   `git diff --check origin/director..HEAD` passed.
 - The response correctly identifies the human design brief and the required
