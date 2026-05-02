@@ -3,9 +3,9 @@
 #
 # Idempotent: ensures the local node's couchdb.max_document_size matches the
 # source ceiling, the system DBs (_users, _replicator, _global_changes) and
-# the local target DBs (clarity, esp-entity) exist, then upserts one
-# _replicator document per target. The replicator-doc upsert rewrites only
-# when meaningful fields differ to avoid scheduler churn on existing
+# the local target DBs (clarity, esp-entity, dap-seq) exist, then upserts
+# one _replicator document per target. The replicator-doc upsert rewrites
+# only when meaningful fields differ to avoid scheduler churn on existing
 # continuous replications.
 #
 # Required environment (validated below). Names only; values must never be
@@ -16,6 +16,7 @@
 #   JADE_TIPI_COUCHDB_ADMIN_PASSWORD   remote JGI source basic-auth password
 #   JADE_TIPI_COUCHDB_CLARITY_URL      remote source for clarity
 #   JADE_TIPI_COUCHDB_ESP_ENTITY_URL   remote source for esp-entity
+#   JADE_TIPI_COUCHDB_DAP_SEQ_URL      remote source for dap-seq
 #
 # Optional environment:
 #   COUCHDB_MAX_DOCUMENT_SIZE          local couchdb.max_document_size in
@@ -36,6 +37,7 @@ set -eu
 : "${JADE_TIPI_COUCHDB_ADMIN_PASSWORD:?JADE_TIPI_COUCHDB_ADMIN_PASSWORD is required}"
 : "${JADE_TIPI_COUCHDB_CLARITY_URL:?JADE_TIPI_COUCHDB_CLARITY_URL is required}"
 : "${JADE_TIPI_COUCHDB_ESP_ENTITY_URL:?JADE_TIPI_COUCHDB_ESP_ENTITY_URL is required}"
+: "${JADE_TIPI_COUCHDB_DAP_SEQ_URL:?JADE_TIPI_COUCHDB_DAP_SEQ_URL is required}"
 
 LOCAL_AUTH="${COUCHDB_USER}:${COUCHDB_PASSWORD}"
 
@@ -119,7 +121,7 @@ for db in _users _replicator _global_changes; do
   ensure_db "system db" "$db"
 done
 
-for db in clarity esp-entity; do
+for db in clarity esp-entity dap-seq; do
   ensure_db "local db" "$db"
 done
 
@@ -231,8 +233,10 @@ probe_source() {
 
 probe_source "bootstrap-clarity"    "$JADE_TIPI_COUCHDB_CLARITY_URL"
 probe_source "bootstrap-esp-entity" "$JADE_TIPI_COUCHDB_ESP_ENTITY_URL"
+probe_source "bootstrap-dap-seq"    "$JADE_TIPI_COUCHDB_DAP_SEQ_URL"
 
 upsert_replicator "bootstrap-clarity"    "$JADE_TIPI_COUCHDB_CLARITY_URL"    "${COUCH_TARGET_BASE_URL}/clarity"
 upsert_replicator "bootstrap-esp-entity" "$JADE_TIPI_COUCHDB_ESP_ENTITY_URL" "${COUCH_TARGET_BASE_URL}/esp-entity"
+upsert_replicator "bootstrap-dap-seq"    "$JADE_TIPI_COUCHDB_DAP_SEQ_URL"    "${COUCH_TARGET_BASE_URL}/dap-seq"
 
 echo "couchdb-bootstrap: done"
