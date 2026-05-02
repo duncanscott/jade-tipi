@@ -74,6 +74,13 @@ This naming scheme ensures:
 
 All objects belong to a **group**, which defines ownership and read/write permissions. Members of one group may add properties to objects owned by another group. For example, a QC group may analyze a DNA assembly owned by the assembly group and assign a quality score. Properties are owned by the group that added them, enabling fine-grained permission control.
 
+Group records live in `grp` as normal Jade-Tipi objects with world-unique IDs,
+properties, and possible links. The first permission model should be simple:
+members of the owning group have read/write access, and a group may grant other
+groups either `rw` or `r` access through a permissions map on the `grp` record.
+Object-level and property-value-level overrides are possible future extensions,
+but should wait for concrete use cases.
+
 ### Types and Validation
 
 A **type** is defined as a set of properties. Types may include **validations** to determine whether instances meet requirements defined by schemas (JSON Schema, Avro, Protocol Buffers, LinkML, etc.). Types may subclass other types, inheriting their property sets and validations while adding new ones.

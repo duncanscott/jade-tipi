@@ -65,6 +65,26 @@ No tokens are included in the message. The ORCID iD is a plain string.
 2. Backend reads the ORCID iD and payload from the message.
 3. Backend processes the data, trusting that the CLI verified the ORCID iD via Keycloak/ORCID authentication.
 
+## Group Permission Direction
+
+Jade-Tipi authorization should be based on group membership before it attempts
+finer-grained exceptions. Users are members of one or more groups through
+Keycloak claims or a future membership service. Objects and property assignments
+are owned by groups. Members of the owning group have read/write access to the
+objects and properties owned by that group.
+
+Each `grp` record should be a normal Jade-Tipi object with a world-unique ID,
+properties, possible links, and a permissions map for other groups. The initial
+map should use only two permission values:
+
+- `rw`: the referenced group may read and write objects owned by this group.
+- `r`: the referenced group may read objects owned by this group.
+
+Because property assignments are owned by groups, effective access eventually
+needs to be evaluated at property scope. Object-level permission overrides and
+property-value-level overrides may be useful later, but they should not be part
+of the first implementation unless a concrete use case requires them.
+
 ## Trust Model
 
 The backend trusts the CLI. The verification of the ORCID iD happens at the CLI layer during the Keycloak device flow. The ORCID iD in Kafka messages is not independently validated by the backend. This is appropriate when:

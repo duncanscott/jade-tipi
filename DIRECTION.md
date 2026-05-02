@@ -31,6 +31,30 @@ Do not implement required properties or default values yet. If a property value
 is not explicitly assigned in a create or update message, it is absent. The
 materializer should not invent property values.
 
+## Groups And Permissions
+
+`grp` records are first-class Jade-Tipi objects. They should have world-unique
+IDs, `type_id`, explicit properties, possible links, and the same root-document
+storage shape as other long-term collection objects.
+
+The initial permission model should be group-owned and deliberately simple:
+
+- Users are members of one or more groups through the identity provider.
+- A group has read/write permission on objects and property assignments owned by
+  that group.
+- A `grp` record may carry a permissions map for other groups. Each entry grants
+  either read/write (`rw`) or read-only (`r`) access to objects owned by the
+  group.
+- Properties and property-value assignments are owned by groups, so permission
+  checks must eventually operate at property scope, not only at whole-object
+  scope.
+
+Avoid implementing finer-grained overrides in the first pass. Individual objects
+may eventually carry a group-permissions override map, and individual
+property-value assignments may eventually carry permissive or restrictive
+overrides. Those mechanisms should wait for concrete use cases because they add
+substantial complexity to reads, writes, and explanation of effective access.
+
 ## Logical Objects And Physical Documents
 
 A Jade-Tipi object is a logical JSON object. Its physical representation in
