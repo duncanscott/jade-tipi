@@ -31,8 +31,8 @@
       "readOnly": true
     },
     "data": {
-      "$ref": "#/$defs/SnakeCaseObject",
-      "description": "Message-specific payload data. All property names must be snake_case."
+      "type": "object",
+      "description": "Message-specific payload data. Property names must be snake_case for every collection except the grp permissions map, which is keyed by world-unique grp IDs."
     }
   },
   "allOf": [
@@ -63,6 +63,23 @@
       "then": {
         "properties": {
           "action": { "enum": ["create", "update", "delete"] }
+        }
+      }
+    },
+    {
+      "description": "Pick the data payload schema by collection. grp uses GroupData (permits world-unique grp IDs as permissions map keys); every other collection uses SnakeCaseObject.",
+      "if": {
+        "properties": { "collection": { "const": "grp" } },
+        "required": ["collection"]
+      },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/GroupData" }
+        }
+      },
+      "else": {
+        "properties": {
+          "data": { "$ref": "#/$defs/SnakeCaseObject" }
         }
       }
     }
@@ -178,6 +195,29 @@
       },
       "additionalProperties": {
         "$ref": "#/$defs/SnakeCaseValue"
+      }
+    },
+    "GroupData": {
+      "title": "GroupData",
+      "description": "grp create/update payload. Outer property names are snake_case; the optional permissions property is a map keyed by world-unique grp IDs.",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*$"
+      },
+      "properties": {
+        "permissions": { "$ref": "#/$defs/Permissions" }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/SnakeCaseValue"
+      }
+    },
+    "Permissions": {
+      "title": "Permissions",
+      "description": "First-pass grp permissions map. Keys are world-unique grp IDs; values are 'rw' (read/write) or 'r' (read-only).",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["rw", "r"]
       }
     },
     "SnakeCaseValue": {

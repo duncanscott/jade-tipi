@@ -33,7 +33,8 @@ class MessageSpec extends Specification {
             '/example/message/09-commit-transaction.json',
             '/example/message/10-create-location.json',
             '/example/message/11-create-contents-type.json',
-            '/example/message/12-create-contents-link-plate-sample.json'
+            '/example/message/12-create-contents-link-plate-sample.json',
+            '/example/message/13-create-group.json'
     ]
 
     private static String readResource(String path) {
@@ -321,6 +322,86 @@ class MessageSpec extends Specification {
         data.right_to_left_label == 'contained_by'
         data.allowed_left_collections == ['loc']
         data.allowed_right_collections == ['loc', 'ent']
+    }
+
+    def "grp create example carries a permissions map keyed by world-unique grp ids"() {
+        given:
+        String json = readResource('/example/message/13-create-group.json')
+
+        when:
+        Message message = JsonMapper.fromJson(json, Message)
+
+        then:
+        message.collection() == Collection.GROUP
+        message.action() == Action.CREATE
+
+        and:
+        Map data = message.data()
+        data.id == 'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-cccccccccccc~grp~analytics'
+        data.name == 'analytics'
+        data.description == 'analytics team'
+
+        and: 'permissions is a map whose keys are peer grp ids and whose values are exactly rw or r'
+        Map permissions = data.permissions as Map
+        permissions.size() == 2
+        permissions['jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~grp~lab_ops'] == 'rw'
+        permissions['jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-bbbbbbbbbbbb~grp~viewers'] == 'r'
+    }
+
+    def "schema rejects a grp create whose permissions value is not 'rw' or 'r'"() {
+        given:
+        def txn = new Transaction(
+                '018fd849-2a40-7abc-8a45-111111111111',
+                new Group('jade-tipi-org', 'dev'),
+                'kli',
+                '0000-0002-1825-0097'
+        )
+        def message = Message.newInstance(
+                txn,
+                Collection.GROUP,
+                Action.CREATE,
+                [
+                        id         : 'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-cccccccccccc~grp~analytics',
+                        name       : 'analytics',
+                        permissions: [
+                                'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~grp~lab_ops': 'admin'
+                        ]
+                ]
+        )
+
+        when:
+        message.validate()
+
+        then:
+        ValidationException ex = thrown()
+        ex.message.toLowerCase().contains('permissions') ||
+                ex.message.toLowerCase().contains('rw') ||
+                ex.message.toLowerCase().contains('enum')
+    }
+
+    def "schema rejects a non-grp message whose data has a non-snake_case key"() {
+        given:
+        def txn = new Transaction(
+                '018fd849-2a40-7abc-8a45-111111111111',
+                new Group('jade-tipi-org', 'dev'),
+                'kli',
+                '0000-0002-1825-0097'
+        )
+        def message = Message.newInstance(
+                txn,
+                Collection.LOCATION,
+                Action.CREATE,
+                [
+                        id                                                             : 'jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~freezer_a',
+                        'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~grp~x': 'rw'
+                ]
+        )
+
+        when:
+        message.validate()
+
+        then:
+        thrown(ValidationException)
     }
 
     def "contents lnk example references the contents type and carries a position property"() {

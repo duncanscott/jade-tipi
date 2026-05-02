@@ -166,9 +166,55 @@ A concrete `contents` link references the type and the two endpoints, and stores
 
 The schema accepts this envelope today on the strength of `lnk + create` and the snake_case property-name rule. Semantic checks — that `lnk.type_id` resolves to a committed `typ` record, that `left` and `right` resolve, and that the endpoint collections match the type's `allowed_left_collections` / `allowed_right_collections` — are not enforced by `message.schema.json` and remain a follow-up reader/materializer concern. Property-name values such as `position.label` ("A1") are stored verbatim; the snake_case rule applies to property keys, not to their string values.
 
+## Group Records And First-Pass Permissions
+
+`grp` records are first-class Jade-Tipi objects with world-unique IDs. The
+canonical wire payload carries `id`, `name`, an optional `description`, and an
+optional `permissions` map keyed by world-unique grp IDs. Each permission value
+is exactly `"rw"` (read/write) or `"r"` (read-only). The map names other
+groups; ownership-group access is implicit and not represented as a self-entry.
+
+```json
+{
+  "collection": "grp",
+  "action": "create",
+  "data": {
+    "id": "jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-cccccccccccc~grp~analytics",
+    "name": "analytics",
+    "description": "analytics team",
+    "permissions": {
+      "jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~grp~lab_ops": "rw",
+      "jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-bbbbbbbbbbbb~grp~viewers": "r"
+    }
+  }
+}
+```
+
+`message.schema.json` validates this shape through a collection-conditional
+`data` schema: when `collection == "grp"`, `data` follows the `GroupData`
+definition (snake_case top-level keys, with a `Permissions` exception for the
+inner map). When `collection != "grp"`, `data` continues to follow
+`SnakeCaseObject` and the snake_case `propertyNames` rule applies recursively
+as before. The canonical example bundled with the schema is
+`13-create-group.json`.
+
+The committed materializer projects `grp + create` into the `grp` MongoDB
+collection using the same root-document shape as the other supported roots:
+top-level `_id`, `id`, `collection: "grp"`, `type_id` (currently `null` because
+the canonical example does not declare a group type), inline `properties`
+(`name`, `description`, and the verbatim `permissions` map), an empty `links`
+map, and the reserved `_head` block with `provenance.collection == "grp"` and
+`provenance.action == "create"`. Other `grp` actions and bare entity-type
+`grp` payloads with missing or blank `data.id` are skipped without error.
+
+This iteration intentionally does not enforce read or write permissions on
+HTTP, Kafka, materializer, or read-service paths, does not synchronize group
+membership from Keycloak or any other identity provider, and does not
+introduce object-level or property-value-level permission overrides.
+
 ## Committed Materialization Of Locations And Links
 
-Once a transaction commits in `txn`, a post-commit projection currently copies the `loc + create`, `typ + create` (where `data.kind == "link_type"`), and `lnk + create` messages into their long-term collections (`loc`, `typ`, `lnk`). The projection is a read-after-commit step over the existing committed-snapshot read service; the `txn` write-ahead log remains the durable, authoritative record. Other collections, other actions, and bare entity-type `typ` records are intentionally not materialized in this iteration.
+Once a transaction commits in `txn`, a post-commit projection currently copies the `loc + create`, `typ + create` (where `data.kind == "link_type"`), `lnk + create`, and `grp + create` messages into their long-term collections (`loc`, `typ`, `lnk`, `grp`). The projection is a read-after-commit step over the existing committed-snapshot read service; the `txn` write-ahead log remains the durable, authoritative record. Other collections, other actions, and bare entity-type `typ` records are intentionally not materialized in this iteration.
 
 The first materializer uses a provisional physical shape: materialized documents copy the committed `data` payload verbatim, set Mongo `_id` to `data.id`, keep the original `id` payload field, and add a reserved `_jt_provenance` sub-document carrying `txn_id`, `commit_id`, `msg_uuid`, `committed_at`, and `materialized_at`. Duplicate `_id` writes with an identical payload are idempotent successes; differing-payload duplicates are logged and counted but not overwritten, and missing or blank `data.id` is logged and skipped without synthesizing an id. Semantic reference validation (`type_id`, `left`, `right`, and `allowed_*_collections`) is still not enforced; that remains a follow-up reader/validator concern.
 
@@ -208,6 +254,7 @@ A complete early transaction flow is bundled as resources under `libraries/jade-
 10. `10-create-location.json`
 11. `11-create-contents-type.json`
 12. `12-create-contents-link-plate-sample.json`
+13. `13-create-group.json`
 
 These examples are exercised by `MessageSpec` to round-trip through `JsonMapper` and pass `Message.validate()` against `message.schema.json`.
 

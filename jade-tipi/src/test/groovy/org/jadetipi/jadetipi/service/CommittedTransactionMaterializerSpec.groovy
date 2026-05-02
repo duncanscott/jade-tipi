@@ -33,6 +33,9 @@ class CommittedTransactionMaterializerSpec extends Specification {
     static final String LOC_ID = 'jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~freezer_a'
     static final String TYP_ID = 'jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents'
     static final String LNK_ID = 'jade-tipi-org~dev~018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~lnk~plate_b1_sample_x1'
+    static final String GRP_ID = 'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-cccccccccccc~grp~analytics'
+    static final String GRP_PEER_RW = 'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~grp~lab_ops'
+    static final String GRP_PEER_R = 'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-bbbbbbbbbbbb~grp~viewers'
 
     ReactiveMongoTemplate mongoTemplate
     CommittedTransactionReadService readService
@@ -155,6 +158,28 @@ class CommittedTransactionMaterializerSpec extends Specification {
                 action: 'create',
                 data: [id: 'jade-tipi-org~dev~018fd849-2a42-7222-8a02-dddddddddddd~ent~plate_a'],
                 receivedAt: Instant.parse('2026-01-01T00:00:01Z'),
+                kafka: null
+        )
+    }
+
+    private static CommittedTransactionMessage groupMessage(Map dataOverrides = [:],
+                                                              String action = 'create') {
+        Map<String, Object> data = [
+                id         : GRP_ID,
+                name       : 'analytics',
+                description: 'analytics team',
+                permissions: [
+                        (GRP_PEER_RW): 'rw',
+                        (GRP_PEER_R) : 'r'
+                ]
+        ]
+        data.putAll(dataOverrides)
+        return new CommittedTransactionMessage(
+                msgUuid: '018fd849-2a4d-7d0d-8d0d-cccccccccccc',
+                collection: 'grp',
+                action: action,
+                data: data,
+                receivedAt: Instant.parse('2026-01-01T00:00:04Z'),
                 kafka: null
         )
     }
@@ -360,6 +385,141 @@ class CommittedTransactionMaterializerSpec extends Specification {
         captured.type_id == TYP_ID
         captured.left.endsWith('~loc~plate_b1')
         captured.right.endsWith('~ent~sample_x1')
+    }
+
+    def 'materializes a grp create as a root document with permissions under properties and _head.provenance'() {
+        given:
+        Map<String, Object> captured = null
+        mongoTemplate.insert(_ as Map, 'grp') >> { Map doc, String _coll ->
+            captured = doc
+            return Mono.just(doc)
+        }
+
+        when:
+        MaterializeResult result = materializer.materialize(snapshot([groupMessage()])).block()
+
+        then:
+        result != null
+        result.materialized == 1
+        result.duplicateMatching == 0
+        result.conflictingDuplicate == 0
+        result.skippedUnsupported == 0
+        result.skippedInvalid == 0
+
+        and: 'shared root fields use the payload id and source collection'
+        captured._id == GRP_ID
+        captured.id == GRP_ID
+        captured.collection == 'grp'
+        captured.type_id == null
+
+        and: 'name, description, and permissions live under properties verbatim'
+        Map properties = captured.properties as Map
+        properties.name == 'analytics'
+        properties.description == 'analytics team'
+        Map permissions = properties.permissions as Map
+        permissions.size() == 2
+        permissions[GRP_PEER_RW] == 'rw'
+        permissions[GRP_PEER_R] == 'r'
+        !properties.containsKey('id')
+        !properties.containsKey('type_id')
+
+        and: 'links is initialized to an empty map for new roots'
+        captured.links == [:]
+
+        and: '_head carries schema metadata and grp provenance'
+        Map head = captured._head as Map
+        head.schema_version == 1
+        head.document_kind == 'root'
+        head.root_id == GRP_ID
+        Map provenance = head.provenance as Map
+        provenance.txn_id == TXN_ID
+        provenance.commit_id == COMMIT_ID
+        provenance.msg_uuid == '018fd849-2a4d-7d0d-8d0d-cccccccccccc'
+        provenance.collection == 'grp'
+        provenance.action == 'create'
+        provenance.committed_at == COMMITTED_AT
+        provenance.materialized_at instanceof Instant
+
+        and: 'the legacy _jt_provenance field is not written on new roots'
+        !captured.containsKey('_jt_provenance')
+    }
+
+    def 'grp create that omits permissions still materializes with name and description under properties'() {
+        given:
+        Map<String, Object> captured = null
+        mongoTemplate.insert(_ as Map, 'grp') >> { Map doc, String _coll ->
+            captured = doc
+            return Mono.just(doc)
+        }
+        CommittedTransactionMessage message = new CommittedTransactionMessage(
+                msgUuid: '018fd849-2a4d-7d0d-8d0d-cccccccccccc',
+                collection: 'grp',
+                action: 'create',
+                data: [
+                        id  : GRP_ID,
+                        name: 'analytics'
+                ],
+                receivedAt: Instant.parse('2026-01-01T00:00:04Z'),
+                kafka: null
+        )
+
+        when:
+        MaterializeResult result = materializer.materialize(snapshot([message])).block()
+
+        then:
+        result.materialized == 1
+        Map properties = captured.properties as Map
+        properties.name == 'analytics'
+        !properties.containsKey('permissions')
+        captured.collection == 'grp'
+    }
+
+    def 'skips a grp update message'() {
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([groupMessage([:], 'update')])).block()
+
+        then:
+        result.materialized == 0
+        result.skippedUnsupported == 1
+        0 * mongoTemplate.insert(_, _)
+    }
+
+    def 'skips a grp delete message'() {
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([groupMessage([:], 'delete')])).block()
+
+        then:
+        result.materialized == 0
+        result.skippedUnsupported == 1
+        0 * mongoTemplate.insert(_, _)
+    }
+
+    def 'skips a grp create with missing data.id'() {
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([groupMessage([id: null])])).block()
+
+        then:
+        result.materialized == 0
+        result.skippedInvalid == 1
+        result.skippedUnsupported == 0
+        0 * mongoTemplate.insert(_, _)
+    }
+
+    def 'skips a grp create with blank data.id'() {
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([groupMessage([id: input])])).block()
+
+        then:
+        result.skippedInvalid == 1
+        result.materialized == 0
+        0 * mongoTemplate.insert(_, _)
+
+        where:
+        input << ['', '   ']
     }
 
     def 'skips ppy and ent create messages'() {

@@ -3,6 +3,109 @@
 The developer writes completed work reports here.
 
 STATUS: READY_FOR_REVIEW
+TASK: TASK-020 — Define and materialize group records
+DATE: 2026-05-02
+SUMMARY: Implemented Shape A from the accepted pre-work: `data.permissions`
+is a map keyed by world-unique `grp` IDs whose values are exactly `"rw"` or
+`"r"`. Added the bounded schema exception so `message.schema.json` validates
+the grp-id-keyed map without relaxing snake_case validation for any other
+collection, added the canonical `13-create-group.json` example, extended
+`MessageSpec` with positive and negative coverage, added `grp + create` to the
+`CommittedTransactionMaterializer` whitelist, and added focused materializer
+coverage for success, no-permissions, unsupported actions, and missing/blank
+ID. Documented the wire and materialized shape in
+`docs/architecture/kafka-transaction-message-vocabulary.md`. No permission
+enforcement was added on any path; no membership service was introduced; no
+object-level or property-value-level overrides were introduced.
+
+Files changed (eight):
+
+- `libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json` —
+  changed top-level `properties.data` to `{ type: object, description: ... }`
+  (instead of an unconditional `$ref: SnakeCaseObject`) and added a
+  collection-conditional `allOf` entry that selects the data schema by
+  collection: `if collection == "grp" then data = GroupData else data =
+  SnakeCaseObject`. Added two new `$defs`: `GroupData` (snake_case
+  `propertyNames`, explicit `properties.permissions` exception, and
+  `additionalProperties: SnakeCaseValue` for everything else) and
+  `Permissions` (object whose `additionalProperties` is `string` with
+  `enum: ["rw", "r"]`). Because `properties.permissions` and
+  `additionalProperties` are adjacent in the same `GroupData` schema, the
+  recursive snake_case rule no longer applies to permissions map keys, while
+  every non-grp message continues to validate against
+  `SnakeCaseObject` exactly as before.
+- `libraries/jade-tipi-dto/src/main/resources/example/message/13-create-group.json`
+  — new canonical example. World-unique grp id
+  `jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-cccccccccccc~grp~analytics`,
+  payload carries `id`, `name`, `description`, and a two-entry `permissions`
+  map with one `rw` peer and one `r` peer. UUIDs distinct from the existing
+  example messages.
+- `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`
+  — appended `13-create-group.json` to `EXAMPLE_PATHS` (covers the
+  parameterized round-trip and schema-validation features). Added three
+  focused features: (a) `grp create example carries a permissions map keyed
+  by world-unique grp ids` asserts collection, action, id format, name,
+  description, and the two `rw`/`r` map entries; (b) `schema rejects a grp
+  create whose permissions value is not 'rw' or 'r'` confirms the new
+  `Permissions` enum is enforced; (c) `schema rejects a non-grp message whose
+  data has a non-snake_case key` confirms the if/then/else conditional did
+  not weaken `SnakeCaseObject` enforcement for non-grp collections.
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`
+  — added `static final String COLLECTION_GRP = 'grp'`, added `case
+  COLLECTION_GRP: return true` to `isSupported(...)` (returns true only when
+  `action == ACTION_CREATE`, matching the loc/lnk precedent), and updated the
+  class Javadoc bullet list to document `grp + create → grp` plus the
+  permissions-pass-through and no-enforcement boundary. No change to
+  `buildDocument`, `buildInlineProperties`, `handleInsertError`, or any
+  helper. The default branch in `buildDocument` already produces the correct
+  root shape with `permissions` copied through `properties.permissions`
+  verbatim.
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`
+  — added `GRP_ID`, `GRP_PEER_RW`, and `GRP_PEER_R` constants, added a
+  `groupMessage(...)` helper, and added six focused features:
+  `materializes a grp create as a root document with permissions under
+  properties and _head.provenance` (success, including verbatim permissions
+  pass-through); `grp create that omits permissions still materializes with
+  name and description under properties` (optional permissions);
+  `skips a grp update message`; `skips a grp delete message`;
+  `skips a grp create with missing data.id`;
+  `skips a grp create with blank data.id` (parameterized over `''` and
+  whitespace). The existing matching/conflicting/insert-error duplicate
+  features already exercise the generic `handleInsertError` path through
+  `loc` and are not duplicated for `grp`, per the task's "where existing
+  coverage does not already cover the generic path" wording.
+- `docs/architecture/kafka-transaction-message-vocabulary.md` — added a new
+  "Group Records And First-Pass Permissions" section that documents the wire
+  payload, the schema exception, the materialized root layout
+  (`properties.permissions` verbatim, `links: {}`, `_head.provenance`), and
+  the explicit non-enforcement boundary. Updated the
+  "Committed Materialization Of Locations And Links" paragraph and the
+  bundled examples list to include `grp + create` and
+  `13-create-group.json`.
+
+Verification:
+
+- `./gradlew :libraries:jade-tipi-dto:test --tests '*MessageSpec*'` →
+  BUILD SUCCESSFUL; 44 tests passed (was 41), 0 failed, 0 skipped.
+- `./gradlew :jade-tipi:compileGroovy` → BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:compileTestGroovy` → BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:test --tests '*CommittedTransactionMaterializerSpec*'`
+  → BUILD SUCCESSFUL; 30 tests passed (was 24), 0 failed, 0 skipped.
+
+Stay-in-scope check:
+
+All edits land inside TASK-020's `OWNED_PATHS` plus the explicit schema
+expansion `libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json`
+listed under `Scope Expansion` for TASK-020 in `DIRECTIVES.md`. No edits to
+Docker, CouchDB, frontend, Kafka topic ACLs, OAuth/SASL hardening, HTTP read
+paths, `ContentsLinkReadService`, `_jt_provenance` fallback, or production
+deployment files. No `DIRECTION.md`, `docs/README.md`, `docs/Jade-Tipi.md`,
+or `docs/user-authentication.md` edits were necessary because their existing
+prose already matches Shape A.
+
+---
+
+STATUS: READY_FOR_REVIEW
 TASK: TASK-019 — Prototype Clarity/ESP container materialization
 DATE: 2026-05-02
 SUMMARY: Delivered the smallest executable prototype for the documented
