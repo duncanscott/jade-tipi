@@ -4,277 +4,328 @@ The developer writes pre-work plans here before implementation begins.
 
 STATUS: PRESENT
 
-## TASK-019 — Prototype Clarity/ESP container materialization (pre-work, revision 6)
+## TASK-020 — Define and materialize group records (pre-work, revision 1)
 
 ### Directive summary
 
-`DIRECTIVES.md` signal is `REQUEST_NEXT_STEP`. `TASK-019` remains at
-`READY_FOR_PREWORK`. The director's most recent review (commit
-`8d601fd`, recorded in `DIRECTIVES.md` and in the `TASK-019`
-`LATEST_REPORT`) accepted the in-scope mapping-doc design fixes from
-revision 5:
+`DIRECTIVES.md` global signal is `HUMAN_REQUIRED`, but the active task
+file `docs/orchestrator/tasks/TASK-020-group-record-model-and-materialization.md`
+is `READY_FOR_PREWORK` with `OWNER: claude-1`. The orchestrator turn
+prompt explicitly asks claude-1 for pre-work on TASK-020 and
+authorizes nothing beyond writing this file. No
+`READY_FOR_IMPLEMENTATION` or `PROCEED_TO_IMPLEMENTATION` signal is
+present, so this turn produces a plan only — no schema, example,
+materializer, test, or doc edit will be made.
 
-- `typ~contents` declares `assignable_properties: ["position"]` in
-  both the materialized root and the `typ + create` source message.
-- D5 mints a transaction-local `typ~contents` id and uses it
-  consistently in both `lnk` examples.
-- `ContentsLinkReadService` resolves all `typ` rows matching
-  `properties.kind = "link_type"` and `properties.name = "contents"`
-  and queries `lnk.type_id` with `$in`, so the transaction-local id
-  is compatible with the accepted contents read path.
+The directive itself, distilled:
 
-The merge that delivered those revision-5 edits was nonetheless
-rejected for **scope/protocol** because it also modified
-`docker/couchdb-bootstrap.sh` (setting `couchdb.max_document_size`)
-— a path outside claude-1's base owned paths and outside the
-`TASK-019` scope expansion in `DIRECTIVES.md`. The director's
-instruction for the next claude-1 turn:
+- Make `grp` records first-class Jade-Tipi root-document objects with
+  world-unique IDs, optional `type_id`, properties, possible links,
+  and a permissions map that grants other groups either read/write
+  (`rw`) or read-only (`r`) access. No other permission values.
+- Persist the data needed for later property-scope permission checks,
+  but do not enforce reads or writes anywhere yet (HTTP, Kafka,
+  materializer, read services).
+- Preserve the existing model where users belong to groups through
+  Keycloak claims or a future membership service. Do not add a
+  membership collection, sync layer, admin UI, or group-management
+  endpoint.
+- Keep `_head.provenance` aligned with the `TASK-014` root contract
+  (already implemented in `CommittedTransactionMaterializer`).
+- Add one canonical `grp + create` Kafka message example, extend
+  focused DTO/example tests so the example round-trips and validates
+  against `message.schema.json`, and extend
+  `CommittedTransactionMaterializer` (plus its focused Spock spec) so
+  committed `grp + create` messages materialize into the `grp`
+  MongoDB collection using the same root shape as the existing
+  supported roots.
 
-> remove the out-of-scope `docker/couchdb-bootstrap.sh` change from
-> the TASK-019 merge and resubmit the in-scope mapping/report edits.
+### Source survey driving the plan
 
-No further mapping-doc blocker is currently identified. No code,
-tests, Gradle work, materializer changes, CouchDB writes,
-Docker/bootstrap changes, or implementation authorization is active.
+- `DIRECTION.md` §"Groups And Permissions" already states the
+  first-pass model: world-unique grp IDs, optional `type_id`,
+  properties, possible links, permissions map keyed by other groups,
+  with values restricted to `rw` or `r`. Finer-grained overrides are
+  deferred. This task implements the first physical projection of
+  that model and the canonical message example.
+- `libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json`
+  already accepts `collection: "grp"` paired with
+  `action ∈ {create, update, delete}` (the second `allOf` rule lists
+  `grp` explicitly). No schema edit is required to accept a
+  `grp + create` envelope. The schema's `SnakeCaseObject` rule
+  enforces `propertyNames` matching `^[a-z][a-z0-9_]*$` for every
+  object key inside `data`. Group IDs contain `~` separators
+  (`<org>~<grp>~<txn-uuid>~grp~<short>`), so they cannot be used
+  directly as map keys inside `data.permissions` without violating
+  the schema. This shapes decision D-20-A below.
+- `libraries/jade-tipi-dto/src/main/java/org/jadetipi/dto/message/Collection.java`
+  already declares `GROUP("group", "grp")` with the standard
+  `[CREATE, UPDATE, DELETE]` action list, so the DTO enum side is
+  ready.
+- `CommittedTransactionMaterializer`'s `isSupported(...)` switch only
+  whitelists `loc`, `lnk`, and link-type `typ`. The `default` branch
+  in `buildDocument` (anything other than `lnk`) routes everything
+  except `id` and `type_id` into `properties` via
+  `buildInlineProperties`, then writes `links: {}` and
+  `_head.provenance`. This default path is exactly the shape the
+  task asks for `grp`. Adding `grp` requires a single new switch arm
+  (`case COLLECTION_GRP: return true`) plus a constant; no new
+  formatting code is needed.
+- `CommittedTransactionMaterializerSpec` already covers the generic
+  duplicate paths (matching duplicate, conflicting duplicate,
+  non-duplicate insert failure) for `loc + create`. Generic
+  duplicate behavior for `grp` flows through the same
+  `handleInsertError` code, so per the task wording ("where existing
+  coverage does not already cover the generic path") only
+  grp-specific assertions are needed: success, unsupported actions,
+  and missing/blank id.
+- `docs/architecture/kafka-transaction-message-vocabulary.md` lacks a
+  `grp` section today. The task acceptance asks for "the first-pass
+  `grp` root-document shape" in architecture documentation, which
+  fits naturally next to the existing "Committed Materialization Of
+  Locations And Links" and "Reading `contents` Links" sections.
+- `docs/Jade-Tipi.md`, `docs/README.md`, and
+  `docs/user-authentication.md` are all listed as owned paths but do
+  not need substantive edits; the architecture-vocabulary doc is the
+  right home for the first-pass shape, and `DIRECTION.md` already
+  carries the product direction. I will leave those three untouched
+  unless review of their current text reveals a contradiction during
+  implementation.
 
-### Branch-state observation (the directive has already been satisfied by other means)
+### Decisions for the implementation
 
-State of the `claude-1` worktree at the start of this turn:
+D-20-A — **Permissions payload shape: list of objects, not a map.**
+`data.permissions` will be a JSON array of
+`{ "grp_id": "<other-group-id>", "level": "rw" | "r" }` entries.
+Rationale: the schema's snake_case `propertyNames` rule rejects
+group IDs as direct map keys, and a list keeps the example
+round-trippable through the existing schema with no schema change.
+The materializer copies `data.permissions` verbatim into root
+`properties.permissions`, so future readers can index it as a list
+or transform it into a map at query time without re-materialization.
+The level value is constrained to `rw` or `r` in this task's example
+and documentation; no broader enumeration is introduced. (See
+Q-20-A if the director prefers a map-shaped payload behind a
+schema-key relaxation, but I propose the list form as the default.)
 
+D-20-B — **Permissions live under root `properties`, not as a
+top-level reserved field.** The materializer's existing default
+branch already routes non-`id`/non-`type_id` fields into
+`properties`, matching the existing `loc + create` and
+link-type `typ + create` behavior. Adding a top-level reserved field
+for permissions would require new materializer code and would
+diverge from the accepted root contract. Future enforcement code
+can read `properties.permissions` directly; if a later task wants
+to lift it under `_head` for tighter access-control isolation, that
+move is a small follow-up.
+
+D-20-C — **No `type_id` in the canonical example.** The first-pass
+example matches the existing `10-create-location.json` and
+`11-create-contents-type.json` style, both of which omit `type_id`.
+The materializer treats missing `data.type_id` by writing top-level
+`type_id: null`. A `grp` typing taxonomy is not needed for the
+first canonical example; if/when groups have subtypes (`tenant`,
+`team`, `service-account`, etc.), a follow-up task can add a
+`grp` `type_id` example.
+
+D-20-D — **No materialized links for the example.** The example
+omits a `links` payload. Per the accepted contract, the
+materializer always writes `links: {}` for new roots and leaves
+endpoint-projection maintenance to a later task.
+
+D-20-E — **Two-entry permissions list using world-unique grp IDs.**
+The example will grant `rw` to one peer group and `r` to another so
+both first-pass values appear in one canonical fixture and so any
+future enforcement test can read both rows from a single example.
+
+D-20-F — **No materializer behavior change beyond the
+whitelist.** I will not introduce permission validation, level
+normalization, sort/dedupe of the permissions list, or
+`grp_id`-format checks at the materializer boundary. The data is
+copied verbatim. Validation is explicitly out of scope per the task
+file's `OUT_OF_SCOPE` block.
+
+### Proposed file changes
+
+All paths below are inside the `TASK-020` `OWNED_PATHS` block:
+
+1. `libraries/jade-tipi-dto/src/main/resources/example/message/13-create-group.json`
+   — new canonical example. Uses transaction `txn` shape from the
+   existing examples. World-unique grp id of the form
+   `jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-cccccccccccc~grp~analytics`
+   (UUIDv7 distinct from the existing example messages). Payload
+   carries `id`, `name`, `description`, and a two-entry
+   `permissions` list as defined in D-20-A and D-20-E.
+
+2. `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`
+   — append `13-create-group.json` to the `EXAMPLE_PATHS` constant
+   (covers the existing parameterized round-trip and schema
+   validation features). Add one focused feature method (mirroring
+   the existing "contents typ example declares the canonical
+   link-type facts" and "contents lnk example references the
+   contents type and carries a position property" features) that
+   asserts `grp + create` semantics: collection, action, id format,
+   `permissions` list shape with snake_case `grp_id`/`level` keys,
+   and the two `rw`/`r` rows. No other changes to this file.
+
+3. `docs/architecture/kafka-transaction-message-vocabulary.md`
+   — append a new section ("Group Records" or "Groups And First-Pass
+   Permissions") that documents the canonical `grp + create`
+   payload, the `permissions` list shape, the materialized root-
+   document layout (`_id`, `id`, `collection: "grp"`, `type_id`,
+   `properties` including `permissions`, `links: {}`,
+   `_head.provenance`), and the explicit non-enforcement boundary
+   (no HTTP/Kafka/materializer/read-side permission checks yet).
+   Reference the canonical example `13-create-group.json` and link
+   to `DIRECTION.md` for the product motivation.
+
+4. `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`
+   — single targeted edit:
+   - Add a `static final String COLLECTION_GRP = 'grp'` constant
+     beside the existing collection constants.
+   - Add `case COLLECTION_GRP: return true` in `isSupported(...)`'s
+     switch on `message.collection`.
+   - Update the class Javadoc bullet list of supported messages to
+     include `grp + create` → `grp` collection.
+   - No change to `buildDocument`, `buildInlineProperties`,
+     `handleInsertError`, or any helper. The `default` branch
+     already produces the correct root shape with permissions
+     copied through `properties.permissions`.
+
+5. `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`
+   — add focused features:
+   - "materializes a grp create as a root document with permissions
+     under properties and `_head.provenance`" — asserts shared
+     root fields (`_id`, `id`, `collection == 'grp'`,
+     `type_id == null` when omitted), `properties.name`,
+     `properties.description`, `properties.permissions` list shape
+     (two entries with `grp_id` + `level` `rw`/`r`),
+     `links == [:]`, `_head.provenance.collection == 'grp'`,
+     `_head.provenance.action == 'create'`, no `_jt_provenance`.
+   - "skips a grp update message" — asserts
+     `result.skippedUnsupported == 1` and zero Mongo writes when a
+     `grp + update` message is supplied.
+   - "skips a grp delete message" — same shape for `grp + delete`.
+   - "skips a grp create with missing data.id" — asserts
+     `result.skippedInvalid == 1` and zero Mongo writes.
+   - "skips a grp create with blank data.id" — same with whitespace
+     id, asserting trimmed-blank handling.
+   - I will rely on the existing matching/conflicting/insert-error
+     duplicate features (which already exercise the generic
+     `handleInsertError` path through `loc`) and will not duplicate
+     them for `grp` unless review identifies a `grp`-specific
+     branch I have missed.
+
+6. Optional minor touch-up in `DIRECTION.md` — append one
+   clarifying sentence under the "Groups And Permissions" section
+   noting that the first-pass payload uses a permissions list of
+   `{grp_id, level}` rows for schema compatibility (D-20-A). This
+   is non-essential; if the director prefers `DIRECTION.md` to
+   stay product-focused and not record physical-shape decisions, I
+   will instead document the list shape solely in
+   `kafka-transaction-message-vocabulary.md`. Marked as
+   conditional on Q-20-B below.
+
+### Files intentionally not touched
+
+- `docs/Jade-Tipi.md`, `docs/README.md`, `docs/user-authentication.md`
+  — no current sentence in these conflicts with the first-pass `grp`
+  shape, and the architecture-vocabulary doc is a better home for
+  the on-the-wire and materialized shape. Skipping unless review
+  reveals a contradiction during implementation.
+- `docs/orchestrator/tasks/TASK-020-group-record-model-and-materialization.md`
+  — listed in `OWNED_PATHS` but director-owned in practice. I will
+  not edit it; the report file is `docs/agents/claude-1-changes.md`.
+- Anything in `clients/`, `frontend/`, `docker/`, `jade-tipi/...service/`
+  beyond the materializer, integration tests, security policy,
+  Kafka listener, `ContentsLinkReadService`, controllers, schema,
+  or `_jt_provenance` migration — explicitly out of scope by the
+  task file.
+
+### Verification plan
+
+For this pre-work turn:
+
+- Static review only. No Gradle, Docker, MongoDB, or Kafka commands
+  executed.
+- Branch-state check: working tree clean at start (`git status`
+  reported clean per the orchestrator pre-amble).
+
+For the implementation turn (only after
+`READY_FOR_IMPLEMENTATION` or `PROCEED_TO_IMPLEMENTATION`):
+
+```sh
+./gradlew :libraries:jade-tipi-dto:test --tests '*MessageSpec*'
+./gradlew :jade-tipi:compileGroovy
+./gradlew :jade-tipi:compileTestGroovy
+./gradlew :jade-tipi:test --tests '*CommittedTransactionMaterializerSpec*'
+./gradlew :jade-tipi:test
+./gradlew :libraries:jade-tipi-dto:test
 ```
-git rev-parse HEAD == git rev-parse origin/director  # equal
-git diff --stat origin/director..HEAD                # empty
+
+If local tooling, Gradle wrapper-cache locks under
+`/Users/duncanscott/.gradle`, Docker, or MongoDB block verification,
+the documented setup commands are:
+
+```sh
+docker compose -f docker/docker-compose.yml --profile mongodb up -d
+./gradlew --stop
 ```
 
-The recent commit chain on `claude-1` / `origin/director` is:
+These are setup steps, not product blockers. The task file's
+`VERIFICATION` block lists the same commands and the same setup
+fallback.
 
-```
-8d601fd Record director agent turn          (director, revision-5 review)
-8b54a0f Set CouchDB max document size during bootstrap   (direct human commit)
-deec62b Record claude-1 agent turn          (mapping rev 5: assignable_properties + tx-local typ id)
-7e73e79 Record director agent turn          (revision-4 review, flagged D5 + assignable_properties)
-0915401 Record claude-1 agent turn          (mapping rev 4: created mapping doc + initial design)
-```
-
-Two relevant facts follow:
-
-1. **The in-scope mapping/report edits are already on `director`.**
-   Commits `0915401` and `deec62b` ("Record claude-1 agent turn")
-   touched only `docs/agents/claude-1-next-step.md` and
-   `docs/architecture/clarity-esp-container-mapping.md`, both inside
-   claude-1's base owned paths or the `TASK-019` scope expansion.
-   They are merged into `director` and `claude-1` and contain the
-   accepted design fixes (`assignable_properties: ["position"]`,
-   transaction-local `typ~contents` id).
-
-2. **The `docker/couchdb-bootstrap.sh` change is on the branch via a
-   separate, direct human commit, not a claude-1 merge.** Commit
-   `8b54a0f` ("Set CouchDB max document size during bootstrap",
-   authored Fri May 1 22:19 PT by the human) modified only
-   `docker/couchdb-bootstrap.sh`. It is not a "Record claude-1 agent
-   turn" commit; it is independent of any TASK-019 merge from
-   claude-1. The director's instruction to remove the docker change
-   "from the TASK-019 merge" is therefore already satisfied by
-   construction: there is no pending TASK-019 merge from claude-1
-   that bundles docker, and the docker edit currently lives on
-   `director` only via the human's own authored commit.
-
-This pre-work turn cannot meaningfully "remove" `8b54a0f` from
-claude-1's branch without rewriting or reverting a commit authored
-directly by the human, which would be destructive and outside both
-base owned paths and `TASK-019` scope. Any such revert would need
-explicit director authorization and an explicit scope expansion that
-covers `docker/couchdb-bootstrap.sh`.
-
-### Proposed plan for this turn
-
-1. Produce no edits beyond this file. The in-scope mapping-doc
-   revision-5 fixes are already accepted and merged; the
-   `docker/couchdb-bootstrap.sh` edit is detached from any pending
-   claude-1 TASK-019 merge.
-2. Surface the situation to the director with a concrete open
-   question (Q-19-L below) so the director can either:
-   - confirm the docker concern is resolved by the separate human
-     commit and advance `TASK-019` to `READY_FOR_IMPLEMENTATION` (or
-     to `ACCEPTED` if the director judges the pre-work proposal
-     itself as the deliverable for this design task), or
-   - authorize a follow-up turn that explicitly reverts
-     `docker/couchdb-bootstrap.sh` under a separate Docker/bootstrap
-     task with corresponding scope expansion, or
-   - issue a different mapping-doc edit if a new blocker is
-     identified.
-3. Carry forward all other open questions from revision 5
-   (Q-19-A through Q-19-K) so they remain visible.
-
-### Files this turn will touch
-
-- `docs/agents/claude-1-next-step.md` — base owned path; this file.
-
-### Files intentionally not touched this turn
-
-- `docs/architecture/clarity-esp-container-mapping.md` — already
-  carries the accepted revision-5 fixes; no further design blocker
-  identified.
-- `docs/architecture/jade-tipi-object-model-design-brief.md` — human
-  input; read-only for this task.
-- `docs/orchestrator/tasks/TASK-019-clarity-esp-container-materialization.md`
-  — task-expanded but director-owned; no edit warranted.
-- `docs/agents/claude-1.md`, `docs/agents/claude-1-changes.md` —
-  base owned; no implementation outcome to record.
-- `docker/couchdb-bootstrap.sh` — outside claude-1's base owned
-  paths and outside the `TASK-019` scope expansion; touching it
-  (including a revert) requires explicit director authorization.
-- `jade-tipi/src/main/groovy/...service/`,
-  `jade-tipi/src/test/groovy/...service/`,
-  `jade-tipi/src/integrationTest/groovy/...containers/`,
-  `jade-tipi/src/integrationTest/resources/` — task-expanded for a
-  later implementation turn only; pre-work is not implementation.
-
-### Decisions in the accepted mapping doc (D1–D7), unchanged
-
-- D1 — Prototype materializes only `loc`, `typ`, and `lnk` roots; no
-  `ent`. The accepted materializer supports `loc + create`,
-  `typ + create` for `data.kind == "link_type"`, and `lnk + create`,
-  matching this prototype.
-- D2 — Plate wells stay as `lnk.properties.position` (option A);
-  child-`loc` and hybrid alternatives documented with tradeoffs.
-- D3 — Per-parent-kind position vocabulary (`freezer_slot`,
-  `bin_slot`, `plate_well`, `tube_position`).
-- D4 — Identifier convention embeds source key in short-name plus
-  `properties.source_id` and `properties.source_system`.
-- D5 — Transaction-local `typ~contents` id
-  (`...~018fd849-c0c0-7000-8a01-c1a141e5e500~typ~contents`) so the
-  TASK-019 transaction is self-contained; coexistence with any
-  canonical `typ~contents` is safe because `ContentsLinkReadService`
-  resolves by `kind`/`name`, not by id.
-- D6 — Parentage is single-sourced in `lnk + contents`. No
-  `parent_location_id` on `loc`.
-- D7 — Directional labels live on the `typ~contents` declaration
-  only.
-- Type-definition shape — `typ~contents` root declares
-  `assignable_properties: ["position"]` (flat list of names) plus
-  link-type metadata. No required/optional, no defaults, no
-  per-name schema.
-
-### Blockers and open questions
-
-**New this turn:**
-
-- **Q-19-L — Disposition of `8b54a0f` (`docker/couchdb-bootstrap.sh`).**
-  The director's revision-5 review instructed claude-1 to remove the
-  docker change "from the TASK-019 merge". That edit is no longer
-  bundled with any pending claude-1 merge — it lives on `director`
-  via a separate human-authored commit. Two paths forward; please
-  confirm which the director wants:
-  - **L-1 (proposed default).** Treat the docker concern as resolved
-    by `8b54a0f` and advance `TASK-019`. Claude-1 makes no further
-    edits to `docker/couchdb-bootstrap.sh`.
-  - **L-2.** Open a separate bounded Docker/bootstrap task with
-    explicit ownership over `docker/couchdb-bootstrap.sh`, and
-    decide there whether the `couchdb.max_document_size` setting
-    stays, is parameterized, or is reverted. `TASK-019` does not
-    block on this.
-  - **L-3.** Explicitly authorize a revert of `8b54a0f` under
-    claude-1 with a one-turn scope expansion to
-    `docker/couchdb-bootstrap.sh`. Requires director confirmation
-    that overwriting a direct human commit is intended.
-
-**Carried forward (still open from revision 5):**
-
-- Q-19-A — Prototype acceptance: loc/lnk-only with the four sampled
-  containers (Clarity tube + ESP freezer/bin/plate), or drop the
-  Clarity tube for a single ESP chain.
-- Q-19-C — Integration-spec inclusion. Default proposal: unit tests
-  only; confirm whether a `JADETIPI_IT_KAFKA`-gated integration spec
-  is wanted.
-- Q-19-D — Position vocabulary names: per-parent-kind
-  (`freezer_slot`, `bin_slot`, `plate_well`, `tube_position`) vs a
-  single neutral `slot` key.
-- Q-19-E — Wells recommendation: ship A
-  (`lnk.properties.position`); document C (child-`loc` wells) as
-  forward path.
-- Q-19-F — Type-definition shape: `typ~contents` declares
-  `assignable_properties: ["position"]` plus link-type metadata
-  only.
-- Q-19-G — Parentage exclusivity: D6 makes parentage exclusive to
-  `lnk`; alternatives documented and rejected.
-- Q-19-H — Brief-vs-mapping authority: brief wins; mapping intro
-  states this.
-- Q-19-I — Scope of doc edits: append/narrow in-place only.
-- Q-19-J — Field name `assignable_properties` vs alternatives
-  (`instance_properties`, `assignable`, `properties_declared`).
-- Q-19-K — Transaction-local typ id format
-  (`jade-tipi-org~dev~<txn-uuid>~typ~contents`) reusing the same
-  `txn-uuid` as the four `loc` and two `lnk` roots.
-
-### Stay-in-scope check
+### Stay-in-scope check for this pre-work turn
 
 This turn edits exactly:
 
 - `docs/agents/claude-1-next-step.md` — base owned path.
 
-No other paths modified. No code, tests, Gradle, Docker, MongoDB,
-CouchDB, Kafka, frontend, security, DTO/schema, or HTTP-endpoint
-changes were made or proposed for this turn.
+No other paths are modified. No code, tests, Gradle, Docker,
+MongoDB, CouchDB, Kafka, frontend, security, DTO/schema,
+HTTP-endpoint, `_jt_provenance`, or example changes are made or
+proposed for this turn.
 
-### Verification
+### Open questions / blockers
 
-For this pre-work turn:
+None of these block the proposed plan; they are surfaced so the
+director can confirm or redirect before implementation.
 
-- Static review only.
-- Branch-state checks performed:
-  - `git rev-parse HEAD == git rev-parse origin/director` → equal.
-  - `git diff --stat origin/director..HEAD` → empty.
-  - `git log --oneline -10` confirms the recent commit ordering
-    cited above.
-  - `git show --stat 0915401`, `git show --stat deec62b` confirm
-    those "Record claude-1 agent turn" commits touched only
-    `docs/agents/claude-1-next-step.md` and
-    `docs/architecture/clarity-esp-container-mapping.md` — never
-    `docker/couchdb-bootstrap.sh`.
-  - `git show --stat 8b54a0f` confirms the docker edit is a
-    standalone human commit, not part of any "Record claude-1 agent
-    turn" merge.
-- No CouchDB, Docker, Gradle, MongoDB, Kafka, or HTTP commands were
-  executed this turn.
-
-For a later implementation turn (only after
-`READY_FOR_IMPLEMENTATION` or `PROCEED_TO_IMPLEMENTATION`):
-
-```sh
-./gradlew :jade-tipi:compileGroovy
-./gradlew :jade-tipi:compileTestGroovy
-./gradlew :jade-tipi:test --tests '*ClarityEspContainerMappingSpec*'
-./gradlew :jade-tipi:test
-```
-
-Optional integration coverage (default proposal: skip unless the
-director judges unit-test evidence insufficient):
-
-```sh
-JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*ClarityEspContainerMaterializationSpec*'
-```
-
-Documented setup (only if implementation iteration is blocked by
-local stack state):
-
-```sh
-docker compose -f docker/docker-compose.yml up -d
-./gradlew --stop
-```
-
-If local CouchDB read inspection is requested in a later turn, the
-documented setup remains:
-
-```sh
-docker compose -f docker/docker-compose.yml up -d couchdb
-docker compose -f docker/docker-compose.yml up -d couchdb-init
-```
-
-Local CouchDB credentials, if missing, belong in the orchestrator
-overlay
-`/Users/duncanscott/orchestrator/jade-tipi/config/env/project.env.local`
-as `COUCHDB_USER` / `COUCHDB_PASSWORD`. These are setup steps, not
-product blockers.
+- **Q-20-A — Permissions payload shape (list vs map).**
+  Default proposal D-20-A: list of `{grp_id, level}` entries.
+  Reason: the existing `message.schema.json` `SnakeCaseObject` rule
+  rejects `~`-bearing group IDs as map keys; using a list keeps the
+  schema unchanged. Alternative: relax `propertyNames` for a
+  dedicated `permissions` sub-object (would require a schema edit
+  outside the listed `OWNED_PATHS`, so not proposed unless
+  explicitly authorized).
+- **Q-20-B — `DIRECTION.md` mention of physical shape.** Default
+  proposal: leave `DIRECTION.md` product-focused and document the
+  list shape only in `kafka-transaction-message-vocabulary.md`.
+  Optional alternative: append one clarifying sentence to the
+  existing "Groups And Permissions" section. Either path stays in
+  scope.
+- **Q-20-C — `grp` `type_id` example.** Default proposal: omit
+  `type_id` to mirror `loc`/`typ` examples and avoid introducing a
+  group-typing taxonomy in this task. If the director wants the
+  first canonical example to demonstrate a group `type_id`, I would
+  need direction on whether to also add a companion `typ + create`
+  example for that group type or to reference an unresolved string
+  id.
+- **Q-20-D — Coverage of `grp + create` end-to-end.** The task
+  scope expansion is implementation-side only. No HTTP/Kafka
+  integration test is requested. Default proposal: focused unit
+  tests on `MessageSpec` and `CommittedTransactionMaterializerSpec`
+  only. Confirming because TASK-016 had a parallel
+  `JADETIPI_IT_KAFKA`-gated integration spec; my read of the
+  TASK-020 acceptance criteria is that one is **not** wanted here.
+- **Q-20-E — Owner of `_id` shape for `grp` records.** The
+  generic materializer sets `_id == data.id`; that is consistent
+  with `loc` and `typ`. No change requested. Calling this out
+  because the permissions list keys reference grp `data.id` values,
+  so the `_id` choice matters for any future reverse lookup. The
+  current plan does not introduce a reverse-lookup index; that is
+  future work.
 
 STOP.
