@@ -3,7 +3,7 @@
 ID: TASK-019
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: ACCEPTED
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-017
@@ -88,6 +88,49 @@ VERIFICATION:
   replicated examples as an import/sync task.
 
 LATEST_REPORT:
+Director implementation review on 2026-05-02 accepts `TASK-019`.
+claude-1's latest implementation changed only
+`docs/agents/claude-1-changes.md` and
+`jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/ClarityEspContainerMappingSpec.groovy`.
+The report file is inside claude-1's base owned paths, and the new spec is
+inside the task-expanded service test ownership granted here and in
+`DIRECTIVES.md`.
+
+The accepted prototype is intentionally test-only, matching the mapping doc's
+implementation intent. It exercises the existing
+`CommittedTransactionMaterializer` against the documented Clarity tube and ESP
+freezer/bin/plate examples: four `loc + create` messages, one
+transaction-local `typ + create` `contents` link-type declaration with
+`assignable_properties: ["position"]`, and two `lnk + create` contents edges.
+The assertions pin the expected root-shaped `loc`, `typ`, and `lnk` documents,
+source traceability fields, `_head.provenance`, directional labels on the type
+root only, slot/well position on link properties, and the absence of
+`parent_location_id`-style fields on `loc`. No production source, `ent`
+materialization, Docker/CouchDB, import/sync, endpoint, frontend, security, or
+root-contract change was made.
+
+Director static verification passed with
+`git diff --check origin/director..HEAD`. Director Gradle verification was
+blocked before project code ran by sandbox permissions opening the Gradle
+wrapper cache lock under `/Users/duncanscott/.gradle` (`Operation not
+permitted`) for both `./gradlew :jade-tipi:compileTestGroovy` and
+`./gradlew :jade-tipi:test --tests '*ClarityEspContainerMappingSpec*'
+--rerun-tasks`. In a normal developer shell, use the project-documented setup
+path if needed: `docker compose -f docker/docker-compose.yml up -d`,
+`./gradlew --stop` for stale Gradle daemons, then rerun the two Gradle
+verification commands above. Credited developer verification reported
+`./gradlew :jade-tipi:compileTestGroovy` and the targeted
+`ClarityEspContainerMappingSpec` test passing; the full unit suite was blocked
+only by the existing Mongo-dependent `JadetipiApplicationTests.contextLoads`
+when the Docker stack was not up.
+
+No follow-up task is created automatically. The accepted active goal now has a
+bounded Clarity/ESP container materialization prototype, and the next useful
+unit requires human product direction: e.g. whether to deepen this into
+application import/synchronization, add `ent` materialization for sampled
+analytes, or shift to another read/materialization capability.
+
+Historical report:
 Director review on 2026-05-02 advances this task to
 `READY_FOR_IMPLEMENTATION`.
 

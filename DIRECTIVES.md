@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: HUMAN_REQUIRED
 
 ## Active Focus
 
@@ -24,10 +24,18 @@ from local environment files, not committed project files. No Spring Boot
 CouchDB initialization layer is currently needed; Docker-level replication is
 the accepted mechanism for keeping the local CouchDB populated.
 
-Next product direction: full Clarity and ESP import/synchronization are already
-underway elsewhere. Jade-Tipi's next useful unit is to turn the accepted
-Clarity/ESP container mapping proposal into a small executable prototype that
-materializes real sampled container shapes as `loc`, `typ`, and `lnk` roots.
+`TASK-019` is accepted. Jade-Tipi now has a bounded, executable
+Clarity/ESP container materialization prototype proving that the documented
+Clarity tube and ESP freezer/bin/plate chain can become root-shaped `loc`,
+transaction-local `typ~contents`, and `lnk` roots using the existing
+materializer.
+
+Next product direction requires human selection. Full Clarity and ESP
+import/synchronization are already underway elsewhere, and no automatic
+follow-up task should be routed until the human chooses whether Jade-Tipi should
+deepen this prototype into application import/synchronization, add `ent`
+materialization for sampled analytes, or shift to another read/materialization
+capability.
 
 ## Active Task
 
@@ -42,8 +50,7 @@ materializes real sampled container shapes as `loc`, `typ`, and `lnk` roots.
   accepted.
 - `TASK-018 - Plan Spring CouchDB initialization` is accepted as superseded by
   human direction. Do not route it.
-- `TASK-019 - Prototype Clarity/ESP container materialization` is
-  `READY_FOR_IMPLEMENTATION` and prioritized next.
+- `TASK-019 - Prototype Clarity/ESP container materialization` is accepted.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
@@ -59,11 +66,16 @@ For `TASK-019`, claude-1 may inspect and propose changes within:
 - `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/containers/`
 - `jade-tipi/src/integrationTest/resources/`
 
-Implementation is authorized for `TASK-019` within the paths above. Treat
+`TASK-019` is accepted; the scope expansion above is retained as accepted
+history, not as active authorization for additional implementation. Treat
 `TASK-012` and `TASK-018` as historical context only; do not route or implement
 them as-is.
 
 ## TASK-019 Implementation Direction
+
+Accepted on 2026-05-02. The following direction is retained as accepted
+implementation history for `TASK-019`; it is not an active authorization to
+continue editing.
 
 - Implement the accepted mapping from
   `docs/architecture/clarity-esp-container-mapping.md` as a narrow prototype.
