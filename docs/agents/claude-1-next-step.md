@@ -4,88 +4,165 @@ The developer writes pre-work plans here before implementation begins.
 
 STATUS: PRESENT
 
-## TASK-019 — Prototype Clarity/ESP container materialization (pre-work, revision 2)
+## TASK-019 — Prototype Clarity/ESP container materialization (pre-work, revision 3)
 
 ### Directive summary
 
-`DIRECTIVES.md` signals `REQUEST_NEXT_STEP` and lists `TASK-019` as
-`READY_FOR_PREWORK`. The director's prior pre-work review on
-2026-05-02 kept the task at `READY_FOR_PREWORK` because the prior
-plan was hypothetical and did not actually sample local CouchDB. The
-review explicitly asked the next pre-work turn to run the documented
-read-only CouchDB inspection and write
-`docs/architecture/clarity-esp-container-mapping.md`, and to resolve
-the `ent` materializer gap before implementation by either choosing
-a `loc + lnk` only prototype or stopping to request a separate
-materializer-expansion task.
+`DIRECTIVES.md` signals `REQUEST_NEXT_STEP` and lists `TASK-019` at
+`READY_FOR_PREWORK`. Director correction on 2026-05-02 moved the task
+back from implementation because the Jade-Tipi object JSON format is
+still a design question. The new authoritative input is
+`docs/architecture/jade-tipi-object-model-design-brief.md`, which
+captures human direction that was not available to the revision-2
+pre-work pass.
 
-This revision does both: it samples real records from the locally
-replicated `clarity` and `esp-entity` databases, picks representative
-containers, resolves the `ent` issue by **staying within `loc + lnk`
-only**, and writes a complete mapping design at
-`docs/architecture/clarity-esp-container-mapping.md` with redacted
-source samples, materialized-root JSON, source Kafka transaction
-messages, and operator-runnable verification commands.
+The director's explicit design points to address in this turn:
 
-### What changed in this turn
+1. Collection members are **objects**; not every object is an `ent`.
+2. Object roots separate `_head`, `properties`, and `links`.
+3. Type definitions declare assignable properties only — no
+   required/optional complexity, no defaults.
+4. `parent_location_id` should not be duplicated on `loc` if the
+   canonical parent/child relationship belongs in `lnk`.
+5. `contents` is a link type whose directional labels (`contains`,
+   `contained_by`) belong on the type, not on each instance.
+6. Well position is a candidate property on a `contents` link, but
+   modeling each well as a child `loc` is a documented alternative
+   that needs explicit tradeoffs.
 
-- **CouchDB sampling actually executed.** Local CouchDB at
-  `http://127.0.0.1:5984` was reachable using
-  `COUCHDB_USER`/`COUCHDB_PASSWORD` from the materialized worktree
-  `.env`. `clarity` (2,608,824 docs, ~40.3 GB active) and
-  `esp-entity` (1,510,835 docs, ~10.1 GB active) are populated. All
-  HTTP calls were `GET` and `POST /_find` (read-only); no write verbs
-  were used. No remote CouchDB credentials were used.
-- **Representative records identified.** A Clarity tube
-  (`containers_27-10000`, LIMSID `27-10000`, name `27-170230`, type
-  `Tube`, no physical location) and an ESP three-level
-  Freezer/Bin/Plate chain (`Illumina 130-32` →
-  `PP050` (Bin 9x3, slot `2`) →
-  `27-474501` (96W Plate, well `A1`)) — all `class_name=Container`
-  in ESP. Plates contain `Illumina Library` / `Nucleic Acid`
-  entities at well-keyed positions; those are intentionally excluded
-  from the prototype as `ent` candidates.
-- **`ent` decision resolved without expansion.** Every materialized
-  root in the prototype is a `loc` or `lnk`, plus a reused
-  `typ link_type contents` declaration. The accepted
-  `CommittedTransactionMaterializer` already supports all three; no
-  new collection-action support is needed. No separate
-  materializer-expansion task is requested.
-- **Plate-well representation resolved.** ESP itself encodes well
-  position as a **map key** in the parent's `contents` object, with
-  no separate well-document identity. The prototype follows the
-  canonical `12-create-contents-link-plate-sample.json` precedent and
-  models position as `lnk.properties.position`. Wells are not
-  promoted to `loc` roots.
-- **Design doc written.** `docs/architecture/clarity-esp-container-mapping.md`
-  now contains anchored constraints, redacted source skeletons,
-  per-example mapping tables, full materialized root JSON for all
-  seven proposed roots (4 `loc`, 1 `typ`, 2 `lnk`), the eight
-  source Kafka transaction messages, expected Mongo collection
-  contents, known ambiguities, and reproducible read-only `curl`
-  commands.
+The directive authorizes pre-work only. No code, tests, materializer
+changes, DTO/schema changes, HTTP endpoints, or CouchDB integration
+this turn. Treat `TASK-012` and `TASK-018` as historical context.
+
+### What changed since revision 2
+
+- A **human design brief** was committed at
+  `docs/architecture/jade-tipi-object-model-design-brief.md` (commit
+  `8182203`). It establishes the broader object-model framing and
+  expects agent proposals to surface alternatives and tradeoffs.
+- Revision-2's mapping doc was treated as a single accepted answer.
+  The director clarified it is **evidence**, not the final shape, and
+  the revision-3 mapping doc must respond to the brief explicitly,
+  with tradeoffs.
+- No CouchDB writes, remote credentials, or production reads occurred
+  in revision 2 and none will occur in revision 3. The local
+  `clarity` and `esp-entity` databases sampled in revision 2 remain
+  the evidence base; no re-sampling is needed unless the director
+  asks for additional examples.
+
+### Gap analysis — current mapping doc vs. brief
+
+The revision-2 mapping doc at
+`docs/architecture/clarity-esp-container-mapping.md` already covers
+much of what the brief requires, but does not respond to it
+explicitly. Mapping each brief point to the doc's current state:
+
+| Brief point | Current doc state | Gap to close in revision 3 |
+|---|---|---|
+| 1. Collection members are objects; not every object is `ent`. | Implicit: prototype is `loc`/`lnk` only; `Illumina Library`/`Nucleic Acid` are deliberately excluded as future `ent` candidates (D1). | Add an explicit framing paragraph that distinguishes "object" (any collection member) from "ent" (a specific kind), and call out that `loc`, `lnk`, `typ` are equally first-class objects. |
+| 2. `_head` / `properties` / `links` separation. | Anchored constraints section already requires `_head`, top-level `properties`, denormalized `links: {}` per `TASK-013/014`. | Promote this from an inherited constraint to an explicit design alignment, and clarify that `_head` carries only functional metadata (`schema_version`, `document_kind`, `root_id`, `provenance`) and never user-domain fields. |
+| 3. Type definitions: no required/optional, no defaults. | The `contents` `typ` declaration lists allowed left/right collections and directional labels but says nothing about per-property required/optional or defaults. | Add a "Type definition shape" subsection stating that the prototype's `typ` declarations carry only assignable property names (and link-specific role/label/allowed-collection metadata), with no required-property markers and no defaults — matching the brief. Note future extension as out-of-scope. |
+| 4. No duplicated `parent_location_id` on `loc`. | The four proposed `loc` roots already lack any `parent_location_id` field; parentage lives only in `lnk`. | Make this an explicit design decision (D6) with a one-paragraph justification: parentage is single-sourced in the `contents` link, avoiding split-brain when a child moves. |
+| 5. `contents` directional labels on the type. | The `typ~contents` declaration carries `left_to_right_label = "contains"` and `right_to_left_label = "contained_by"`; the `lnk` instances do not duplicate these. | Call this out as a deliberate decision (D7) and remove any temptation to put labels on instance `properties`. |
+| 6. Wells: link property vs child `loc`. | D2 declares wells as `lnk.properties.position`; child-`loc` is briefly mentioned as the alternative considered. | Expand into a full "Alternatives & tradeoffs" section comparing **A. wells-as-link-property** (current proposal), **B. wells-as-child-`loc`-objects**, and **C. hybrid (child `loc` only when a well has independent identity, e.g. a barcoded position)**. Score each against source-data fit, query ergonomics, identity stability, link-count growth, and round-trip with extension documents. |
+
+The mapping doc is otherwise sound: sampled-evidence section, four
+`loc` roots, one `typ`, two `lnk` roots, identifier convention,
+position vocabulary, source Kafka messages, expected Mongo
+collections, ambiguities A1–A6, and read-only verification commands.
 
 ### Proposed plan
 
 #### Pre-work deliverable (this turn)
 
-Already in this commit:
+Only this file (`docs/agents/claude-1-next-step.md`). The orchestrator
+asked for the pre-work response; no other paths are touched until
+the director accepts the proposed revisions or moves the task to
+`READY_FOR_IMPLEMENTATION`.
 
-- `docs/architecture/clarity-esp-container-mapping.md` — design doc
-  with sampled evidence, mapping decisions, materialized-root
-  examples, source messages, expected collections, ambiguities, and
-  read-only verification commands.
-- `docs/agents/claude-1-next-step.md` — this revision-2 pre-work
-  response.
+#### Pre-work deliverable (next turn, after director accepts this plan)
 
-No production source, schema, or canonical example was edited; no
-CouchDB writes; no remote-CouchDB reads; no Spring CouchDB
-initialization; no Docker/Gradle/security/frontend changes.
+Update `docs/architecture/clarity-esp-container-mapping.md` with:
+
+1. **New section** "Design-brief alignment" near the top, mapping
+   each brief point to a specific decision (D1–D7) in the doc.
+2. **New decisions D6 and D7**:
+   - D6 — Parent/child containment lives in `lnk + contents` only.
+     `loc.properties` carries no `parent_location_id`,
+     `parent_loc_id`, or equivalent. ESP's `container.uuid` is read
+     from the source record but materialized only as the `left`
+     pointer of the corresponding `lnk`.
+   - D7 — Directional labels (`contains`, `contained_by`) live on
+     the `typ~contents` declaration. `lnk` instances carry only
+     `left`, `right`, `type_id`, and instance properties (currently
+     `position`).
+3. **Type-definition shape subsection**: clarify that `typ` roots in
+   this prototype declare assignable property names plus link-type
+   metadata (`left_role`, `right_role`, directional labels, allowed
+   collections) and do not encode required/optional flags or
+   defaults. Reference the brief's "no required/optional complexity,
+   no defaults" position.
+4. **Alternatives & tradeoffs section** for wells:
+   - **A. Wells as `lnk.properties.position`** (current proposal).
+     - Pros: zero new `loc` rows per plate; mirrors ESP's source
+       encoding (well key in `contents` map); already supported by
+       the canonical example and the existing materializer +
+       `ContentsLinkReadService` without change; the position
+       vocabulary travels with the link, so a future plate move
+       carries the slot info inherently.
+     - Cons: wells have no independent identity, so a query like
+       "what is in plate X's well A1?" is a link-filter rather than
+       a direct `loc` lookup; per-well metadata (e.g. a per-well QC
+       flag) would need to live on the `contents` link or be deferred
+       to a future extension document.
+   - **B. Wells as child `loc` objects.**
+     - Pros: every well has a stable `loc` id, queryable directly;
+       per-well metadata fits naturally as `loc.properties`; uniform
+       parent/child treatment with bins and freezers.
+     - Cons: 96 (or 384) `loc` rows per plate — multiplied across
+       thousands of plates that is the dominant write/read cost,
+       and most wells are empty placeholders; identity stability
+       across re-imports is fragile (does a re-imported plate get
+       the same well ids?); ESP source data does not separately
+       identify wells, so well ids would have to be synthesized;
+       a contents link would still be needed plate→well and
+       well→entity, doubling the link-graph.
+   - **C. Hybrid.** Wells become child `loc` only when the source
+     record gives the well its own identity (e.g. a barcoded well or
+     an ESP record with `class_name == "Container"` and a parent
+     reference into the plate). For ESP plates as currently sampled,
+     this collapses to A. For future LIMS data with addressed wells,
+     it admits B per-record without forcing it everywhere.
+     - Pros: matches source identity; no synthetic well ids.
+     - Cons: heterogeneous reads — same plate's wells may be a mix
+       of `loc` rows and link properties; downstream code must
+       handle both shapes.
+   - **Recommendation**: ship A in the prototype; document C as the
+     forward path if/when source data carries addressable well
+     identity; reject B as the default because it pays a 96×–384×
+     row-multiplier cost up front for a query benefit that the
+     current samples do not require.
+5. **Tradeoffs for parentage location**:
+   - Putting parentage in `lnk` (current) lets a child be moved with
+     a single new `lnk` row plus an end-of-life on the previous
+     `lnk` once link versioning lands; putting it on `loc` would
+     require an update to the child plus the link table.
+   - Putting parentage on `loc.properties.parent_location_id` only
+     would split the truth across two storage shapes and lose the
+     symmetry with non-containment relationships.
+6. **Cross-reference the brief**: a single explicit reference at the
+   top of the mapping doc that this design responds to
+   `docs/architecture/jade-tipi-object-model-design-brief.md` and
+   that the brief is the authoritative human direction.
+
+No edits to the brief itself; the brief is the human's input and is
+read-only for this task. No edits to canonical example messages,
+`CommittedTransactionMaterializer`, `ContentsLinkReadService`,
+schemas, frontend, Docker, or Gradle.
 
 #### Implementation deliverable (only after `READY_FOR_IMPLEMENTATION`)
 
-The smallest test-only artifact that proves the mapping survives the
-existing materializer:
+Unchanged from revision 2:
 
 - One Spock unit test under
   `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/`
@@ -95,86 +172,42 @@ existing materializer:
   `CommittedTransactionMaterializer.materialize(snapshot)`, and
   asserts the seven materialized roots match the design-doc JSON
   exactly modulo `_head.provenance.materialized_at`.
+- Default proposal: no integration spec. The materializer already
+  has integration coverage; the prototype's only novelty is the
+  example documents themselves.
 
-Default proposal: **no integration spec** in this prototype. The
-materializer already has integration coverage; the prototype's only
-novelty is the example documents themselves. If the director wants
-real-Mongo coverage of the prototype as well, a single opt-in
-integration spec under
-`jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/containers/`
-gated by `JADETIPI_IT_KAFKA` is the proposed shape; otherwise the
-`integrationTest` directories are not touched.
+### Decisions carried forward from revision 2 (still valid)
 
-No edits to `CommittedTransactionMaterializer`,
-`ContentsLinkReadService`, the Kafka listener, DTOs, schemas,
-canonical-example messages, Docker, Gradle, security, or frontend.
-The prototype's purpose is to *use* the accepted machinery without
-changing it.
+- D1 — Stay at `loc + lnk` for the prototype; no `ent` materialization
+  required. Backed by the sample selection.
+- D2 — Plate wells as `lnk.properties.position` (current default,
+  to be reframed as one of three alternatives in revision 3).
+- D3 — Position vocabulary by parent kind: `freezer_slot`,
+  `bin_slot`, `plate_well`, `tube_position`.
+- D4 — Identifier convention embeds source key in short-name plus
+  `properties.source_id` and `properties.source_system`.
+- D5 — Reuse the canonical `contents` `typ` id; the `typ + create`
+  message is included in the prototype transaction for self-
+  containment, and the materializer's idempotent path covers re-runs.
 
-### Source sampling — what was run this turn
+### New decisions to add in revision 3
 
-All commands ran from the worktree root and used local credentials
-only:
-
-```sh
-set -a; . ./.env; set +a
-AUTH="$COUCHDB_USER:$COUCHDB_PASSWORD"
-BASE=http://127.0.0.1:5984
-
-# Sanity / sizes
-curl -fsS -u "$AUTH" "$BASE/_all_dbs"
-curl -fsS -u "$AUTH" "$BASE/clarity"
-curl -fsS -u "$AUTH" "$BASE/esp-entity"
-
-# Clarity ID prefix discovery and tube fetch
-curl -fsS -u "$AUTH" "$BASE/clarity/_all_docs?limit=12&include_docs=true"
-curl -fsS -u "$AUTH" "$BASE/clarity/_all_docs?startkey=%22containers%22&endkey=%22containers_zzz%22&limit=10"
-curl -fsS -u "$AUTH" "$BASE/clarity/containers_27-10000"
-
-# ESP container/freezer/bin/plate chain discovery
-curl -fsS -u "$AUTH" "$BASE/esp-entity/_all_docs?limit=12&include_docs=true"
-curl -fsS -u "$AUTH" "$BASE/esp-entity/_find" \
-  -H 'content-type: application/json' \
-  -d '{"selector":{"class_name":"Container"},"fields":["_id","name","type_name","class_name","barcode","numeric_id","container","contents","parents","children"],"limit":5}'
-curl -fsS -u "$AUTH" "$BASE/esp-entity/019a420c-728d-7f4c-a817-cd8ba13a1e36"
-curl -fsS -u "$AUTH" "$BASE/esp-entity/_find" \
-  -H 'content-type: application/json' \
-  -d '{"selector":{"class_name":"Container","type_name":"96W Plate"},"fields":["_id","name","type_name","class_name","barcode","container","contents"],"limit":2}'
-```
-
-No request body contained any write verb. Credentials were passed only
-via `-u "$AUTH"`; values are never echoed into the design doc, this
-file, the developer report, or the progress mailbox.
-
-### Decisions resolved (carried into the design doc)
-
-- **D1 — Stay at `loc` + `lnk` for the prototype, no `ent`.**
-  Backed by source evidence: the chosen samples are all
-  `class_name=Container` in ESP and `containers_*` in Clarity, so the
-  whole prototype fits the existing materializer with no expansion.
-- **D2 — Plate wells as `lnk.properties.position`.** ESP encodes
-  positions as map keys in the parent's `contents` object; wells have
-  no independent ESP-document identity. The prototype mirrors the
-  canonical example.
-- **D3 — Position vocabulary** per parent kind: `freezer_slot`,
-  `bin_slot`, `plate_well`, `tube_position`. Casing matches the
-  canonical example and Clarity's literal `1:1` placement value.
-- **D4 — Identifier convention** embeds the source key in the
-  short-name segment plus `properties.source_id` and
-  `properties.source_system` for queryability.
-- **D5 — Reuse the canonical `contents` `typ` id**
-  (`...~typ~contents` from `11-create-contents-type.json`). The
-  `typ + create` message is included in the prototype transaction so
-  the test is self-contained; the materializer's idempotent-duplicate
-  path covers a re-run.
+- D6 — Parent/child containment is single-sourced in `lnk + contents`.
+  `loc.properties` never carries a `parent_location_id`-style field.
+- D7 — Directional labels (`contains`, `contained_by`) are properties
+  of the `typ~contents` link-type declaration only; `lnk` instances
+  do not repeat them. Backed by `ContentsLinkReadService`'s current
+  resolution path, which reads labels from the type and applies them
+  on the read side.
 
 ### Blockers
 
-None. Local CouchDB was reachable, both replicated databases are
-populated, and the design doc is self-contained.
+None. The brief is in scope; the mapping doc is in scope; the local
+CouchDB evidence from revision 2 already covers tubes (Clarity) and
+freezer/bin/plate (ESP). No new sampling or credentials are required.
 
 If a future re-run finds CouchDB stopped, the documented setup
-commands are:
+commands remain:
 
 ```sh
 docker compose -f docker/docker-compose.yml up -d couchdb
@@ -184,31 +217,48 @@ docker compose -f docker/docker-compose.yml up -d couchdb-init
 If the local `.env` lacks `COUCHDB_USER`/`COUCHDB_PASSWORD`, add them
 to the orchestrator overlay
 `/Users/duncanscott/orchestrator/jade-tipi/config/env/project.env.local`
-and re-materialize the worktree.
+and re-materialize the worktree. These are setup steps, not product
+blockers.
 
 ### Open questions for director review
 
-- **Q-19-A — Prototype acceptance.** Does the loc/lnk-only mapping
-  with the four sampled containers (Clarity tube + ESP freezer/bin/
-  plate) match what the director wants from "a tiny set of real
-  LIMS container records"? If a single chain is preferred, the
-  Clarity tube can be dropped without loss to the freezer/bin/plate
-  evidence.
-- **Q-19-B — Identifier convention.** Embed the source key in the
-  short-name segment (current proposal, more legible) versus mint
-  fresh UUIDv7 short-names with a `properties.source_id` field
-  (more uniform, less legible). Either is local to the prototype's
-  example messages and changes nothing in the materializer.
-- **Q-19-C — Integration spec inclusion.** Default proposal is
-  unit-test-only because the materializer's integration coverage
-  already exists. Confirm whether to add one
-  `JADETIPI_IT_KAFKA`-gated integration spec under
-  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/containers/`
-  for the prototype too.
-- **Q-19-D — Position vocabulary names.** `freezer_slot`,
-  `bin_slot`, `plate_well`, `tube_position` chosen for clarity. If
-  the director prefers a single neutral key (e.g. `slot` for all),
-  the prototype switches with zero source code change.
+- **Q-19-E — Wells recommendation.** Revision 3 keeps wells as
+  `lnk.properties.position` (option A) and documents B and C as
+  alternatives. Confirm A is the chosen prototype direction, or
+  redirect to B/C before the mapping doc is rewritten.
+- **Q-19-F — Type-definition shape.** Confirm that `typ` declarations
+  in the prototype should list only assignable property names plus
+  link-type metadata (no required/optional, no defaults). The brief
+  reads that way; this question gives the director a single yes/no
+  before the doc encodes it as decision D7.
+- **Q-19-G — Parentage exclusivity.** Confirm D6 — parentage lives
+  only in `lnk`. The alternative (allow a denormalized
+  `parent_location_id` on `loc` for read ergonomics) is not in the
+  brief but is a frequent LIMS shortcut; rejecting it explicitly in
+  the mapping doc avoids drift later.
+- **Q-19-H — Brief-vs-mapping authority.** When the brief and the
+  revision-2 mapping doc disagree on phrasing, the brief wins by
+  default in revision 3 (it is the human direction). Confirm or
+  invert.
+- **Q-19-I — Scope of revision-3 doc edits.** Should revision 3
+  rewrite-in-place or append a "Design-brief alignment" addendum
+  while leaving the existing decisions untouched? Append is less
+  risky for review; rewrite is cleaner. Default proposal: append
+  the alignment section + alternatives section, edit existing D1–D5
+  prose only where it conflicts with the brief.
+
+Carrying forward from revision 2 (still relevant if the director has
+not implicitly resolved them):
+
+- **Q-19-A — Prototype acceptance.** Loc/lnk-only mapping with the
+  four sampled containers (Clarity tube + ESP freezer/bin/plate),
+  or drop the Clarity tube for a single ESP chain.
+- **Q-19-C — Integration spec inclusion.** Default unit-test-only
+  for the implementation turn; confirm whether a
+  `JADETIPI_IT_KAFKA`-gated integration spec is wanted.
+- **Q-19-D — Position vocabulary names.** Per-parent-kind names
+  (`freezer_slot`, `bin_slot`, `plate_well`, `tube_position`) vs a
+  single neutral `slot` key.
 
 ### Verification proposal
 
@@ -216,10 +266,14 @@ For this pre-work turn:
 
 - Static review only. `git diff --check` and
   `git diff origin/director..HEAD --stat` should show only
-  `docs/architecture/clarity-esp-container-mapping.md` and
-  `docs/agents/claude-1-next-step.md` (plus a later
-  `docs/agents/claude-1-changes.md` after director acceptance).
-- No Gradle, Docker, or MongoDB commands were run.
+  `docs/agents/claude-1-next-step.md` for this commit. No CouchDB,
+  Docker, Gradle, or MongoDB commands were run this turn.
+
+For the next pre-work turn (mapping-doc revision):
+
+- Static review only. The expected diff is
+  `docs/architecture/clarity-esp-container-mapping.md` plus another
+  `docs/agents/claude-1-next-step.md` update.
 
 For the implementation turn (only after `READY_FOR_IMPLEMENTATION`):
 
@@ -230,13 +284,6 @@ For the implementation turn (only after `READY_FOR_IMPLEMENTATION`):
 ./gradlew :jade-tipi:test
 ```
 
-Optional, only if Q-19-C flips:
-
-```sh
-JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest \
-  --tests '*ClarityEspContainerMaterializationSpec*'
-```
-
 If implementation-iteration setup blocks any of these,
 `docker compose -f docker/docker-compose.yml up -d` and
 `./gradlew --stop` are the documented setup steps; blockers are
@@ -245,16 +292,23 @@ product blockers.
 
 ### Stay-in-scope check
 
-All edits in this turn sit inside this task's expanded `OWNED_PATHS`
-plus claude-1's base owned paths:
+This turn edits only `docs/agents/claude-1-next-step.md`, a base
+owned path. The next-turn revision (after director acceptance) would
+edit `docs/architecture/clarity-esp-container-mapping.md`, a
+task-expanded owned path under TASK-019.
 
-- `docs/architecture/clarity-esp-container-mapping.md` — task-expanded
-  path; created in this commit.
-- `docs/agents/claude-1-next-step.md` — base owned path; this file.
-- `docs/agents/claude-1.md`, `docs/agents/claude-1-changes.md` —
-  base owned, not touched in this turn.
+Paths intentionally not touched this turn:
+
+- `docs/architecture/jade-tipi-object-model-design-brief.md` — read
+  only; the human owns this doc.
+- `docs/architecture/clarity-esp-container-mapping.md` — read only
+  this turn; revision deferred to the next pre-work turn pending
+  director acceptance of this plan.
 - `docs/orchestrator/tasks/TASK-019-clarity-esp-container-materialization.md`
   — task-expanded but not touched in this pre-work turn.
+- `docs/agents/claude-1.md`, `docs/agents/claude-1-changes.md` —
+  base owned, not touched in this turn (no implementation outcome
+  to record).
 - `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/`,
   `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/`,
   `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/containers/`,
