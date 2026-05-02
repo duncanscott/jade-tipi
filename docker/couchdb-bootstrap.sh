@@ -1,8 +1,9 @@
 #!/bin/sh
 # CouchDB local-stack bootstrap.
 #
-# Idempotent: ensures the system DBs (_users, _replicator, _global_changes)
-# and the local target DBs (clarity, esp-entity) exist, then upserts one
+# Idempotent: ensures the local node's couchdb.max_document_size matches the
+# source ceiling, the system DBs (_users, _replicator, _global_changes) and
+# the local target DBs (clarity, esp-entity) exist, then upserts one
 # _replicator document per target. The replicator-doc upsert rewrites only
 # when meaningful fields differ to avoid scheduler churn on existing
 # continuous replications.
@@ -15,6 +16,14 @@
 #   JADE_TIPI_COUCHDB_ADMIN_PASSWORD   remote JGI source basic-auth password
 #   JADE_TIPI_COUCHDB_CLARITY_URL      remote source for clarity
 #   JADE_TIPI_COUCHDB_ESP_ENTITY_URL   remote source for esp-entity
+#
+# Optional environment:
+#   COUCHDB_MAX_DOCUMENT_SIZE          local couchdb.max_document_size in
+#                                      bytes. Defaults to 8589934592 (8 GiB)
+#                                      to match the JGI source. The CouchDB
+#                                      3.x default of ~8 MB rejects oversized
+#                                      source docs as doc_write_failures, and
+#                                      the replicator never retries them.
 #
 # Tools: curl, jq (installed by the sidecar entrypoint).
 
@@ -51,6 +60,46 @@ put_status() {
   curl -sS -o /dev/null -w '%{http_code}' \
     --user "$LOCAL_AUTH" -X PUT "$1"
 }
+
+# Idempotently set a CouchDB runtime config value on the local node. Values
+# are JSON-encoded strings on the wire; CouchDB persists writes to
+# /opt/couchdb/etc/local.d/ which lives on the couchdb_config volume.
+ensure_config() {
+  section="$1"
+  key="$2"
+  desired="$3"
+  url="${COUCH_URL}/_node/_local/_config/${section}/${key}"
+  body=$(curl -sS -o /tmp/cfg.body -w '%{http_code}' \
+    --user "$LOCAL_AUTH" "$url")
+  case "$body" in
+    200)
+      have=$(jq -r '.' </tmp/cfg.body)
+      if [ "$have" = "$desired" ]; then
+        echo "config ${section}.${key}: already ${desired}"
+        return 0
+      fi
+      ;;
+    404) ;;
+    *)
+      echo "config ${section}.${key}: GET unexpected status ${body}" >&2
+      return 1
+      ;;
+  esac
+  payload=$(jq -n --arg v "$desired" '$v')
+  put_code=$(curl -sS -o /dev/null -w '%{http_code}' \
+    --user "$LOCAL_AUTH" \
+    -H 'Content-Type: application/json' \
+    -X PUT --data "$payload" "$url")
+  if [ "$put_code" = "200" ]; then
+    echo "config ${section}.${key}: set to ${desired}"
+    return 0
+  fi
+  echo "config ${section}.${key}: PUT unexpected status ${put_code}" >&2
+  return 1
+}
+
+COUCHDB_MAX_DOCUMENT_SIZE="${COUCHDB_MAX_DOCUMENT_SIZE:-8589934592}"
+ensure_config couchdb max_document_size "$COUCHDB_MAX_DOCUMENT_SIZE"
 
 ensure_db() {
   label="$1"
