@@ -4,642 +4,431 @@ The developer writes pre-work plans here before implementation begins.
 
 STATUS: PRESENT
 
-## TASK-017 — Add local CouchDB replication bootstrap (pre-work)
+## TASK-017 — Add local CouchDB replication bootstrap (pre-work, revision 2)
 
 ### Directive summary
 
 Per `DIRECTIVES.md` (signal `REQUEST_NEXT_STEP`, active task `TASK-017`,
-status `READY_FOR_PREWORK`) and
-`docs/orchestrator/tasks/TASK-017-local-couchdb-remote-replication.md`,
-extend `docker/docker-compose.yml` so the local development stack can
-start a single-node CouchDB instance with persistent storage, create
-local databases named exactly `clarity` and `esp-entity`, and
-bootstrap resumable replication from the remote JGI CouchDB URLs in
-`JADE_TIPI_COUCHDB_CLARITY_URL` and `JADE_TIPI_COUCHDB_ESP_ENTITY_URL`
-into those local databases. Remote credentials come from the
-orchestrator-materialized worktree `.env` file via
-`JADE_TIPI_COUCHDB_ADMIN_USERNAME` and `JADE_TIPI_COUCHDB_ADMIN_PASSWORD`
-and must not be committed to the repository, written into images, or
-printed by the bootstrap.
+status `READY_FOR_PREWORK`) and the `TASK-017` task file's most recent
+`LATEST_REPORT:`, the prior pre-work was directionally aligned but
+contained six design blockers that must be resolved before
+`READY_FOR_IMPLEMENTATION`. This revision is scoped to those blockers
+and updates the plan accordingly. All `OWNED_PATHS`, `OUT_OF_SCOPE`,
+and `DESIGN_NOTES` constraints from the task file remain authoritative.
 
-The directive explicitly scopes this task to Docker/local environment
-bootstrap. Pre-work only is authorized — no implementation until the
-director moves `TASK-017` to `READY_FOR_IMPLEMENTATION`.
+The implementation goal is unchanged: extend `docker/docker-compose.yml`
+so the local stack can start a single-node CouchDB with persistent
+storage, create local databases named exactly `clarity` and
+`esp-entity`, and bootstrap resumable replication from
+`JADE_TIPI_COUCHDB_CLARITY_URL` and `JADE_TIPI_COUCHDB_ESP_ENTITY_URL`.
+Pre-work only is authorized.
 
-Scope expansion granted by `DIRECTIVES.md` for `TASK-017`:
+### Resolution of director-flagged blockers
 
-- `docker/`
-- `.env.example`
+#### B1 — Drop compose-side interpolation entirely
+
+The prior plan combined `${JADE_TIPI_COUCHDB_*:?...}` compose-side
+interpolation with `env_file: ["../.env"]`. As the director's local
+verification confirmed, service `env_file:` values do **not** satisfy
+compose-side interpolation; only the shell environment, `--env-file`,
+or a `.env` file in the compose project directory do. The
+orchestrator materializes `.env` at the worktree root, not at
+`docker/.env`, and the documented invocation is plain
+`docker compose -f docker/docker-compose.yml ...` with no
+`--env-file` flag. Compose-side interpolation would therefore fail
+`docker compose -f docker/docker-compose.yml config` in an
+orchestrator worktree.
+
+Resolution: **remove all `${VAR:?...}` interpolation for these
+variables from the compose file.** Both new services receive the
+worktree-root `.env` exclusively via container-side `env_file:
+- ../.env`. The compose file becomes static text with no environment
+references for the new services, so `docker compose ... config` parses
+without any host shell setup. Required-var enforcement moves into the
+bootstrap script, where `: "${VAR:?...}"` early-exit checks fail
+loudly with the variable name only, no value, when a credential is
+missing.
+
+The CouchDB image expects exactly `COUCHDB_USER` and `COUCHDB_PASSWORD`
+to enable single-node admin mode (not the `JADE_TIPI_*` names). Since
+we cannot rename via interpolation under this resolution, the
+`.env` and `.env.example` files declare `COUCHDB_USER` and
+`COUCHDB_PASSWORD` directly as additional non-secret variable names
+(see B5). The CouchDB container reads them via `env_file: ../.env`
+without any compose-side mapping. If the operator has not populated
+them, the bootstrap script will detect admin-party mode by attempting
+an authenticated `GET /_node/_local/_config/admins` and fail loudly
+with a message that names the missing variables — without echoing
+their values.
+
+This makes the documented commands work as the directive specifies.
+No change to the documented `docker compose -f docker/docker-compose.yml
+...` invocation is needed.
+
+#### B2 — Update CouchDB image tag to `couchdb:3.5`
+
+The prior plan pinned `couchdb:3.4`. Director feedback confirms the
+current stable line is 3.5.x. The `couchdb` Docker Hub repository
+publishes tags `latest`, `3.5.1`, `3.5`, `3`, and `3.4.3`/`3.4`.
+
+Resolution: pin to **`couchdb:3.5`**. Rationale:
+
+- 3.5.x is the current stable line; 3.4.x is the previous line and
+  receives only critical fixes.
+- Pinning at major.minor (`3.5`) matches existing project conventions
+  (`mongo:8.0`, `quay.io/keycloak/keycloak:26.0` are major.minor
+  pins; `apache/kafka:4.1.1` is the lone major.minor.patch pin).
+- All design surfaces this plan depends on — `_cluster_setup`,
+  `_replicator`, structured `auth.basic`, `_active_tasks`,
+  `_scheduler/jobs`, `/_up` health probe — are present and stable in
+  3.5.x.
+
+If the director instead wants a deterministic patch pin, change to
+`couchdb:3.5.1`. Either choice is a one-line change in the compose
+file; I will await direction before implementation.
+
+#### B3 — Build replicator JSON with jq, not raw printf
+
+The prior plan built `_replicator` doc bodies via `printf` against a
+template containing `${JADE_TIPI_COUCHDB_*}` substitutions. That is
+not safe for credentials containing JSON-special characters (`"`,
+`\`, control bytes). The CouchDB image's HTTP layer would reject the
+malformed JSON or, worse, accept a doc with mis-quoted credentials
+that fail authentication silently against the remote source.
+
+Resolution: **build all JSON bodies with `jq -n --arg ... --arg
+... '<template>'`.** `jq` produces correctly escaped JSON for any
+input string. Switching the bootstrap sidecar's image to
+`alpine:3.20` — minimal Alpine — and installing `curl` and `jq` via
+`apk add --no-cache --quiet curl jq` in the entrypoint gives both
+tools at ~10 MB extra disk per first run. Subsequent runs reuse the
+image layer cache.
+
+Concretely, each replicator doc is built as:
+
+```sh
+DESIRED_JSON=$(jq -n \
+  --arg id "bootstrap-clarity" \
+  --arg url "$JADE_TIPI_COUCHDB_CLARITY_URL" \
+  --arg user "$JADE_TIPI_COUCHDB_ADMIN_USERNAME" \
+  --arg pass "$JADE_TIPI_COUCHDB_ADMIN_PASSWORD" \
+  --arg target "clarity" \
+  '{
+    _id: $id,
+    source: { url: $url, auth: { basic: { username: $user, password: $pass } } },
+    target: $target,
+    continuous: true,
+    create_target: false,
+    use_checkpoints: true
+  }')
+```
+
+`jq` also reads existing docs from CouchDB for B4's compare step and
+merges `_rev` into a desired doc before re-PUT, all without any
+manual string concatenation. The script never sets `-x` and never
+echoes `$DESIRED_JSON` to stdout/stderr. `curl --user "$U:$P"`
+continues to pass auth via the HTTP header, never as URL userinfo.
+
+#### B4 — Tighten 409 handling to avoid scheduler churn
+
+The prior plan rewrote the `_replicator` document on every 409
+conflict (fetch existing `_rev`, merge into desired, PUT). That risks
+pushing a new document revision on every `up -d` even when the
+replication intent is unchanged, which causes the CouchDB scheduler to
+re-evaluate the job and may briefly interrupt an in-progress
+continuous replication. That conflicts with the directive's
+"must not restart replication from scratch unnecessarily."
+
+Resolution: **rewrite only when meaningful fields differ.** Concretely:
+
+1. PUT desired doc → 201 → done.
+2. 409 → GET existing doc body.
+3. With `jq`, build a normalized projection of both desired and
+   existing on exactly these fields:
+   `source.url`, `source.auth.basic.username`,
+   `source.auth.basic.password`, `target`, `continuous`,
+   `create_target`, `use_checkpoints`.
+   (Excluded: `_id`, `_rev`, `_replication_*` runtime fields,
+   `owner`, and any other server-managed fields the scheduler sets.)
+4. Compare the two normalized projections with `jq -e '. == $other'`
+   (no echoing of the projection content; only the boolean exit
+   status is observed). If equal → log
+   `bootstrap-<id>: already configured (no change)` and continue.
+5. If different → merge `_rev` from the existing doc into the
+   desired doc and PUT. Log
+   `bootstrap-<id>: updated (rev=<short-rev-id>)` — `<short-rev-id>`
+   is the safe `_rev` value, which is server-issued, not credential
+   material. Source URL and credentials are not logged.
+
+This makes steady-state `up -d` runs read-only against `_replicator`
+and leaves the scheduler undisturbed. Credential rotation, URL
+change, or option change still triggers a clean update, which is the
+intended escape hatch.
+
+#### B5 — Separate local CouchDB admin from remote source credentials
+
+The directive says
+`JADE_TIPI_COUCHDB_ADMIN_USERNAME`/`JADE_TIPI_COUCHDB_ADMIN_PASSWORD`
+must come from the local environment file. Director Q1 review asked
+whether reusing those same credentials as the local CouchDB server
+admin is justified. Reusing them broadens where the JGI credential
+pair is stored (now in two roles: HTTP basic auth presented to the
+remote source URL, AND the admin credential of the local CouchDB
+container) and ties an unrelated local admin to a real JGI account.
+
+Resolution: **introduce two new non-secret local-admin variables in
+`.env.example` with placeholder default values** and use them as the
+local CouchDB server admin only. The remote-source credentials keep
+their existing variable names and role.
+
+`.env.example` becomes (added lines marked `+`, existing kept):
+
+```
+# Local CouchDB server admin (used by docker compose only).
+# These are container-only credentials for the local single-node
+# CouchDB. Defaults below are non-secret placeholders suitable for
+# loopback-only local development; override in the worktree .env if
+# desired.
++ COUCHDB_USER=admin
++ COUCHDB_PASSWORD=admin
+
+# Remote JGI CouchDB sources for replication into local databases.
+# Provide real values in the worktree .env (never commit).
+JADE_TIPI_COUCHDB_CLARITY_URL=https://pps-couch-prd.jgi.lbl.gov:6984/clarity
+JADE_TIPI_COUCHDB_ESP_ENTITY_URL=https://pps-couch-prd.jgi.lbl.gov:6984/esp-entity
+JADE_TIPI_COUCHDB_ADMIN_USERNAME=
+JADE_TIPI_COUCHDB_ADMIN_PASSWORD=
+```
+
+`.env.example` already declares only non-secret items, and the
+`COUCHDB_USER=admin`/`COUCHDB_PASSWORD=admin` defaults are
+non-secret placeholders the operator overrides for any non-trivial
+setup. The local CouchDB binds to `127.0.0.1:5984` only, so the
+default placeholder is acceptable for local development; the
+loopback bind is the security boundary.
+
+The CouchDB image consumes `COUCHDB_USER`/`COUCHDB_PASSWORD` as the
+single-node admin via the standard image entrypoint behavior. The
+bootstrap script also consumes the same two variables to authenticate
+admin calls to the local node, and consumes
+`JADE_TIPI_COUCHDB_ADMIN_USERNAME`/`JADE_TIPI_COUCHDB_ADMIN_PASSWORD`
+exclusively for the remote-source `auth.basic` block in replicator
+documents. The two roles are now textually separate.
+
+This addresses Q1 in line with the alternative the director offered.
+The shared orchestrator overlay
+`config/env/project.env.local.example` is outside this task's
+`OWNED_PATHS`; flagged below as Q-r2-1 if the orchestrator overlay
+should also be updated.
+
+#### B6 — Verification matches Compose one-shot semantics
+
+The prior plan claimed a second `docker compose -f
+docker/docker-compose.yml up -d` would rerun `couchdb-init`. With
+`restart: "no"` and the container already in exited-success state,
+plain `up -d` does **not** recreate exited one-shot services; it
+leaves them as-is. This matches `kafka-init` precedent. The previous
+verification step contradicted itself.
+
+Resolution: split the resumability check into two separate proofs.
+
+- **Container/volume persistence.** Run `docker compose -f
+  docker/docker-compose.yml up -d couchdb` a second time. Expected:
+  the existing `couchdb` container reports `running (healthy)`, no
+  recreation, the `couchdb_data` and `couchdb_config` volumes are
+  reused. After `docker compose -f docker/docker-compose.yml down`
+  followed by `up -d couchdb`, the named volumes still hold the
+  data; CouchDB on restart reads the persisted `_replicator` docs
+  and resumes each replication from the per-target checkpoint
+  written by previous runs (no full sequence-0 restart).
+- **Bootstrap-script idempotency.** Re-run the script explicitly:
+  `docker compose -f docker/docker-compose.yml up -d
+  --force-recreate couchdb-init`. Expected: the container is
+  recreated, the script reruns, the `_cluster_setup`/system-DB
+  creation calls take their already-set-up branches (200 / 412),
+  the local DBs already exist (412), and the replicator-doc PUTs
+  hit the 409 → "already configured (no change)" branch from B4.
+  Exit status 0; no scheduler churn; no credential strings printed.
+
+I will document both forms in the implementation `LATEST_REPORT:`
+addendum so future operators understand which command exercises
+which property.
+
+### Updated proposed plan (delta from prior pre-work)
+
+Files that will change (smallest set), unchanged from prior pre-work
+except as noted by B1–B6:
+
+- `docker/docker-compose.yml` — add `couchdb` service (image
+  `couchdb:3.5`, B2; loopback `127.0.0.1:5984`; `env_file: ../.env`,
+  no `${...}` interpolation, B1; `couchdb_data` and `couchdb_config`
+  named volumes; `/_up` healthcheck; no `depends_on`). Add
+  `couchdb-init` sidecar (image `alpine:3.20`, B3; `env_file:
+  ../.env`; `depends_on: { couchdb: { condition: service_healthy } }`;
+  `restart: "no"`; volume-mounts the bootstrap script read-only;
+  entrypoint `apk add` then `exec sh /usr/local/bin/couchdb-bootstrap.sh`).
+  Add `couchdb_data` and `couchdb_config` to the top-level `volumes:`
+  block.
+- `docker/couchdb-bootstrap.sh` — new committed POSIX `sh` script.
+  Required-var enforcement via `: "${VAR:?msg}"` for `COUCHDB_USER`,
+  `COUCHDB_PASSWORD`, `JADE_TIPI_COUCHDB_ADMIN_USERNAME`,
+  `JADE_TIPI_COUCHDB_ADMIN_PASSWORD`,
+  `JADE_TIPI_COUCHDB_CLARITY_URL`, `JADE_TIPI_COUCHDB_ESP_ENTITY_URL`,
+  and `COUCH_URL` (set in compose `environment:` to
+  `http://couchdb:5984` — this is a literal, not interpolated).
+  System-DB creation via direct `PUT /_users`, `PUT /_replicator`,
+  `PUT /_global_changes` (treats 412 as success); replaces the
+  prior `_cluster_setup` call which is unnecessary when
+  `COUCHDB_USER`/`COUCHDB_PASSWORD` are baked in by the image.
+  Local DB creation via `PUT /clarity` and `PUT /esp-entity` (treats
+  412 as success). Replicator-doc creation/update per B3+B4.
+  `set -eu`, no `set -x`. ≤120 lines including comments.
+- `.env.example` — add the two `COUCHDB_USER`/`COUCHDB_PASSWORD`
+  lines with placeholder default values per B5, plus the short
+  comment block. No change to the four existing variables.
 - `docs/orchestrator/tasks/TASK-017-local-couchdb-remote-replication.md`
+  — append a `LATEST_REPORT:` paragraph during implementation
+  describing the new services, the script path, the volumes, and the
+  developer-visible commands for observing replication progress
+  (`/_active_tasks`, `/_scheduler/jobs`, `/_scheduler/docs/_replicator`).
+- `docs/agents/claude-1-changes.md` — append a short report after
+  acceptance.
 
-Plus the developer-owned report file `docs/agents/claude-1-changes.md`
-and this pre-work file (the always-owned developer paths).
+No edit to `README.md`, `application.yml`, `build.gradle`, frontend,
+or any source file. No change to `mongodb`, `keycloak`, `kafka`, or
+`kafka-init` blocks. No new top-level `networks:` block.
 
-Out of scope per `TASK-017` `OUT_OF_SCOPE` and `DIRECTIVES.md`:
-
-- Copying remote data during the task implementation/tests (the
-  human will run the local stack and approve the multi-GB pull
-  separately).
-- Writing to the remote CouchDB databases.
-- Any application code that depends on the replicated CouchDBs
-  (no Spring Boot/Kafka/listener/DTO/materializer/contents read
-  changes).
-- Any change to MongoDB, Kafka, Keycloak, Spring Boot, frontend, or
-  Gradle/build wiring.
-- Making the unit `:jade-tipi:test` or
-  `JADETIPI_IT_KAFKA=1 :jade-tipi:integrationTest` paths require
-  remote CouchDB availability.
-
-### Source inspection (current accepted state)
-
-- **`docker/docker-compose.yml`** currently defines four services:
-  - `mongodb` (`mongo:8.0`) on `127.0.0.1:27017`, named volume
-    `mongodb_data` mounted at `/data/db`.
-  - `keycloak` (`quay.io/keycloak/keycloak:26.0`) on
-    `127.0.0.1:8484`, with a TCP-based `/health/ready` healthcheck on
-    container port 9000.
-  - `kafka` (`apache/kafka:4.1.1`) on `127.0.0.1:9092` (PLAINTEXT
-    host) and internal `kafka:9093`, KRaft single-node, named volume
-    `kafka_data` mounted at `/var/lib/kafka/data`,
-    `depends_on.keycloak: service_healthy`, healthcheck via
-    `kafka-broker-api-versions.sh`.
-  - `kafka-init` (one-shot, `restart: "no"`) creates the global
-    `jdtp_cli_kli` topic if absent, via `entrypoint: ["/bin/bash",
-    "-c"]` + a heredoc-style `command:`. This is the existing precedent
-    for an idempotent bootstrap sidecar in this stack.
-  - Volumes section declares `mongodb_data` and `kafka_data` as named
-    volumes (no driver, default local).
-  - No `version:` key (Compose v2 implicit), no top-level `networks:`
-    block, no `env_file:` on any service. Compose's default
-    behavior reads variables from a `.env` file in the directory that
-    holds `docker-compose.yml` (here: `docker/`), but the orchestrator
-    materializes the worktree's `.env` at the worktree root, **not**
-    inside `docker/`. Variable interpolation in compose only finds the
-    project root `.env` automatically.
-- **`.env.example`** at the worktree root currently lists exactly the
-  four CouchDB-relevant variables — no others:
-  ```
-  JADE_TIPI_COUCHDB_CLARITY_URL=https://pps-couch-prd.jgi.lbl.gov:6984/clarity
-  JADE_TIPI_COUCHDB_ESP_ENTITY_URL=https://pps-couch-prd.jgi.lbl.gov:6984/esp-entity
-  JADE_TIPI_COUCHDB_ADMIN_USERNAME=
-  JADE_TIPI_COUCHDB_ADMIN_PASSWORD=
-  ```
-  The remote URLs already include the source database name as the
-  path component (`/clarity`, `/esp-entity`), which is the URL form
-  the CouchDB `_replicator` `source` field expects.
-- **`config/env/project.env.local.example`** mirrors the four
-  variables above; the orchestrator already ships this overlay
-  (confirmed against `config/orchestrator.local.json` `env.shared`
-  pointing at `config/env/project.env.local` and `materializeAs:
-  ".env"` placing the file at the worktree root). The orchestrator is
-  the source of truth for materializing `.env` into worktrees;
-  `TASK-017` does not need to change orchestrator wiring.
-- **Worktree `.gitignore`** ignores `.env`, `.env.local`,
-  `.env.development.local`, `.env.test.local`, and
-  `.env.production.local` (lines 137–141). The materialized `.env` is
-  therefore not at risk of accidental commit, but a `docker/.env`
-  symlink/copy would NOT be covered by this ignore unless the
-  ignore is broadened. Recommendation below avoids creating a
-  `docker/.env` for that reason.
-- **Docker variable interpolation behavior.** `docker compose -f
-  docker/docker-compose.yml ...` resolves variable references in the
-  compose file by looking, in order, at:
-  1. The shell environment of the invoking process.
-  2. A `--env-file` flag value if passed.
-  3. A `.env` file located next to the compose file
-     (`docker/.env`), if no `--env-file` is passed and no shell var
-     is set.
-  Compose does **not** automatically read the worktree-root `.env`
-  for variable interpolation when `-f docker/docker-compose.yml` is
-  used. The materialized `.env` lives at the worktree root, so the
-  task's expected invocation
-  `docker compose -f docker/docker-compose.yml up -d` will only see
-  those variables if the operator already exported them in the
-  shell, or if compose is told where to find them. We have to choose
-  one of: (a) shipping a project-root or `--project-directory`
-  declaration, (b) requiring `--env-file` on the documented command,
-  or (c) referencing the variables only via container-side `env_file:`
-  rather than via compose interpolation.
-  - **Container env vars** (`environment:` / `env_file:` on a
-    service) are read by Docker Compose from a different lookup
-    path: `env_file:` paths are relative to the compose file
-    location (`docker/`), and unresolved `${VAR}` references inside
-    `environment:` values still go through the interpolation rules
-    above. So pulling the variables in via `env_file:` requires
-    pointing at a path the orchestrator does materialize.
-  - The orchestrator materializes `.env` at the worktree root (one
-    level above `docker/`). The cleanest, least-invasive answer is
-    to set `env_file: ["../.env"]` on the new `couchdb-init`
-    sidecar; the path is relative to the compose file location, so
-    `../.env` resolves to the worktree-root `.env` that the
-    orchestrator already writes. The `couchdb` service itself
-    (which needs `COUCHDB_USER`/`COUCHDB_PASSWORD` for first-run
-    admin creation) gets the same `env_file:` so the same materialized
-    file feeds both.
-- **CouchDB official image behavior** (`couchdb:3.x`, current series
-  3.4 as of 2026-05; image name on Docker Hub is `couchdb`, the
-  `latest` tag tracks 3.x):
-  - On first start, if `COUCHDB_USER` and `COUCHDB_PASSWORD` env vars
-    are set, the entrypoint writes them into
-    `/opt/couchdb/etc/local.d/docker.ini` as a server admin (single
-    node). Subsequent restarts do **not** overwrite that file; the
-    admin persists with the data. This is the recommended way to
-    avoid CouchDB's "admin party" insecure default mode.
-  - Default config opens HTTP API on port `5984`. There is no
-    separate HTTPS listener in the default image; we will bind to
-    `127.0.0.1:5984` on the host and not expose it publicly.
-  - Persistent paths inside the container:
-    - `/opt/couchdb/data` — database files (the actual `clarity` and
-      `esp-entity` shards/data lives here, plus `_replicator`,
-      `_users`, `_global_changes`).
-    - `/opt/couchdb/etc/local.d` — runtime-injected config and the
-      first-run admin docker.ini.
-    Both must live on a named Docker volume (or two named volumes)
-    for restart resilience and replication checkpoint persistence.
-    Replication checkpoints are persisted as documents in the
-    source/target databases by CouchDB itself, so persistence comes
-    "for free" once `/opt/couchdb/data` is on a volume.
-  - Single-node initialization: in 3.x single-node mode (default
-    when `COUCHDB_USER`/`COUCHDB_PASSWORD` are set), the special
-    system databases `_users`, `_replicator`, and `_global_changes`
-    are NOT auto-created. The recommended bootstrap is to call
-    `POST /_cluster_setup` with `{"action":"enable_single_node",
-    "bind_address":"0.0.0.0", "username":"...", "password":"...",
-    "port":5984, "singlenode":true}`, which is idempotent and
-    creates all three system DBs in one call. Re-calling it on an
-    already-set-up node is safe and returns a known status; the
-    init sidecar can swallow the second-run response.
-  - Healthcheck: `GET /_up` returns 200 with `{"status":"ok"}` once
-    the node is fully started (HTTP listener is up and the local
-    Erlang node is healthy). This is the documented liveness probe
-    and is suitable for a Compose `healthcheck:` block.
-- **CouchDB replication mechanism.**
-  - Replication state is persisted as documents in the special
-    `_replicator` database. The recommended pattern is to PUT a
-    document into `_replicator` with a deterministic id (e.g.
-    `bootstrap-clarity`) describing the source URL, target DB name,
-    `continuous: true`, and (optionally) auth.
-  - When the document exists, CouchDB starts the replication job
-    automatically. Restarting the CouchDB process resumes from the
-    last persisted checkpoint without restarting from sequence 0,
-    because replication uses `_local/<replication-id>` checkpoint
-    documents written into both source and target.
-  - Modern (3.2+) replicator doc shape supports inline auth via an
-    `auth.basic.username/password` object on `source` (and on
-    `target` if needed), avoiding embedding credentials directly in
-    the URL string. The doc body looks like:
-    ```json
-    {
-      "_id": "bootstrap-clarity",
-      "source": {
-        "url": "https://pps-couch-prd.jgi.lbl.gov:6984/clarity",
-        "auth": { "basic": { "username": "...", "password": "..." } }
-      },
-      "target": "clarity",
-      "continuous": true,
-      "create_target": false,
-      "use_checkpoints": true
-    }
-    ```
-    (Credentials remain inside the local `_replicator` DB on the
-    persistent volume; they never leave the developer machine and
-    are never committed.)
-  - Idempotency of the PUT: a deterministic doc id makes the PUT
-    return 201 on first run and 409 conflict on subsequent runs.
-    The init script handles both: 201 OK, 409 → the script then
-    fetches the existing `_rev` and either updates the doc (if
-    fields differ) or treats no-op as success. Replication state
-    survives this update because the new doc just becomes another
-    revision driving the same logical job; checkpoints in the
-    target DB are still used.
-  - Replication progress can be observed without printing
-    credentials by querying `GET /_active_tasks` (lists running
-    replication tasks with `docs_read`, `docs_written`,
-    `changes_pending`, `progress`) or
-    `GET /_scheduler/jobs` and `GET /_scheduler/docs/_replicator`
-    (3.x scheduler API). None of these endpoints print the source
-    URL credentials when auth is provided via the structured
-    `auth.basic` object — the source URL is reported without
-    embedded `user:pass`. (If credentials were embedded directly in
-    the URL string instead, `_active_tasks` would echo them; that
-    is the second reason to prefer the structured `auth` form.)
-- **Datasets (per directive).** `clarity` ≈ 40.6 GB, ≈ 4,052,016
-  documents, not growing. `esp-entity` ≈ 11.1 GB, ≈ 1,713,401
-  documents, growing. Combined ≈ 52 GB just for data files; CouchDB
-  will additionally store view indexes (none requested here) and
-  internal metadata. The persistent volume must be sized
-  accordingly. We do not pre-allocate — Docker named volumes grow on
-  the host filesystem as CouchDB writes — but the documentation
-  block needs to call this out.
-- **Existing `.env` materialization.** The current materialized
-  `developers/claude-1/.env` already contains a non-blank
-  `JADE_TIPI_COUCHDB_ADMIN_USERNAME` and
-  `JADE_TIPI_COUCHDB_ADMIN_PASSWORD` (verified by reading the file —
-  values are not reproduced here per the "do not print credentials"
-  directive). So once the proposed compose changes are merged, the
-  bootstrap will have everything it needs in this worktree without
-  any further env edits.
-
-### Proposed plan
-
-#### 1. Compose changes (`docker/docker-compose.yml`)
-
-Add one new service and one new sidecar, plus two new named volumes.
-
-##### 1a. `couchdb` service
-
-Image: `couchdb:3.4` (pin to a 3.4 minor; that line is the current
-LTS-grade release as of 2026-05 and matches the documented
-`_cluster_setup` and structured `auth.basic` replicator behavior
-this plan relies on).
-
-```yaml
-  couchdb:
-    image: couchdb:3.4
-    container_name: jade-tipi-couchdb
-    ports:
-      - "127.0.0.1:5984:5984"
-    environment:
-      COUCHDB_USER: ${JADE_TIPI_COUCHDB_ADMIN_USERNAME:?JADE_TIPI_COUCHDB_ADMIN_USERNAME is required}
-      COUCHDB_PASSWORD: ${JADE_TIPI_COUCHDB_ADMIN_PASSWORD:?JADE_TIPI_COUCHDB_ADMIN_PASSWORD is required}
-    env_file:
-      - ../.env
-    volumes:
-      - couchdb_data:/opt/couchdb/data
-      - couchdb_config:/opt/couchdb/etc/local.d
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5984/_up >/dev/null"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 20s
-```
-
-Key choices and why:
-
-- `env_file: ["../.env"]` — relative to the compose file (`docker/`),
-  resolves to the orchestrator-materialized worktree-root `.env`.
-  Means the `${...}` interpolation also has the values, so the
-  `:?` fallback message fires loudly on a real missing-env shell
-  invocation rather than silently substituting empty strings.
-- `${VAR:?msg}` interpolation — this is compose-side interpolation,
-  not container-side. It fails the `docker compose ...` invocation
-  immediately and prints the named message **without printing the
-  value** (compose's `:?` only prints the variable name and the
-  custom message; it never echoes the value). This satisfies the
-  "fail clearly when required env vars are missing" criterion in
-  the task.
-- Two named volumes (`couchdb_data` for the actual DB data,
-  `couchdb_config` for the runtime-written `local.d/docker.ini` admin
-  password file). Splitting them makes "wipe data only" possible
-  later without losing the admin config, and avoids the gotcha where
-  recreating the data volume but keeping config leaves a stale admin
-  reference. We keep them paired in normal use.
-- `127.0.0.1:5984` only — no remote exposure of the local CouchDB.
-- `/_up` health probe — documented CouchDB readiness signal; safe to
-  poll without auth.
-- No `depends_on:` on Mongo/Kafka/Keycloak. CouchDB has no
-  dependency on the other services, and we do not want to slow the
-  rest of the stack on first run while CouchDB initializes.
-- No new top-level `networks:`. Compose's default network is fine;
-  the init sidecar will reach `http://couchdb:5984` over it.
-
-##### 1b. `couchdb-init` sidecar
-
-Image: `curlimages/curl:8.10.1` (small, has `curl`, no shell — but
-we override the entrypoint with `/bin/sh -c` since the curl image
-ships busybox sh). Alternative considered: `couchdb:3.4` itself (it
-has bash and curl), but pulling a second copy of a ~250 MB image
-just for an init script is wasteful. `curlimages/curl` is ~10 MB.
-
-```yaml
-  couchdb-init:
-    image: curlimages/curl:8.10.1
-    container_name: jade-tipi-couchdb-init
-    depends_on:
-      couchdb:
-        condition: service_healthy
-    env_file:
-      - ../.env
-    environment:
-      COUCH_URL: http://couchdb:5984
-      LOCAL_USER: ${JADE_TIPI_COUCHDB_ADMIN_USERNAME:?JADE_TIPI_COUCHDB_ADMIN_USERNAME is required}
-      LOCAL_PASS: ${JADE_TIPI_COUCHDB_ADMIN_PASSWORD:?JADE_TIPI_COUCHDB_ADMIN_PASSWORD is required}
-    volumes:
-      - ./couchdb-bootstrap.sh:/usr/local/bin/couchdb-bootstrap.sh:ro
-    entrypoint: ["/bin/sh", "/usr/local/bin/couchdb-bootstrap.sh"]
-    restart: "no"
-```
-
-The script lives at `docker/couchdb-bootstrap.sh` (committed,
-non-secret) and is mounted read-only. The script never echoes
-credentials, never `set -x`s, and uses `curl --silent --show-error
---fail-with-body --user "$LOCAL_USER:$LOCAL_PASS" -H 'Content-Type:
-application/json'` for all admin calls. The local admin
-user/password are passed via `-u` (header form, not URL form), so
-they never appear in the script's stdout/stderr.
-
-##### 1c. `docker/couchdb-bootstrap.sh` (new file, idempotent)
-
-Behavior:
-
-1. `set -eu` (no `-x`). `: "${COUCH_URL:?}"` and `: "${LOCAL_USER:?}"`
-   and `: "${LOCAL_PASS:?}"` and `: "${JADE_TIPI_COUCHDB_CLARITY_URL:?}"`
-   and `: "${JADE_TIPI_COUCHDB_ESP_ENTITY_URL:?}"` early-exit checks
-   (the `:?` form prints the name only, not the value).
-2. The remote credentials may be empty in some dev environments.
-   Treat them as required for this bootstrap (the script is run
-   only when the operator wants to start replication). Use the same
-   `:?` early-exit pattern on
-   `JADE_TIPI_COUCHDB_ADMIN_USERNAME`/`JADE_TIPI_COUCHDB_ADMIN_PASSWORD`
-   — they are already required for the local admin.
-3. POST `/_cluster_setup` with `{"action":"enable_single_node",
-   "bind_address":"0.0.0.0", "username":"$LOCAL_USER",
-   "password":"$LOCAL_PASS", "port":5984, "singlenode":true,
-   "ensure_dbs_created":["_users","_replicator","_global_changes"]}`.
-   Accept HTTP 201 on first run; on second run CouchDB returns 200
-   with a status string and the script accepts that too. Any other
-   non-2xx prints the response body (which does not contain
-   credentials) and exits non-zero.
-4. PUT `/clarity` and `/esp-entity` against the local node. CouchDB
-   returns 201 on first creation, 412 (file_exists) on subsequent
-   runs. Treat both as success. Any other status → fail loudly.
-5. Build the replicator doc body for each DB (using `printf` with
-   single-quoted format strings so credentials are never expanded
-   into `set -x` output even if `set -x` is later added):
-   ```json
-   {
-     "_id": "bootstrap-clarity",
-     "source": {
-       "url": "${JADE_TIPI_COUCHDB_CLARITY_URL}",
-       "auth": {
-         "basic": {
-           "username": "${JADE_TIPI_COUCHDB_ADMIN_USERNAME}",
-           "password": "${JADE_TIPI_COUCHDB_ADMIN_PASSWORD}"
-         }
-       }
-     },
-     "target": "clarity",
-     "continuous": true,
-     "create_target": false,
-     "use_checkpoints": true
-   }
-   ```
-   And the analogous doc for `esp-entity`.
-6. PUT each doc to `/_replicator/<id>`. On 201 → done. On 409 →
-   `GET /_replicator/<id>`, extract `_rev` (with a small POSIX
-   `sed`/`grep` match — no jq dependency), inject `_rev` into the
-   doc, PUT again. The contents of the doc are deterministic, so
-   second-run updates are no-ops in steady state but still recover
-   from a partial first run that wrote a malformed doc.
-7. Print one line per DB to stdout: `bootstrap-clarity: ready` /
-   `bootstrap-esp-entity: ready`. Do not print URLs (they contain
-   no credentials in the structured-auth form, but printing them
-   is unnecessary noise) and do not print credentials.
-
-The script is short (≈70 lines including comments), POSIX `sh`
-compatible (busybox-friendly), and uses only `curl` + busybox
-`sed`/`grep`/`printf`. No `jq` is required.
-
-##### 1d. New named volumes
-
-```yaml
-volumes:
-  mongodb_data:
-  kafka_data:
-  couchdb_data:
-  couchdb_config:
-```
-
-##### 1e. No changes to other services
-
-`mongodb`, `keycloak`, `kafka`, and `kafka-init` blocks stay
-byte-identical. No new `depends_on` is added between CouchDB and the
-other services — they are independent.
-
-#### 2. `.env.example` update (worktree root)
-
-The four CouchDB variables are already present and correctly named.
-**No `.env.example` change is required.** The directive's
-"Update `.env.example` only with non-secret variable names and
-placeholder values if additional variables are needed" leaves room
-for additions; the current proposal does not introduce any new
-variable. A small comment block could be added to clarify that the
-same credentials feed both the local admin and the remote-source
-auth (see open question Q1 below); I will defer that comment until
-the director confirms the credential-reuse decision.
-
-#### 3. `docs/orchestrator/tasks/TASK-017-local-couchdb-remote-replication.md`
-
-Append a `LATEST_REPORT:` follow-up paragraph during implementation
-(not now) recording: the new service/sidecar names, the bootstrap
-script path, the two named volumes, and the developer-visible
-commands for observing replication progress
-(`curl -fsS -u "$U:$P" http://127.0.0.1:5984/_active_tasks` and
-`curl -fsS -u "$U:$P" http://127.0.0.1:5984/_scheduler/jobs`). The
-task file's `OWNED_PATHS` already covers this file. No change to
-`TYPE`, `STATUS`, `OWNER`, or `ACCEPTANCE_CRITERIA` from the
-developer side.
-
-#### 4. Optional developer-facing notes
-
-The task says: "Add or update local developer documentation only as
-needed to explain how to start the stack, watch replication
-progress, and recover from interrupted replication." Recommendation:
-keep this scope-minimal. Add at most a short paragraph to
-`README.md` (which is not in claude-1's owned paths and not in the
-task's expanded `OWNED_PATHS`). Therefore: do **not** edit
-`README.md`. Instead, fold the developer guidance into the
-`LATEST_REPORT:` of the task file itself, where it lives next to
-the implementation. If the director wants the guidance in
-`README.md`, request that scope expansion explicitly. Flagged
-under Q3 below.
-
-#### 5. Files that will change (smallest set)
-
-- `docker/docker-compose.yml` — add `couchdb` service, add
-  `couchdb-init` sidecar, add two volumes.
-- `docker/couchdb-bootstrap.sh` — new file (POSIX sh,
-  ~70 lines, no secrets).
-- `docs/orchestrator/tasks/TASK-017-local-couchdb-remote-replication.md`
-  — append `LATEST_REPORT:` paragraph after acceptance.
-- `docs/agents/claude-1-changes.md` — append a short report
-  describing the change (claude-1's standing report file).
-
-No edit to `.env.example`, `README.md`, `application.yml`,
-`build.gradle`, frontend, or any source file.
-
-### Verification proposal
+### Updated verification proposal
 
 After implementation, with the worktree-root `.env` containing
-real values for the four `JADE_TIPI_COUCHDB_*` variables:
+non-empty values for all six variables
+(`COUCHDB_USER`, `COUCHDB_PASSWORD`,
+`JADE_TIPI_COUCHDB_CLARITY_URL`, `JADE_TIPI_COUCHDB_ESP_ENTITY_URL`,
+`JADE_TIPI_COUCHDB_ADMIN_USERNAME`,
+`JADE_TIPI_COUCHDB_ADMIN_PASSWORD`):
 
 1. `docker compose -f docker/docker-compose.yml config` — confirms
-   the file parses, all `${VAR:?...}` placeholders resolve, and
-   `env_file: ["../.env"]` is honored. Expected: full rendered
-   config printed without error. (Per directive criterion 1.)
+   the file parses with **no** dependency on the host shell
+   environment (per B1: no compose-side interpolation). Expected:
+   full rendered config printed without error.
 2. `docker compose -f docker/docker-compose.yml up -d couchdb` —
-   starts only the new service. Expected: `couchdb` container
-   reaches `(healthy)` within ~30s based on the `/_up` probe.
+   starts only the new service. Expected: `couchdb` container reaches
+   `(healthy)` within ~30s based on the `/_up` probe.
 3. `docker compose -f docker/docker-compose.yml up -d couchdb-init`
-   — runs the bootstrap once. Expected: container exits with status
-   `0`, logs show `bootstrap-clarity: ready` and
-   `bootstrap-esp-entity: ready`, no credential strings present.
-4. `curl -fsS -u "$JADE_TIPI_COUCHDB_ADMIN_USERNAME:$JADE_TIPI_COUCHDB_ADMIN_PASSWORD" \
-   http://127.0.0.1:5984/_all_dbs` (operator runs in their own
-   shell, with vars exported from `.env`) — expected output includes
-   `clarity` and `esp-entity` (alongside `_users`, `_replicator`,
-   `_global_changes`).
-5. `curl -fsS -u "$U:$P" http://127.0.0.1:5984/_scheduler/jobs` and
-   `curl -fsS -u "$U:$P" http://127.0.0.1:5984/_active_tasks` —
-   expected: two replication entries (one per DB) with non-zero
-   `docs_read`/`changes_pending` once replication has progressed,
-   no embedded credentials in the source URL field. The directive
-   explicitly says replication progress should be observable
-   without exposing credentials; the structured-auth replicator
-   doc form satisfies that.
-6. **Idempotency check.** Run `docker compose -f
-   docker/docker-compose.yml up -d` a second time. Expected: the
-   `couchdb` service stays running (no recreation), the
-   `couchdb-init` sidecar reruns and exits 0 with the
-   `bootstrap-{clarity,esp-entity}: ready` lines (since the local
-   DBs and replicator docs already exist, the script takes the
-   "already created" / "409 → fetch _rev → no-op PUT" branches).
-   The persistent volume is untouched; replication checkpoints in
-   the target DB make resumed replication seek to the last
-   processed sequence rather than restart from 0.
-7. **Negative env check** (no real network load). Temporarily unset
-   `JADE_TIPI_COUCHDB_ADMIN_USERNAME` in the shell and re-run
-   `docker compose -f docker/docker-compose.yml config`. Expected:
-   compose exits non-zero with the named message
+   — runs the bootstrap once. Expected: container exits with
+   status `0`; logs show
+   `bootstrap-clarity: created` (or `: updated`) and
+   `bootstrap-esp-entity: created` (or `: updated`); no
+   credential strings present.
+4. `docker compose -f docker/docker-compose.yml exec couchdb \
+   curl -fsS -u "$COUCHDB_USER:$COUCHDB_PASSWORD" \
+   http://127.0.0.1:5984/_all_dbs` — operator-side check (vars
+   exported in the operator shell from the `.env` they materialized).
+   Expected output includes `clarity`, `esp-entity`, `_users`,
+   `_replicator`, `_global_changes`.
+5. `... /_scheduler/jobs` and `... /_active_tasks` — expected: two
+   replication entries (one per DB) with non-zero
+   `docs_read`/`changes_pending` once replication has progressed.
+   The structured `auth.basic` form means CouchDB does not echo
+   credentials in the `source` URL field of these endpoints.
+6. **Volume persistence (resumability part 1, per B6).** Run `docker
+   compose -f docker/docker-compose.yml up -d couchdb` a second time.
+   Expected: existing `couchdb` container still `running (healthy)`,
+   no recreation. Then run `down` followed by `up -d couchdb`.
+   Expected: container starts fresh against persisted
+   `couchdb_data`/`couchdb_config` volumes, `_replicator` docs are
+   still present, and replication resumes from per-target
+   checkpoints rather than sequence 0 (visible by stable `progress`
+   percentage in `/_active_tasks` or low-and-rising
+   `changes_pending`).
+7. **Bootstrap-script idempotency (resumability part 2, per B6).**
+   Run `docker compose -f docker/docker-compose.yml up -d
+   --force-recreate couchdb-init`. Expected: container reruns, takes
+   the "already created" branches for system DBs (412), local DBs
+   (412), and "already configured (no change)" branch for replicator
+   docs (B4). Exit status 0; no scheduler churn observable in
+   `/_scheduler/jobs` (no `last_updated` timestamp change on either
+   replicator doc).
+8. **Negative env check** (no real network load). Comment out
+   `JADE_TIPI_COUCHDB_ADMIN_USERNAME` in the worktree `.env` and
+   re-run `docker compose -f docker/docker-compose.yml up -d
+   --force-recreate couchdb-init`. Expected: bootstrap script exits
+   non-zero with the named message
    `JADE_TIPI_COUCHDB_ADMIN_USERNAME is required` (no value
-   printed). Restore the var afterward.
-8. **Remote replication itself is not part of automated
-   verification.** The task explicitly says "Do not copy remote
-   data during task implementation or tests unless the human
-   explicitly runs the local stack and approves the network load."
-   We will document that the human can verify pull progress on
-   their own machine with the `_scheduler/jobs` query above, but
-   we will not start a multi-GB copy in any verification step.
+   printed). Compose `config` itself still parses (per B1, no
+   interpolation). Restore the var afterward.
+9. **Remote replication itself is not part of automated
+   verification.** Per the directive's
+   `OUT_OF_SCOPE`/`VERIFICATION` clauses, no multi-GB pull is
+   triggered as part of acceptance verification.
 
 If local Docker is unavailable, report the documented setup command
 (start Docker Desktop, then `docker compose -f
 docker/docker-compose.yml config`) and the exact blocked command's
 error verbatim, instead of treating Docker unavailability as a
-product blocker. If `curl` is unavailable on the host shell, use
-`docker compose -f docker/docker-compose.yml exec couchdb curl
--fsS -u "$U:$P" http://127.0.0.1:5984/_all_dbs` instead — the
-container has `curl` available. The unit `:jade-tipi:test` and
+product blocker. The unit `:jade-tipi:test` and
 `JADETIPI_IT_KAFKA=1 :jade-tipi:integrationTest` paths are
 unchanged and do not require CouchDB; no Gradle verification is
 proposed for this task.
 
-### Blockers and open questions
+### Open questions (revision 2 — narrowed)
 
-- **Q1 — Credential reuse for local admin and remote source.**
-  `.env.example` lists `JADE_TIPI_COUCHDB_ADMIN_USERNAME`/
-  `_PASSWORD` as a single credential pair. The most ergonomic
-  reading is that these credentials belong to the operator's JGI
-  account and are reused as: (a) the local CouchDB admin
-  (`COUCHDB_USER`/`COUCHDB_PASSWORD` on the container), and (b) the
-  basic-auth credentials presented to the remote JGI source URL
-  inside the replicator doc. The directive says "Use
-  `JADE_TIPI_COUCHDB_ADMIN_USERNAME` and ..._PASSWORD from local
-  environment only", which I read as "from the local env file, not
-  committed", not as "for the local CouchDB admin only".
-  - **Recommendation:** reuse the same pair for both roles. It
-    matches the existing variable naming, requires no `.env.example`
-    changes, and avoids forcing the operator to maintain two
-    distinct admin credentials.
-  - **Alternative if the director prefers separation:** introduce
-    `JADE_TIPI_LOCAL_COUCHDB_USER` and
-    `JADE_TIPI_LOCAL_COUCHDB_PASSWORD` for the container admin,
-    keep `JADE_TIPI_COUCHDB_ADMIN_USERNAME`/`_PASSWORD` for the
-    remote source. This adds two `.env.example` lines (non-secret
-    placeholders) and a small change in the bootstrap script. I
-    will not implement this unless the director directs.
-  - Flagged so the director can confirm the reuse before
-    `READY_FOR_IMPLEMENTATION`.
-- **Q2 — `couchdb:3.4` vs `couchdb:3` vs `couchdb:latest`.** Pinning
-  to `couchdb:3.4` is the safest middle ground (track the LTS
-  series, get patch updates, avoid surprise major bumps). The
-  current image series is 3.4.x as of 2026-05. The
-  `kafka-init`/`kafka` services are also pinned at minor
-  (`apache/kafka:4.1.1`), so this matches the project's pinning
-  style. **Recommendation:** `couchdb:3.4`. Flag if the director
-  prefers a specific patch (e.g. `couchdb:3.4.2`) or the rolling
-  `couchdb:3` tag.
-- **Q3 — Documentation surface.** I am proposing to keep operator
-  guidance inside the `LATEST_REPORT:` section of the task file
-  rather than touching `README.md`. The task file is in the granted
-  `OWNED_PATHS`; `README.md` is not. The task says "Add or update
-  local developer documentation **only as needed**" — the
-  task-file paragraph is the smallest viable surface. If the
-  director wants a `README.md` Quick Start update, please add
-  `README.md` to `OWNED_PATHS` for `TASK-017` explicitly.
-- **Q4 — Compose file `env_file: ["../.env"]`.** This works because
-  the orchestrator materializes `.env` at the worktree root and the
-  `.gitignore` already excludes it. It does mean a developer who
-  runs the stack from a non-orchestrator checkout (i.e. a plain
-  source clone with no orchestrator setup) needs to copy
-  `.env.example` to `.env` themselves before `docker compose ...`.
-  That matches the existing project convention and is what
-  `.env.example` is for. **Recommendation:** ship `env_file:
-  ["../.env"]` as proposed. Flag in case the director wants to
-  rely on `--env-file ../.env` on the documented command line
-  instead (less ergonomic — the operator must remember the flag).
-- **Q5 — `couchdb-init` rerun semantics.** A Compose `up -d` does
-  not, by default, restart a `restart: "no"` exited sidecar; the
-  operator has to run `docker compose up -d couchdb-init` (or `up
-  -d --force-recreate couchdb-init`) to re-trigger the bootstrap.
-  This matches `kafka-init` exactly. **Recommendation:** mirror
-  `kafka-init` precedent. Flag in case the director prefers an
-  always-on `restart: on-failure` policy with the script `exit 0`
-  on success (it would still only run once per `up`, but would
-  re-run if the script crashed).
-- **Q6 — Replicator doc on conflict.** The proposed script handles
-  `409 conflict` by fetching the existing `_rev` and writing it
-  back. An alternative is to skip the update entirely on 409
-  ("doc exists, leave it alone"), which is simpler but means a
-  malformed first-run doc would be sticky. **Recommendation:** do
-  the fetch-and-rewrite path; it is ~5 extra lines of shell and
-  makes the bootstrap self-healing. Flag if the director prefers
-  the simpler skip-on-409 form.
-- **Q7 — Bootstrap retry/wait semantics.** The init sidecar
-  `depends_on: { couchdb: { condition: service_healthy } }` already
-  waits for `/_up`. CouchDB's `/_up` returns OK before
-  `_cluster_setup` can succeed in some edge cases (a brief window
-  during first-startup). **Recommendation:** add a small in-script
-  retry loop (3 attempts, 5s each) around the
-  `/_cluster_setup` POST only. This is a few lines and avoids
-  spurious first-run failures. Flag if the director wants the loop
-  removed in favor of a longer Compose `start_period`.
-- **Q8 — Should we expose `5984` to the host?** The proposal binds
-  to `127.0.0.1:5984:5984`, matching the loopback-binding pattern
-  used by `mongodb`, `keycloak`, and `kafka`. This lets the
-  operator run `curl http://127.0.0.1:5984/...` and (later) point
-  application code at `http://localhost:5984` without going
-  through Compose. **Recommendation:** keep the loopback bind. Flag
-  if the director wants CouchDB reachable only from inside the
-  Compose network.
-- **Q9 — Disk usage warning.** ~52 GB of data is significant for
-  developer laptops. The bootstrap does not refuse to run if
-  available disk is low; CouchDB will simply fail later. We could
-  add a `df`/`stat` precheck in the script, but it is fragile (the
-  Docker volume is on the host filesystem mounted by Docker
-  Desktop, which has its own VM disk on macOS). **Recommendation:**
-  document the ~52 GB figure in the task `LATEST_REPORT:` and the
-  Q3 doc location, do not add a brittle precheck. Flag in case the
-  director wants the precheck.
-- No external blockers. Implementation is one new compose service +
-  one new sidecar + one new committed shell script + one named
-  volume pair, all inside the granted `OWNED_PATHS`. No
-  application code change, no Gradle change, no Spring Boot
-  configuration change. The change is fully reversible by removing
-  the `couchdb` and `couchdb-init` services and the two volumes
-  (the persistent volumes can be deleted by the operator with
-  `docker volume rm jade-tipi_couchdb_data
-  jade-tipi_couchdb_config` if they want a clean slate).
+- **Q-r2-1 — Orchestrator overlay update.** Resolution B5 adds
+  `COUCHDB_USER` and `COUCHDB_PASSWORD` to `.env.example`. The
+  shared orchestrator overlay
+  `config/env/project.env.local.example` (outside this task's
+  `OWNED_PATHS`) currently mirrors the four CouchDB-relevant
+  variables. Should the orchestrator overlay also be updated to
+  include `COUCHDB_USER`/`COUCHDB_PASSWORD` for ergonomics across
+  all developer worktrees? **Recommendation:** yes, but not in this
+  task. Either (a) request scope expansion to add the overlay file
+  to `TASK-017` `OWNED_PATHS`, or (b) leave it for a follow-up
+  orchestrator task. Defaulting to (b) so this task stays
+  Docker-stack-only.
+- **Q-r2-2 — Image tag granularity.** B2 pins to `couchdb:3.5`
+  (major.minor, matches `mongo:8.0` style). If the director instead
+  wants `couchdb:3.5.1` (major.minor.patch, matches
+  `apache/kafka:4.1.1` style), confirm and I will use that. Both
+  are one-line changes.
+- **Q-r2-3 — Sidecar image choice.** B3 switches the bootstrap
+  sidecar to `alpine:3.20` so we can `apk add curl jq`. An
+  alternative is to use the `couchdb:3.5` image itself (already
+  pulled, has `bash` and `curl`, but does not ship `jq`) and add
+  `jq` via `apt-get install -y jq` in the entrypoint (slower,
+  larger). **Recommendation:** keep `alpine:3.20`; it is ~5 MB,
+  installs fast, and isolates the init from the database image.
+  Flag if the director prefers reusing the `couchdb:3.5` image.
+- **Q-r2-4 — Disk-space prefligh** check. Q9 from prior pre-work
+  remains unresolved. The bootstrap script does not check available
+  disk before starting replication; CouchDB will fail later if
+  ~52 GB is unavailable. **Recommendation:** document the
+  ~52 GB figure in the task `LATEST_REPORT:` and skip the brittle
+  precheck (the Docker volume sits on the host filesystem mounted
+  by Docker Desktop, which has its own VM disk on macOS). Flag if
+  the director wants the precheck regardless.
+
+All other prior open questions (Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8 from
+revision 1) are resolved by B1–B6 above:
+
+- Q1 → B5 (separate local admin credentials).
+- Q2 → B2 (`couchdb:3.5`).
+- Q3 → unchanged: keep doc surface in `LATEST_REPORT:`, do not
+  edit `README.md`.
+- Q4 → B1 (no compose-side interpolation; `env_file: ../.env`
+  consumed only as container env).
+- Q5 → B6 (do not claim plain `up -d` reruns the sidecar).
+- Q6 → B4 (compare-then-rewrite, with no-op on equal projections).
+- Q7 → unchanged: a small in-script retry loop (3 attempts, 5s)
+  guards the system-DB-creation calls, which under B1's
+  restructuring replaces the prior `_cluster_setup` call.
+- Q8 → unchanged: keep `127.0.0.1:5984:5984` loopback bind.
+
+### Blockers
+
+None at this point. Implementation is ready once the director moves
+`TASK-017` to `READY_FOR_IMPLEMENTATION`. Implementation will stay
+inside the granted `OWNED_PATHS` (`docker/`, `.env.example`, the
+task file) plus the always-owned developer report file
+`docs/agents/claude-1-changes.md`.
 
 STOP.
