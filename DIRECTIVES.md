@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: HUMAN_REQUIRED
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
@@ -20,11 +20,10 @@ accepted root-shaped path and accepted as `TASK-016`.
 Infrastructure direction: the local Docker stack can run a local CouchDB and
 bootstrap `_replicator` jobs that pull remote production CouchDB datasets into
 same-named local databases for development use. Remote credentials must come
-from local environment files, not committed project files.
-
-No active developer implementation task is assigned. Stop for human input
-before approving the credentialed multi-GB replication run or selecting the
-next application feature/architecture unit.
+from local environment files, not committed project files. The next prioritized
+unit is application-level CouchDB awareness: optional Spring Boot
+configuration, database initialization, and any design-document/view setup that
+Jade-Tipi needs.
 
 ## Active Task
 
@@ -37,13 +36,44 @@ next application feature/architecture unit.
   accepted.
 - `TASK-017 - Add local CouchDB replication bootstrap` is
   accepted.
+- `TASK-018 - Plan Spring CouchDB initialization` is `READY_FOR_PREWORK` and
+  prioritized next.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
 ## Scope Expansion
 
-No current task-specific scope expansion is active. Treat `TASK-012` as
-historical context only; do not route or implement it as-is.
+For `TASK-018`, claude-1 may inspect and propose changes within:
+
+- `jade-tipi/build.gradle`
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/config/`
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/couchdb/`
+- `jade-tipi/src/main/resources/`
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/config/`
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/couchdb/`
+- `docs/orchestrator/tasks/TASK-018-spring-couchdb-initialization.md`
+
+Pre-work only is authorized. Implementation must not begin until the director
+reviews the pre-work and moves `TASK-018` to `READY_FOR_IMPLEMENTATION`.
+Treat `TASK-012` as historical context only; do not route or implement it as-is.
+
+## TASK-018 Pre-work Direction
+
+- Inspect Jade-Tipi's current Spring Boot configuration, dependency, and test
+  patterns, plus accepted `TASK-017`.
+- Inspect the reference project
+  `/Users/duncanscott/git-code/pps/services/pps-esp-entity`, especially its
+  `docker-compose.yml`, `CouchDbInitializer.groovy`,
+  `CouchDbDesignDocumentLoader.groovy`, `RestTemplateConfig.groovy`, and
+  `src/main/resources/couch/` design documents.
+- Propose the smallest optional Spring CouchDB layer for Jade-Tipi:
+  properties, authenticated client wiring, idempotent startup database
+  creation, and design-document/view loading only if there is a clear current
+  use.
+- Preserve Docker-level replication as the source of local CouchDB data.
+  Spring must not reimplement replication or require completed multi-GB pulls
+  for normal startup/tests.
+- Keep credentials local-only and avoid logging secrets.
 
 ## TASK-017 Director Acceptance Review
 
