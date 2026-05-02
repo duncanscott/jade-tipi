@@ -12,10 +12,12 @@ Report file: docs/agents/claude-1-changes.md
 ## Current Assignment
 
 - No active task is currently assigned. `TASK-016 - Plan root-shaped contents
-  HTTP integration coverage` is accepted, and `TASK-012 - Plan contents HTTP
-  read integration coverage` is accepted historical context only.
+  HTTP integration coverage` and `TASK-017 - Add local CouchDB replication
+  bootstrap` are accepted, and `TASK-012 - Plan contents HTTP read integration
+  coverage` is accepted historical context only.
 - Do not implement `TASK-012` as-is. Wait for the director to create or assign
-  a new bounded task after human product/architecture selection.
+  a new bounded task after human product/architecture selection or approval of
+  a credentialed remote-replication verification run.
 - Record pre-work in `docs/agents/claude-1-next-step.md`; record implementation
   outcomes in `docs/agents/claude-1-changes.md` only after implementation is
   approved.

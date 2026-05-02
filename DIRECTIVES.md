@@ -1,12 +1,12 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: HUMAN_REQUIRED
 
 ## Active Focus
 
-`TASK-016` is accepted. The next prioritized bounded unit is `TASK-017`, which
-adds local CouchDB startup/replication support for the real JGI `clarity` and
-`esp-entity` databases.
+`TASK-017` is accepted. The local Docker stack now has a bounded CouchDB
+startup/replication bootstrap for the real JGI `clarity` and `esp-entity`
+databases.
 
 Product direction is recorded in `DIRECTION.md`: Jade-Tipi objects are logical
 JSON objects; the first materializer should use a root-document-only physical
@@ -17,11 +17,14 @@ service now resolves `typ.properties.kind/name` and `_head.provenance`. The
 paused contents HTTP integration coverage has been rewritten around this
 accepted root-shaped path and accepted as `TASK-016`.
 
-Infrastructure direction: the local Docker stack should be able to run a local
-CouchDB and pull remote production CouchDB datasets into same-named local
-databases for development use. Remote credentials must come from local
-environment files, not committed project files. This replication bootstrap is
-prioritized before selecting another application feature task.
+Infrastructure direction: the local Docker stack can run a local CouchDB and
+bootstrap `_replicator` jobs that pull remote production CouchDB datasets into
+same-named local databases for development use. Remote credentials must come
+from local environment files, not committed project files.
+
+No active developer implementation task is assigned. Stop for human input
+before approving the credentialed multi-GB replication run or selecting the
+next application feature/architecture unit.
 
 ## Active Task
 
@@ -33,22 +36,55 @@ prioritized before selecting another application feature task.
 - `TASK-016 - Plan root-shaped contents HTTP integration coverage` is
   accepted.
 - `TASK-017 - Add local CouchDB replication bootstrap` is
-  `READY_FOR_IMPLEMENTATION` and prioritized next.
+  accepted.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
 ## Scope Expansion
 
-For `TASK-017`, claude-1 may implement changes within:
+No current task-specific scope expansion is active. Treat `TASK-012` as
+historical context only; do not route or implement it as-is.
 
-- `docker/`
-- `.env.example`
-- `docs/orchestrator/tasks/TASK-017-local-couchdb-remote-replication.md`
+## TASK-017 Director Acceptance Review
 
-Implementation is authorized after the 2026-05-02 revision 2 pre-work review.
-Treat `TASK-012` as historical context only; do not route or implement it as-is.
+- `TASK-017` implementation review is accepted on 2026-05-02. Scope check
+  passed against claude-1's base assignment plus the explicit `TASK-017`/
+  `DIRECTIVES.md` implementation expansion. The latest merge changed only
+  `.env.example`, `docker/docker-compose.yml`, new
+  `docker/couchdb-bootstrap.sh`,
+  `docs/orchestrator/tasks/TASK-017-local-couchdb-remote-replication.md`, and
+  `docs/agents/claude-1-changes.md`.
+- The accepted implementation adds a loopback-bound `couchdb:3.5` service with
+  persistent `couchdb_data`/`couchdb_config` volumes and a one-shot
+  `alpine:3.20` bootstrap sidecar that consumes the worktree-root `.env`
+  without compose-side credential interpolation.
+- `.env.example` now separates local CouchDB admin placeholders
+  `COUCHDB_USER`/`COUCHDB_PASSWORD` from the remote JGI source credential
+  variables. Remote values remain local-env only and must not be committed.
+- The bootstrap script creates `_users`, `_replicator`, `_global_changes`,
+  `clarity`, and `esp-entity` idempotently; builds replication JSON with `jq`;
+  uses structured `source.auth.basic`; preserves checkpoints; and rewrites
+  existing `_replicator` documents only when meaningful replication fields
+  differ.
+- Director static verification passed with
+  `git diff --check origin/director..HEAD`, `docker compose -f
+  docker/docker-compose.yml config`, and
+  `sh -n docker/couchdb-bootstrap.sh`. A local `jq` projection/compare smoke
+  check passed for JSON-special password characters.
+- Director container-level verification was blocked by local Docker socket
+  permissions, and the current worktree `.env` lacks the new local
+  `COUCHDB_USER`/`COUCHDB_PASSWORD` variables. In a normal developer shell,
+  first add those two non-secret local variables to
+  `/Users/duncanscott/orchestrator/jade-tipi/config/env/project.env.local` and
+  re-materialize the worktree `.env`, then run the task verification commands.
+- No automatic next task was created. The next useful unit requires human
+  approval for credentialed remote replication/network load or human product
+  selection for the next application feature.
 
-## TASK-017 Implementation Direction
+## TASK-017 Historical Implementation Direction
+
+The following direction is retained as accepted implementation history for
+`TASK-017`; it is not an active authorization to continue editing.
 
 - Director review accepted claude-1's revision 2 pre-work. Proceed with the
   bounded implementation in `docker/`, `.env.example`, the task file, and the

@@ -3,7 +3,7 @@
 ID: TASK-017
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: ACCEPTED
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-016
@@ -312,3 +312,71 @@ across ~4,052,016 documents (static); `esp-entity` ~11.1 GB across
 accordingly. The bootstrap does not block on a host-disk preflight;
 operators with constrained Docker Desktop disk should expand the
 Docker virtual disk before approving the network pull.
+
+Director implementation review accepted on 2026-05-02.
+
+Scope and ownership:
+- The latest claude-1 implementation merge changed only `.env.example`,
+  `docker/docker-compose.yml`, new `docker/couchdb-bootstrap.sh`,
+  `docs/orchestrator/tasks/TASK-017-local-couchdb-remote-replication.md`,
+  and `docs/agents/claude-1-changes.md`.
+- Those paths are inside claude-1's base report path plus the explicit
+  `TASK-017`/`DIRECTIVES.md` implementation expansion. No Spring Boot,
+  MongoDB, Kafka, Keycloak, Gradle, security, frontend, DTO/schema,
+  materializer, contents-read, canonical-example, or integration-test path was
+  changed.
+
+Accepted behavior:
+- The compose change adds loopback-bound local CouchDB on `couchdb:3.5`,
+  persistent `couchdb_data` and `couchdb_config` volumes, and a one-shot
+  `alpine:3.20` bootstrap sidecar. The new services consume `../.env` as
+  container environment without compose-side `${...}` interpolation.
+- `.env.example` separates local CouchDB admin placeholders
+  `COUCHDB_USER`/`COUCHDB_PASSWORD` from the remote JGI source credentials
+  `JADE_TIPI_COUCHDB_ADMIN_USERNAME`/
+  `JADE_TIPI_COUCHDB_ADMIN_PASSWORD`.
+- The bootstrap script validates required variable names, creates CouchDB
+  system DBs plus local `clarity` and `esp-entity` databases idempotently,
+  builds `_replicator` documents with `jq`, uses structured
+  `source.auth.basic`, enables checkpoints, and rewrites existing replicator
+  docs only when the meaningful replication intent differs.
+- The implementation report documents progress/recovery commands and the
+  expected approximately 52 GB first-pull footprint. No remote replication or
+  multi-GB data pull was attempted during automated verification.
+
+Director verification:
+- `git diff --name-status origin/director..HEAD` showed only the accepted
+  path set above.
+- `git diff --check origin/director..HEAD` passed.
+- `docker compose -f docker/docker-compose.yml config` passed. The rendered
+  output included the new `couchdb` and `couchdb-init` services and the
+  `couchdb_data`/`couchdb_config` volumes. The rendered config was not copied
+  into this report because compose expands local env-file values.
+- `sh -n docker/couchdb-bootstrap.sh` passed.
+- A local `jq` projection/compare smoke check passed for the script's
+  compare-then-rewrite shape with JSON-special password characters.
+
+Deferred verification and setup notes:
+- `docker compose -f docker/docker-compose.yml ps` and container-level checks
+  were blocked by Docker socket permissions:
+  `permission denied while trying to connect to the docker API at
+  unix:///Users/duncanscott/.docker/run/docker.sock`. This is local tooling
+  access, not a product blocker.
+- The current orchestrator-materialized worktree `.env` still lacks
+  `COUCHDB_USER` and `COUCHDB_PASSWORD`. Per the accepted directive, the setup
+  action is to add those two non-secret local admin variables to
+  `/Users/duncanscott/orchestrator/jade-tipi/config/env/project.env.local` and
+  re-materialize the worktree `.env` through the orchestrator path before
+  running the full container matrix.
+- In a normal developer shell with Docker access and the updated local env, run
+  `docker compose -f docker/docker-compose.yml up -d couchdb`, then
+  `docker compose -f docker/docker-compose.yml up -d couchdb-init`, inspect
+  `_all_dbs`, `_active_tasks`, `_scheduler/jobs`, and
+  `_scheduler/docs/_replicator`, and use
+  `docker compose -f docker/docker-compose.yml up -d --force-recreate
+  couchdb-init` for an explicit idempotency rerun.
+
+No automatic next task was created. The local CouchDB bootstrap goal is
+complete, and the next useful unit either requires human approval to exercise
+credentialed remote replication/network load or human product/architecture
+selection for the next application feature.
