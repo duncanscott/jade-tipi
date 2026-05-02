@@ -25,7 +25,8 @@ accepted root-shaped path before implementation resumes.
 - `TASK-015 - Update contents read service for root-shaped documents` is
   accepted.
 - `TASK-016 - Plan root-shaped contents HTTP integration coverage` is
-  READY_FOR_IMPLEMENTATION and assigned to claude-1.
+  READY_FOR_IMPLEMENTATION and assigned to claude-1 for one focused assertion
+  fix after implementation review.
 - `TASK-012 - Plan contents HTTP read integration coverage` remains prepared
   but is paused. Do not implement `TASK-012` as-is.
 
@@ -35,6 +36,42 @@ Implementation is approved for `TASK-016`. Use
 `docs/orchestrator/tasks/TASK-016-root-shaped-contents-http-integration.md` as
 the task-specific source of truth. Treat `TASK-012` as historical context only;
 do not route or implement it as-is.
+
+## TASK-016 Director Implementation Review
+
+- `TASK-016` implementation review on 2026-05-02 requested one narrow fix
+  before acceptance. Scope and ownership are otherwise acceptable: claude-1
+  changed only `docs/agents/claude-1-changes.md` and the new task-owned
+  `ContentsHttpReadIntegrationSpec.groovy`; no production, Docker, Gradle,
+  security, frontend, fixture, schema, controller, read-service, materializer,
+  Kafka listener, endpoint-join, semantic-validation, pagination, response
+  envelope, update/delete replay, or backfill change was made.
+- The new opt-in spec follows the accepted root-shaped path and uses the
+  expected `RANDOM_PORT` WebFlux context, `JADETIPI_IT_KAFKA` gate, inline
+  Keycloak reachability probe, per-run Kafka topic/consumer group,
+  per-feature ids, DTO helper messages, bounded Mongo polling, exact local
+  cleanup, and authenticated `WebTestClient`.
+- Required fix: make the reverse route assertion prove the same expected flat
+  JSON record as the forward route. In
+  `ContentsHttpReadIntegrationSpec.groovy`, the
+  `GET /api/contents/by-content/{id}` response currently checks identity,
+  `properties.position.label`, and `provenance.txn_id` only. Add assertions for
+  the remaining required `properties.position` fields (`kind`, `row`,
+  `column`) and provenance fields (`commit_id` exists and `msg_uuid` equals
+  the published `lnkMsg.uuid()`), matching the forward-route contract.
+- Keep the follow-up limited to this assertion gap and rerun at least
+  `./gradlew :jade-tipi:compileIntegrationTestGroovy` and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*ContentsHttpReadIntegrationSpec*'`. Reuse the documented setup guidance
+  below if local Docker, Keycloak, Kafka, Mongo, or Gradle locks block
+  verification.
+- Director local verification was blocked before product compilation by
+  sandbox/tooling permissions opening the Gradle wrapper cache lock under
+  `/Users/duncanscott/.gradle` with `Operation not permitted` while running
+  `./gradlew :jade-tipi:compileIntegrationTestGroovy`; this is not a product
+  failure. In a normal developer shell, use
+  `docker compose -f docker/docker-compose.yml up -d` for the local stack and
+  `./gradlew --stop` when stale Gradle daemons are implicated.
 
 ## TASK-016 Director Pre-work Review
 

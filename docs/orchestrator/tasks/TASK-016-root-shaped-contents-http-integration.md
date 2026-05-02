@@ -151,3 +151,58 @@ Docker, Kafka, Mongo, or Keycloak setup blocks verification, report the
 documented setup command `docker compose -f docker/docker-compose.yml up -d`,
 `./gradlew --stop` when stale Gradle daemons are implicated, and the exact
 blocked command/error rather than treating setup as a product blocker.
+
+Director implementation review requested changes on 2026-05-02.
+
+Scope and ownership:
+- The latest claude-1 implementation changed only
+  `docs/agents/claude-1-changes.md` and
+  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/contents/ContentsHttpReadIntegrationSpec.groovy`.
+  The report file is inside claude-1's base owned paths, and the new spec is
+  inside this task's expanded owned implementation paths.
+- No production service/controller/materializer, Kafka listener, DTO/schema,
+  canonical example, Docker, Gradle, security, frontend, fixture/resource,
+  response-envelope, pagination, endpoint-join, semantic-validation,
+  update/delete replay, or backfill change was made.
+
+Accepted parts of the implementation:
+- The new spec is opt-in and uses `@SpringBootTest(webEnvironment =
+  RANDOM_PORT)`, `@AutoConfigureWebTestClient`, `@ActiveProfiles("test")`,
+  `JADETIPI_IT_KAFKA`, an inline Keycloak reachability gate, a per-run Kafka
+  topic and consumer group, per-feature transaction/object ids, authenticated
+  `WebTestClient`, and bounded Mongo polling.
+- The test publishes one transaction with `open`, `loc + create`, canonical
+  `typ + create` `contents`, `lnk + create` with `properties.position`, and
+  `commit`; waits for committed `txn` visibility plus root-shaped `typ` and
+  `lnk` materialization; exercises both existing contents HTTP routes; and
+  includes HTTP 200 `[]` empty-result coverage.
+- Cleanup is exact and local to the spec's Kafka topic, `txn` rows by
+  `txn_id`, and materialized `loc`/`typ`/`lnk` rows by exact `_id`.
+
+Required follow-up before acceptance:
+- In
+  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/contents/ContentsHttpReadIntegrationSpec.groovy`,
+  expand the reverse-route assertion for
+  `GET /api/contents/by-content/{id}` to prove the same expected flat JSON
+  record as the forward route. It currently checks `linkId`, `typeId`, `left`,
+  `right`, `properties.position.label`, and `provenance.txn_id`; add the
+  missing required `properties.position.kind`, `properties.position.row`,
+  `properties.position.column`, `provenance.commit_id` existence, and
+  `provenance.msg_uuid == lnkMsg.uuid()` assertions.
+- Keep the fix limited to this assertion gap. Do not change production code,
+  test resources, Docker/Gradle/security config, DTO/schema/examples, or the
+  existing integration-test helpers.
+
+Director verification:
+- `git diff --check origin/director..HEAD` passed.
+- Local director verification was blocked before product compilation by
+  sandbox/tooling permissions:
+  `./gradlew :jade-tipi:compileIntegrationTestGroovy` failed opening
+  `/Users/duncanscott/.gradle/wrapper/dists/gradle-8.14.3-bin/cv11ve7ro1n3o1j4so8xd9n66/gradle-8.14.3-bin.zip.lck`
+  with `Operation not permitted`.
+- In a normal developer shell, use the documented setup command
+  `docker compose -f docker/docker-compose.yml up -d`, run `./gradlew --stop`
+  if stale Gradle daemons are implicated, then rerun at least
+  `./gradlew :jade-tipi:compileIntegrationTestGroovy` and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*ContentsHttpReadIntegrationSpec*'`.
