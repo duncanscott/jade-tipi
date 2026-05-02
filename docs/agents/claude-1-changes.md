@@ -3,6 +3,231 @@
 The developer writes completed work reports here.
 
 STATUS: READY_FOR_REVIEW
+TASK: TASK-019 — Prototype Clarity/ESP container materialization
+DATE: 2026-05-02
+SUMMARY: Delivered the smallest executable prototype for the documented
+Clarity/ESP container examples by adding a single Spock unit
+specification that drives the existing
+`CommittedTransactionMaterializer` against an in-memory snapshot of
+seven `create` messages — four `loc` (ESP freezer/bin/plate plus the
+Clarity tube), one transaction-local `typ~contents` link-type
+declaration, and two `lnk + contents` edges
+(Freezer→Bin and Bin→Plate). The new spec is the only file changed
+this turn. No production source, materializer, read service, schema,
+fixture, Docker, CouchDB, MongoDB, Kafka, security, frontend, HTTP,
+or `_jt_provenance` behavior was added or modified, and no `ent`
+materialization was introduced. The existing `loc + create`,
+`typ + create` (with `data.kind == "link_type"`), and `lnk + create`
+materializer paths from `TASK-014` and the existing
+`ContentsLinkReadService` resolution path from `TASK-015` are
+exercised verbatim.
+
+Files changed (one):
+
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/ClarityEspContainerMappingSpec.groovy`
+  — new file. 10 Spock feature methods drive
+  `materializer.materialize(snapshot)` against a single committed
+  snapshot whose `messages` are the four documented `loc + create`
+  payloads, the transaction-local `typ~contents + create` payload,
+  and the two `lnk + contents + create` payloads. Open/commit data
+  ride on the snapshot header (`openData`/`commitData`) since the
+  materializer iterates only `snapshot.messages`. The spec uses a
+  `Mock(ReactiveMongoTemplate)` that captures inserts per-collection
+  and preserves insert order, mirroring the existing
+  `CommittedTransactionMaterializerSpec` pattern.
+
+Coverage in the new spec, mapped back to the accepted design
+decisions in `docs/architecture/clarity-esp-container-mapping.md`:
+
+1. `materializes seven prototype roots into loc, typ, and lnk in
+   snapshot order` — `MaterializeResult` reports
+   `materialized = 7`, `skippedUnsupported = 0`,
+   `skippedInvalid = 0`, `duplicateMatching = 0`,
+   `conflictingDuplicate = 0`. Per-collection insert counts are
+   `loc = 4`, `typ = 1`, `lnk = 2`. Insert order is exactly
+   freezer → bin → plate → tube → typ → freezer→bin link →
+   bin→plate link, confirming snapshot-order processing across
+   collections.
+2. `ESP freezer loc has source-traceability properties and no
+   parentage fields` — verifies the freezer root's `_id`/`id`,
+   `collection`, `type_id == null`, empty `links`,
+   `properties.{name, kind, barcode, source_system, source_id,
+   source_type_id}`, the absence of `parent_location_id` /
+   `parent_loc_id` / `parent_id` / `container` (D6), and that
+   `_head` carries `schema_version = 1`, `document_kind = 'root'`,
+   `root_id`, plus the expected `provenance` fields including
+   `txn_id`, `commit_id`, `msg_uuid`, `collection = 'loc'`,
+   `action = 'create'`, `committed_at`, and `materialized_at`.
+3. `ESP bin loc preserves source numeric id and ESP type uuid` —
+   verifies bin-specific properties including
+   `source_numeric_id == 50` and the `019a3a49-3672-...` ESP type
+   uuid alongside the `019a3a60-9628-...` source uuid; reconfirms
+   no `parent_location_id`.
+4. `ESP plate loc carries plate format and dimensions verbatim` —
+   verifies the plate root carries `format = '96-well'`, `rows = 8`,
+   `columns = 12`, plus its source ids; reconfirms no
+   `parent_location_id`.
+5. `Clarity tube loc preserves Clarity LIMSID and source state, with
+   no contents link` — verifies the Clarity tube root carries
+   `source_system = 'clarity'`, `source_id = '27-10000'`,
+   `source_state = 'Populated'`; verifies the intentionally-dropped
+   Clarity-only fields (`placement`, `field`, `xml`,
+   `parent_location_id`) are absent; verifies no materialized `lnk`
+   has the tube as `left` or `right`, matching the design's
+   intentional omission of sample analytes from the prototype.
+6. `typ contents declaration carries assignable_properties:
+   ["position"] and directional labels` — verifies the
+   transaction-local `typ~contents` root with
+   `kind = 'link_type'`, `name = 'contents'`, the description,
+   `left_role`, `right_role`, `left_to_right_label = 'contains'`,
+   `right_to_left_label = 'contained_by'`, `allowed_left_collections
+   = ['loc']`, `allowed_right_collections = ['loc', 'ent']`, and the
+   key brief-alignment fact: `assignable_properties == ['position']`
+   as a flat list. Asserts the absence of `required`, `optional`,
+   and `defaults` to defend the brief's no-required/no-optional/
+   no-defaults rule.
+7. `freezer→bin lnk references transaction-local typ and carries
+   freezer_slot position only on the link` — verifies
+   `type_id == TYP_CONTENTS_ID` (the transaction-local id from D5),
+   `left == LOC_FREEZER_ID`, `right == LOC_BIN_ID`, and
+   `properties.position == { kind: 'freezer_slot', label: '2',
+   slot: 2 }`. Asserts the link instance does not carry
+   `left_to_right_label`, `right_to_left_label`, or per-instance
+   `label` (D7).
+8. `bin→plate lnk carries bin_slot position with row/column
+   components` — verifies `left == LOC_BIN_ID`,
+   `right == LOC_PLATE_ID`, and
+   `properties.position == { kind: 'bin_slot', label: 'A1',
+   row: 'A', column: 1 }`, mirroring the canonical
+   `12-create-contents-link-plate-sample.json` shape applied to a
+   bin slot.
+9. `every materialized root carries the expected schema metadata
+   and provenance shape` — single sweep over all seven roots
+   (4 loc + 1 typ + 2 lnk) confirming
+   `_head.schema_version == 1`,
+   `_head.document_kind == 'root'`,
+   `_head.root_id == doc._id`, provenance `txn_id`/`commit_id`/
+   `committed_at` constants, `provenance.action == 'create'`,
+   `provenance.collection == doc.collection`,
+   `materialized_at instanceof Instant`, `links == [:]`, and
+   absence of any legacy `_jt_provenance` field.
+10. `all four loc roots are free of parent_location_id (D6)` —
+    pure D6 invariant: every loc has none of
+    `parent_location_id`, `parent_loc_id`, `parent_id`, or
+    `container` under `properties`.
+
+Design-decision provenance for the spec:
+
+- D1 (loc + lnk + typ link-type only, no `ent`) — only seven roots
+  are produced and the mock template never receives an insert into
+  `ent`. Position #1 asserts insert-collection counts.
+- D2 (wells as `lnk.properties.position`, not child `loc` rows) —
+  position #8 verifies the well/slot shape on the link; no
+  per-well `loc` row appears in `insertsByCollection.loc`.
+- D3 (per-parent-kind position vocabulary) — positions #7 and #8
+  pin `position.kind` to `freezer_slot` and `bin_slot`
+  respectively, with parent-kind-specific component fields
+  (numeric `slot` for the freezer, `row`/`column` for the bin).
+- D4 (id convention with embedded source key plus
+  `properties.source_id` / `properties.source_system`) —
+  positions #2–#5 verify `source_*` properties on every loc;
+  `_id` constants embed the source key (Clarity LIMSID, ESP UUID
+  prefix).
+- D5 (transaction-local `typ~contents` id) — positions #1 and #7
+  pin `lnk.type_id == TYP_CONTENTS_ID` where
+  `TYP_CONTENTS_ID == jade-tipi-org~dev~018fd849-c0c0-7000-
+  8a01-c1a141e5e500~typ~contents` and `TYP_CONTENTS_ID` shares the
+  same `txn-uuid` as the four `loc` and two `lnk` ids.
+- D6 (parentage exclusive to `lnk + contents`) — positions #2–#5
+  and #10 verify no parentage fields appear on any loc.
+- D7 (directional labels live on the `typ` root only) — position
+  #6 places the labels on `typ.properties.{left_to_right_label,
+  right_to_left_label}` and position #7 verifies they are not
+  repeated on `lnk` instances.
+- Type-definition shape (flat
+  `assignable_properties: ["position"]` plus link-type metadata
+  only) — position #6 asserts the flat list and the absence of
+  `required` / `optional` / `defaults`.
+
+Verification commands and results:
+
+- `./gradlew :jade-tipi:compileTestGroovy` — `BUILD SUCCESSFUL in 9s`,
+  the new spec compiled cleanly. No new compile warnings.
+- `./gradlew :jade-tipi:test --tests
+  '*ClarityEspContainerMappingSpec*' --rerun-tasks` —
+  `BUILD SUCCESSFUL in 4s`. The HTML test report at
+  `jade-tipi/build/reports/tests/test/classes/org.jadetipi.jadetipi.service.ClarityEspContainerMappingSpec.html`
+  shows all 10 feature methods with `class="success"` (passed).
+- `./gradlew :jade-tipi:test` — `122 of 123` passing. The single
+  failure is the pre-existing
+  `JadetipiApplicationTests.contextLoads()`, which fails with
+  `MongoTimeoutException` because the local Docker stack is not up
+  in this worktree. Per project `CLAUDE.md`, that test requires
+  `docker compose -f docker/docker-compose.yml up` to start
+  MongoDB/Keycloak/Kafka before `./gradlew test`. This is a
+  documented setup blocker for the existing context-load test, not
+  a regression introduced by the new spec — the failure is in
+  `JadetipiApplicationTests`, an existing test that does not touch
+  any code added or modified by `TASK-019`.
+- `./gradlew integrationTest` — not run. Per the accepted pre-work
+  Q-19-C default and the task's "narrowest relevant Gradle checks"
+  guidance, integration coverage is not part of this prototype.
+  The proposed integration spec name reserved for any later
+  director-approved integration turn is
+  `*ClarityEspContainerMaterializationSpec*` (distinct from this
+  unit spec's `*ClarityEspContainerMappingSpec*`), to be gated by
+  `JADETIPI_IT_KAFKA=1`.
+
+Setup commands documented (not run, not blockers):
+
+- To run the full unit suite cleanly, including the existing
+  Mongo-dependent context-load test:
+  `docker compose -f docker/docker-compose.yml up -d` to bring up
+  MongoDB/Keycloak/Kafka, then re-run `./gradlew :jade-tipi:test`.
+- If a later turn revisits local CouchDB inspection for a
+  follow-on sample, the documented commands remain
+  `docker compose -f docker/docker-compose.yml up -d couchdb` and
+  `docker compose -f docker/docker-compose.yml up -d couchdb-init`,
+  with `COUCHDB_USER`/`COUCHDB_PASSWORD` in the orchestrator
+  overlay
+  `/Users/duncanscott/orchestrator/jade-tipi/config/env/project.env.local`.
+
+Stay-in-scope check:
+
+- Files touched by this turn:
+  `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/ClarityEspContainerMappingSpec.groovy`
+  (new) and `docs/agents/claude-1-changes.md` (this report).
+- Both paths are inside the active TASK-019 owned paths or the
+  base claude-1 owned paths.
+- `docker/couchdb-bootstrap.sh` is not touched and remains as it
+  is on `director` from the separate human commit `8b54a0f`.
+- No edits to
+  `docs/architecture/clarity-esp-container-mapping.md`,
+  `docs/architecture/jade-tipi-object-model-design-brief.md`,
+  `docs/orchestrator/tasks/TASK-019-clarity-esp-container-materialization.md`,
+  `docs/agents/claude-1.md`, or
+  `docs/agents/claude-1-next-step.md` were made this turn — the
+  director's accepted mapping doc and brief already cover the
+  design, and the prototype implementation does not surface new
+  design questions.
+- No Docker, CouchDB, MongoDB, Kafka, frontend, security, DTO/
+  schema, HTTP-endpoint, or production source changes.
+
+Out-of-scope items intentionally not added (per task
+`OUT_OF_SCOPE`):
+
+- No `ent + create` materialization or fixtures.
+- No Spring Boot CouchDB initialization, design-document loaders,
+  or startup dependencies on CouchDB.
+- No production Clarity/ESP import or sync code.
+- No changes to the root-document contract,
+  `ContentsLinkReadService` read API, Kafka listener, transaction
+  persistence semantics, or production endpoints.
+- No edit to `docker/couchdb-bootstrap.sh`.
+
+---
+
+STATUS: READY_FOR_REVIEW
 TASK: TASK-017 — Add local CouchDB replication bootstrap
 DATE: 2026-05-02
 SUMMARY: Implemented the smallest Docker-native bootstrap for a local
