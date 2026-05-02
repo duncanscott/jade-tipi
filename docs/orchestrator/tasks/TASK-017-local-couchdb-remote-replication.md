@@ -198,3 +198,117 @@ Required verification after implementation remains the task `VERIFICATION`
 section plus the revised pre-work's idempotency checks. Do not trigger a
 multi-GB remote replication beyond creating/persisting the replication jobs
 unless the human explicitly approves the network load.
+
+Implementation on 2026-05-02 by claude-1: READY_FOR_REVIEW.
+
+Implemented the smallest Docker-native bootstrap matching the accepted
+revision-2 plan. Three files changed inside the granted owned paths:
+
+- `docker/docker-compose.yml` — added two services and two named volumes:
+  - `couchdb` (image `couchdb:3.5`, container `jade-tipi-couchdb`,
+    loopback bind `127.0.0.1:5984`, `env_file: ../.env` only — no
+    compose-side `${...}` interpolation, named volumes
+    `couchdb_data:/opt/couchdb/data` and
+    `couchdb_config:/opt/couchdb/etc/local.d`,
+    `restart: unless-stopped`, healthcheck
+    `curl -fsS http://127.0.0.1:5984/_up` with
+    `interval: 10s`, `timeout: 5s`, `retries: 18`, `start_period: 30s`).
+  - `couchdb-init` (image `alpine:3.20`, container
+    `jade-tipi-couchdb-init`,
+    `depends_on: { couchdb: { condition: service_healthy } }`,
+    `env_file: ../.env`, literal `environment: COUCH_URL:
+    http://couchdb:5984`, mounts `./couchdb-bootstrap.sh:` →
+    `/usr/local/bin/couchdb-bootstrap.sh:ro`, entrypoint
+    `/bin/sh -c` running `apk add --no-cache --quiet curl jq` then
+    `exec sh /usr/local/bin/couchdb-bootstrap.sh`,
+    `restart: "no"`).
+  - Top-level `volumes:` block extended with `couchdb_data:` and
+    `couchdb_config:`.
+- `docker/couchdb-bootstrap.sh` — new POSIX `sh` script (`set -eu`, no
+  `set -x`). Validates the seven required vars (COUCH_URL,
+  COUCHDB_USER, COUCHDB_PASSWORD, JADE_TIPI_COUCHDB_ADMIN_USERNAME,
+  JADE_TIPI_COUCHDB_ADMIN_PASSWORD, JADE_TIPI_COUCHDB_CLARITY_URL,
+  JADE_TIPI_COUCHDB_ESP_ENTITY_URL) via `: "${VAR:?...}"` so a missing
+  variable fails loudly with the variable name only and no value. A
+  bounded `/_up` retry tolerates a brief startup window. System DBs
+  (`_users`, `_replicator`, `_global_changes`) and the local target DBs
+  (`clarity`, `esp-entity`) are PUT and treat HTTP 412 as
+  already-present. Each `_replicator` doc is built with `jq -n --arg ...`
+  so URLs/usernames/passwords are JSON-escaped. The doc PUT path
+  treats 201/202 as created and treats 409 as a compare-then-rewrite
+  branch: GET the existing doc, project both desired and existing onto
+  exactly `source.url`, `source.auth.basic.username`,
+  `source.auth.basic.password`, `target`, `continuous`, `create_target`,
+  and `use_checkpoints`, compare with `jq -e '. == $o'`, log
+  `<id>: already configured (no change)` on equality, otherwise merge
+  `_rev` and PUT and log `<id>: updated (prev rev=<7-char prefix>)`.
+  No log line emits credentials, full source URLs, or generated
+  replication JSON. `curl --user "$LOCAL_AUTH"` keeps basic-auth in the
+  HTTP header and never in URL userinfo.
+- `.env.example` — added two new local-only placeholders
+  `COUCHDB_USER=admin` and `COUCHDB_PASSWORD=admin` with a comment
+  block explaining they are non-secret defaults for the loopback-bound
+  local CouchDB single-node admin. The four existing
+  `JADE_TIPI_COUCHDB_*` lines are unchanged and continue to be used
+  exclusively for the remote JGI source URLs and basic-auth.
+
+Verification observed:
+
+- `docker compose -f docker/docker-compose.yml config` rendered the
+  full merged config without error and without any host-shell
+  environment dependency for the new services (per the
+  no-`${...}`-interpolation resolution). Both new services and both
+  new named volumes appear in the rendered output. The pre-existing
+  `mongodb`, `keycloak`, `kafka`, and `kafka-init` services are
+  unchanged.
+
+The full operator-side verification matrix from the pre-work plan
+(`up -d couchdb`, `up -d couchdb-init`, `_all_dbs`/`_scheduler/jobs`
+inspection, `down`+`up -d` resumability proof, `--force-recreate
+couchdb-init` idempotency proof, negative-env check) was not exercised
+in this turn because the worktree-root `.env` does not yet declare
+`COUCHDB_USER` and `COUCHDB_PASSWORD`. Per the directive's setup-action
+escape clause, the documented setup is to add those two variables to
+`/Users/duncanscott/orchestrator/jade-tipi/config/env/project.env.local`
+(non-secret placeholder values such as `admin`/`admin` are acceptable
+for this loopback-bound local CouchDB) and re-materialize the
+worktree `.env` through the orchestrator path before exercising the
+bootstrap. No remote replication was started; per `OUT_OF_SCOPE`, no
+multi-GB pull is part of automated acceptance verification.
+
+Operator commands for observing replication progress and recovering
+without exposing credentials:
+
+- `docker compose -f docker/docker-compose.yml exec couchdb \
+   curl -fsS -u "$COUCHDB_USER:$COUCHDB_PASSWORD" \
+   http://127.0.0.1:5984/_all_dbs` — confirms `clarity`,
+  `esp-entity`, `_users`, `_replicator`, `_global_changes` are
+  present.
+- `... http://127.0.0.1:5984/_active_tasks` — current
+  per-replication progress and `changes_pending`.
+- `... http://127.0.0.1:5984/_scheduler/jobs` — scheduler view of
+  the two replicator docs (`bootstrap-clarity`,
+  `bootstrap-esp-entity`); structured `auth.basic` keeps source
+  credentials out of the response body's URL fields.
+- `... http://127.0.0.1:5984/_scheduler/docs/_replicator` — per-doc
+  replication state across restarts.
+- After `docker compose -f docker/docker-compose.yml down` and a
+  fresh `up -d couchdb`, replication resumes from the per-target
+  checkpoint persisted in `couchdb_data` rather than restarting from
+  sequence 0 (`use_checkpoints: true` is set on every replicator
+  doc).
+- To rerun the bootstrap explicitly without disturbing in-progress
+  replication, use `docker compose -f docker/docker-compose.yml up -d
+  --force-recreate couchdb-init`. The script's compare-then-rewrite
+  branch keeps unchanged replications quiet; only credential or URL
+  changes trigger a `_rev` bump.
+- To roll forward after credential rotation, edit the worktree
+  `.env`, then run the same `--force-recreate couchdb-init` command.
+
+Approximate dataset sizes (per the directive): `clarity` ~40.6 GB
+across ~4,052,016 documents (static); `esp-entity` ~11.1 GB across
+~1,713,401 documents (growing). Combined first-replication payload is
+~52 GB on the host filesystem mounted by Docker Desktop, sized
+accordingly. The bootstrap does not block on a host-disk preflight;
+operators with constrained Docker Desktop disk should expand the
+Docker virtual disk before approving the network pull.

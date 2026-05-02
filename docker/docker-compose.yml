@@ -95,6 +95,45 @@ services:
         echo "Topic jdtp_cli_kli ready"
     restart: "no"
 
+  couchdb:
+    image: couchdb:3.5
+    container_name: jade-tipi-couchdb
+    ports:
+      - "127.0.0.1:5984:5984"
+    env_file:
+      - ../.env
+    volumes:
+      - couchdb_data:/opt/couchdb/data
+      - couchdb_config:/opt/couchdb/etc/local.d
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5984/_up >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+
+  couchdb-init:
+    image: alpine:3.20
+    container_name: jade-tipi-couchdb-init
+    depends_on:
+      couchdb:
+        condition: service_healthy
+    env_file:
+      - ../.env
+    environment:
+      COUCH_URL: http://couchdb:5984
+    volumes:
+      - ./couchdb-bootstrap.sh:/usr/local/bin/couchdb-bootstrap.sh:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache --quiet curl jq >/dev/null && \
+        exec sh /usr/local/bin/couchdb-bootstrap.sh
+    restart: "no"
+
 volumes:
   mongodb_data:
   kafka_data:
+  couchdb_data:
+  couchdb_config:
