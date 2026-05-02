@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
@@ -30,21 +30,16 @@ Clarity tube and ESP freezer/bin/plate chain can become root-shaped `loc`,
 transaction-local `typ~contents`, and `lnk` roots using the existing
 materializer.
 
-Next product direction requires human selection. Full Clarity and ESP
-import/synchronization are already underway elsewhere, and no automatic
-follow-up task should be routed until the human chooses whether Jade-Tipi should
-deepen this prototype into application import/synchronization, add `ent`
-materialization for sampled analytes, or shift to another read/materialization
-capability.
+`TASK-020` is ready for implementation. The next bounded unit is to make `grp`
+records concrete as first-class root-shaped Jade-Tipi objects without adding
+permission enforcement.
 
 ## Active Task
 
-- `TASK-020 - Define and materialize group records` remains
-  `READY_FOR_PREWORK`. claude-1's latest pre-work stayed within its base owned
-  paths, but it must revise the plan before implementation because the proposed
-  permissions list conflicts with the active task's required permissions map
-  and existing project docs. See the `PREWORK_REVIEW` section in
-  `docs/orchestrator/tasks/TASK-020-group-record-model-and-materialization.md`.
+- `TASK-020 - Define and materialize group records` is
+  `READY_FOR_IMPLEMENTATION`. Implement the accepted grp-id-keyed permissions
+  map shape from the latest pre-work with the schema correction recorded in the
+  task file's `PREWORK_REVIEW` section.
 - `TASK-013 - Define materialized root document contract` is accepted.
 - `TASK-014 - Implement root-shaped materialized documents` is
   accepted.
@@ -61,6 +56,11 @@ capability.
   historical context only. Do not implement `TASK-012` as-is.
 
 ## Scope Expansion
+
+For `TASK-020`, claude-1 may implement within the task-owned paths plus this
+explicit schema expansion:
+
+- `libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json`
 
 For `TASK-019`, claude-1 may inspect and propose changes within:
 
