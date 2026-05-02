@@ -3,7 +3,7 @@
 ID: TASK-019
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-017
@@ -48,8 +48,9 @@ ACCEPTANCE_CRITERIA:
 - Write or update `docs/architecture/clarity-esp-container-mapping.md` with
   the source samples, mapping decisions, known ambiguities, and proposed
   verification commands.
-- Implementation must not begin until the director reviews the pre-work and
-  moves this task to `READY_FOR_IMPLEMENTATION`.
+- Implementation may begin only after the director accepts pre-work and moves
+  this task to `READY_FOR_IMPLEMENTATION`; implementation remains limited to
+  the bounded prototype described in `LATEST_REPORT`.
 
 OUT_OF_SCOPE:
 - Do not build or operate the full Clarity/ESP import or synchronization.
@@ -86,41 +87,44 @@ VERIFICATION:
 - Pre-work should propose exact Gradle commands for any later implementation,
   such as `./gradlew :jade-tipi:compileGroovy`,
   `./gradlew :jade-tipi:compileTestGroovy`, and focused tests.
+- Implementation should verify the test-only prototype with
+  `./gradlew :jade-tipi:compileGroovy`,
+  `./gradlew :jade-tipi:compileTestGroovy`,
+  `./gradlew :jade-tipi:test --tests '*ClarityEspContainerMappingSpec*'`,
+  and `./gradlew :jade-tipi:test`.
 - If local CouchDB, replicated data, credentials, Gradle, Docker, or MongoDB
   setup blocks work, report the exact command and error. Do not treat missing
   replicated examples as an import/sync task.
 
 LATEST_REPORT:
-Created by director on 2026-05-02 from human direction. Full Clarity/ESP import
-and synchronization are outside this task; Jade-Tipi should consume a tiny
-sample of already-replicated local CouchDB data and map it to `loc`/`lnk`
-materialized MongoDB documents.
+Director pre-work review on 2026-05-02 accepts claude-1 revision-2 pre-work and
+moves this task to `READY_FOR_IMPLEMENTATION`.
 
-Director pre-work review on 2026-05-02 keeps this task at
-`READY_FOR_PREWORK`. Scope check passed for claude-1's latest pre-work commit:
-only `docs/agents/claude-1-next-step.md` changed, which is inside the
-developer's base owned paths.
+Scope and ownership passed. The latest merge changed only
+`docs/agents/claude-1-next-step.md` and
+`docs/architecture/clarity-esp-container-mapping.md`; both are inside
+claude-1's base assignment or this task's expanded owned paths.
 
-The plan is not ready for implementation yet. The active task requires
-pre-work to sample local CouchDB records from `clarity` and `esp-entity`, but
-the latest plan reports that sampling was not performed. The mapping remains
-hypothetical until the design doc includes one or two redacted source samples,
-field paths, selected representative container examples, and the exact
-read-only commands used to reproduce the selection.
+The design doc now provides the required sampled evidence: redacted source
+skeletons and field paths for Clarity tube `containers_27-10000` and an ESP
+freezer/bin/plate chain, selected representative examples, materialized
+root-document examples, transaction messages, expected Mongo collections, known
+ambiguities, and read-only reproduction commands. The `ent` materializer gap is
+resolved for this bounded prototype by excluding biological/analyte records and
+using only `loc`, `typ link_type`, and `lnk` roots.
 
-The next pre-work turn should run only the documented local CouchDB read
-inspection and write `docs/architecture/clarity-esp-container-mapping.md`.
-If CouchDB is not running, report the documented setup commands rather than a
-product blocker:
+Implementation is authorized as a test-only prototype. Add a focused Spock spec
+under `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/` that builds the
+documented transaction messages, constructs a `CommittedTransactionSnapshot`,
+invokes `CommittedTransactionMaterializer.materialize(snapshot)`, and asserts
+the four `loc`, one `typ`, and two `lnk` roots match the design-doc shape,
+ignoring only `_head.provenance.materialized_at`. Do not change production
+materializer/read-service behavior, DTO/schema contracts, CouchDB/Docker setup,
+HTTP endpoints, security, frontend, or broad import/synchronization machinery.
+
+Director static verification passed with `git diff --check HEAD~1..HEAD`.
+Director local CouchDB re-verification could not connect to
+`127.0.0.1:5984`; this is setup state, not a product blocker. If re-sampling is
+needed, use the documented setup commands:
 `docker compose -f docker/docker-compose.yml up -d couchdb` and then
-`docker compose -f docker/docker-compose.yml up -d couchdb-init`. In this
-director review, local `.env` contained `COUCHDB_USER` and `COUCHDB_PASSWORD`,
-but `curl http://127.0.0.1:5984/_all_dbs` failed because no CouchDB server was
-listening on port 5984.
-
-One design issue must be resolved before implementation: the current accepted
-materializer supports only `loc + create`, `typ + create` for
-`data.kind == "link_type"`, and `lnk + create`. It does not materialize
-`ent + create`. The next plan must either choose examples that can be proven
-with `loc` and `lnk` roots only, or explicitly stop and ask for a separate task
-to add `ent` materialization before including sample entities in the prototype.
+`docker compose -f docker/docker-compose.yml up -d couchdb-init`.

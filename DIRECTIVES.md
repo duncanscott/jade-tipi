@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
@@ -25,9 +25,10 @@ CouchDB initialization layer is currently needed; Docker-level replication is
 the accepted mechanism for keeping the local CouchDB populated.
 
 Next product direction: full Clarity and ESP import/synchronization are already
-underway elsewhere. Jade-Tipi's next useful unit is to inspect a tiny sample of
-already-replicated local CouchDB container records and map one or two real LIMS
-containers into the accepted `loc`/`lnk` root-document model.
+underway elsewhere. Jade-Tipi's next useful unit is a test-only prototype that
+materializes the sampled Clarity/ESP container mapping through the accepted
+`loc`/`lnk` root-document model without adding import or synchronization
+machinery.
 
 ## Active Task
 
@@ -43,13 +44,13 @@ containers into the accepted `loc`/`lnk` root-document model.
 - `TASK-018 - Plan Spring CouchDB initialization` is accepted as superseded by
   human direction. Do not route it.
 - `TASK-019 - Prototype Clarity/ESP container materialization` is
-  `READY_FOR_PREWORK` and prioritized next.
+  `READY_FOR_IMPLEMENTATION` and prioritized next.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
 ## Scope Expansion
 
-For `TASK-019`, claude-1 may inspect and propose changes within:
+For `TASK-019`, claude-1 may implement within:
 
 - `docs/architecture/clarity-esp-container-mapping.md`
 - `docs/orchestrator/tasks/TASK-019-clarity-esp-container-materialization.md`
@@ -58,31 +59,56 @@ For `TASK-019`, claude-1 may inspect and propose changes within:
 - `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/containers/`
 - `jade-tipi/src/integrationTest/resources/`
 
-Pre-work only is authorized. Implementation must not begin until the director
-reviews the pre-work and moves `TASK-019` to `READY_FOR_IMPLEMENTATION`.
+Implementation is authorized only for the bounded prototype described below.
 Treat `TASK-012` and `TASK-018` as historical context only; do not route or
 implement them as-is.
 
-## TASK-019 Pre-work Direction
+## TASK-019 Implementation Direction
 
-- Use local CouchDB only. Read from `http://127.0.0.1:5984/clarity` and
-  `http://127.0.0.1:5984/esp-entity` with local credentials from the
-  materialized environment; do not write to CouchDB or remote services.
-- Sample a small number of likely container documents from Clarity and ESP.
-  Clarity documents are JSON translations of XML API entities and may not have
-  physical location data. ESP may have migrated entities and may include
-  locations or containment.
-- Propose the smallest mapping that persists one or two real containers into
-  MongoDB as Jade-Tipi root-shaped documents: `loc` for containers/positions
-  and `lnk` of type `contents` for containment. Use `ent` only if the sampled
-  source clearly represents a biological/sample entity.
-- Explicitly address plate wells. Either model wells as child `loc` objects,
-  model well position as a `contents` link property such as `well: "A1"`, or
-  defer the decision with evidence from the source samples.
-- Do not build import/synchronization machinery, Spring CouchDB initialization,
-  or broad source schema support.
+- Use `docs/architecture/clarity-esp-container-mapping.md` as the accepted
+  source of truth for the sampled records and mapping decisions.
+- Add the smallest test-only artifact under
+  `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/`, preferably
+  `ClarityEspContainerMappingSpec.groovy`.
+- The test should construct the design-doc transaction messages for the ESP
+  freezer/bin/plate chain and the Clarity tube, build a
+  `CommittedTransactionSnapshot`, invoke
+  `CommittedTransactionMaterializer.materialize(snapshot)`, and assert the
+  four `loc`, one `typ`, and two `lnk` roots match the documented shape,
+  ignoring only `_head.provenance.materialized_at`.
+- Stay within the existing materializer surface: `loc + create`, `typ + create`
+  for `data.kind == "link_type"`, and `lnk + create`. Do not add `ent`
+  materialization, update/delete replay, semantic validation, import jobs,
+  Spring CouchDB initialization, Docker changes, DTO/schema changes, HTTP API
+  changes, frontend changes, or broad source schema support.
+- Default to unit-test-only coverage. Add an opt-in integration spec only if
+  the implementation discovers a real behavior gap that unit tests cannot cover
+  and keeps it under the task-owned containers integration-test path.
+- Verification should include `./gradlew :jade-tipi:compileGroovy`,
+  `./gradlew :jade-tipi:compileTestGroovy`, the focused
+  `*ClarityEspContainerMappingSpec*` test, and `./gradlew :jade-tipi:test`.
 
 ## TASK-019 Director Pre-work Review
+
+- Director review on 2026-05-02 accepts claude-1 revision-2 pre-work and moves
+  `TASK-019` to `READY_FOR_IMPLEMENTATION` with
+  `SIGNAL: PROCEED_TO_IMPLEMENTATION`. Scope check passed: the latest merge
+  changed only `docs/agents/claude-1-next-step.md` and the task-owned
+  `docs/architecture/clarity-esp-container-mapping.md`.
+- The design doc now contains sampled Clarity/ESP source skeletons, field
+  paths, representative Clarity tube and ESP freezer/bin/plate examples,
+  materialized root examples, transaction messages, known ambiguities, and
+  read-only reproduction commands. The chosen prototype resolves the `ent`
+  gap by using only `loc`, `typ link_type`, and `lnk` roots.
+- Director static verification passed with
+  `git diff --check HEAD~1..HEAD`. Local CouchDB re-verification in the
+  director shell was blocked because nothing was listening on
+  `127.0.0.1:5984`; this is setup state, not a product blocker. Use the
+  documented setup commands if re-sampling is needed:
+  `docker compose -f docker/docker-compose.yml up -d couchdb` and
+  `docker compose -f docker/docker-compose.yml up -d couchdb-init`.
+
+## TASK-019 Historical Pre-work Review
 
 - Director review on 2026-05-02 keeps `TASK-019` at `READY_FOR_PREWORK` with
   `SIGNAL: REQUEST_NEXT_STEP`. claude-1 stayed within its base owned paths for
