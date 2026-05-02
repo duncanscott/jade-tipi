@@ -4,218 +4,242 @@ The developer writes pre-work plans here before implementation begins.
 
 STATUS: PRESENT
 
-## TASK-019 — Prototype Clarity/ESP container materialization (pre-work, revision 5)
+## TASK-019 — Prototype Clarity/ESP container materialization (pre-work, revision 6)
 
 ### Directive summary
 
-`DIRECTIVES.md` signals `REQUEST_NEXT_STEP`. `TASK-019` is at
-`READY_FOR_PREWORK`. The director's 2026-05-02 review of the
-revision-4 mapping doc accepted scope and base structure (D1–D7,
-wells alternatives, parentage tradeoffs, design-brief alignment) but
-flagged two remaining acceptance blockers that this turn must fix
-directly in `docs/architecture/clarity-esp-container-mapping.md`:
+`DIRECTIVES.md` signal is `REQUEST_NEXT_STEP`. `TASK-019` remains at
+`READY_FOR_PREWORK`. The director's most recent review (commit
+`8d601fd`, recorded in `DIRECTIVES.md` and in the `TASK-019`
+`LATEST_REPORT`) accepted the in-scope mapping-doc design fixes from
+revision 5:
 
-1. The doc's "Type definition shape" prose claims the
-   `typ~contents` declaration lists assignable instance property
-   `position`, but neither the proposed materialized `typ` root nor
-   the proposed `typ + create` transaction message carried any field
-   that actually declared `position` assignable. Add a simple
-   assignable-property declaration to both, with no
-   required/optional, defaults, or per-property schema complexity.
-2. D5's idempotency claim — "reuse the canonical `typ~contents` id;
-   the materializer's idempotent-duplicate path covers re-runs" — is
-   true only for an exact replay of the same payload. A pre-existing
-   canonical type with different provenance would be a conflicting
-   duplicate. The director's preferred correction is to mint a
-   transaction-local `typ~contents` id for the self-contained
-   `TASK-019` transaction and use it consistently in both `lnk`
-   examples.
+- `typ~contents` declares `assignable_properties: ["position"]` in
+  both the materialized root and the `typ + create` source message.
+- D5 mints a transaction-local `typ~contents` id and uses it
+  consistently in both `lnk` examples.
+- `ContentsLinkReadService` resolves all `typ` rows matching
+  `properties.kind = "link_type"` and `properties.name = "contents"`
+  and queries `lnk.type_id` with `$in`, so the transaction-local id
+  is compatible with the accepted contents read path.
 
-No implementation, no code, no tests, no Kafka, no Docker, no Gradle
-work this turn.
+The merge that delivered those revision-5 edits was nonetheless
+rejected for **scope/protocol** because it also modified
+`docker/couchdb-bootstrap.sh` (setting `couchdb.max_document_size`)
+— a path outside claude-1's base owned paths and outside the
+`TASK-019` scope expansion in `DIRECTIVES.md`. The director's
+instruction for the next claude-1 turn:
 
-### What this turn produced
+> remove the out-of-scope `docker/couchdb-bootstrap.sh` change from
+> the TASK-019 merge and resubmit the in-scope mapping/report edits.
 
-This turn updates two files, both within owned-or-task-expanded paths:
+No further mapping-doc blocker is currently identified. No code,
+tests, Gradle work, materializer changes, CouchDB writes,
+Docker/bootstrap changes, or implementation authorization is active.
 
-1. `docs/architecture/clarity-esp-container-mapping.md` (task-expanded
-   path under TASK-019). Six narrow, in-place edits address both
-   blockers without touching unrelated decisions:
+### Branch-state observation (the directive has already been satisfied by other means)
 
-   - **D5 rewritten** — "Reuse the canonical `contents` `typ` id"
-     becomes **"Mint a transaction-local `typ~contents` id"**. The
-     prototype now uses
-     `jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~typ~contents`,
-     embedding the same prototype `txn-uuid` as the four `loc` and
-     two `lnk` roots. The transaction is therefore self-contained:
-     its own `typ + create` message creates the link type that its
-     two `lnk + create` messages reference, with no dependency on a
-     pre-existing `typ~contents` row. Coexistence with the canonical
-     `typ~contents` is documented as safe because
-     `ContentsLinkReadService` resolves by `kind`/`name`, not id.
-     The earlier idempotency claim is explicitly retracted.
+State of the `claude-1` worktree at the start of this turn:
 
-   - **Materialized `typ` root updated** — id changed to the
-     transaction-local id; section heading updated to
-     "Typ — `contents` link type (transaction-local id)"; new field
-     `assignable_properties: ["position"]` added to `properties`; a
-     short paragraph beneath the JSON block explains that the field
-     is a flat list of names with no schema complexity.
+```
+git rev-parse HEAD == git rev-parse origin/director  # equal
+git diff --stat origin/director..HEAD                # empty
+```
 
-   - **Source `typ + create` message updated** — id and
-     `assignable_properties: ["position"]` field updated to match
-     the materialized root; section heading updated to
-     "Typ — `contents` link type (transaction-local declaration)".
+The recent commit chain on `claude-1` / `origin/director` is:
 
-   - **Both `lnk` materialized roots and both `lnk + create`
-     messages** — `type_id` references switched to the new
-     transaction-local id (4 occurrences total). Verified zero
-     remaining references to the old canonical id in the file.
+```
+8d601fd Record director agent turn          (director, revision-5 review)
+8b54a0f Set CouchDB max document size during bootstrap   (direct human commit)
+deec62b Record claude-1 agent turn          (mapping rev 5: assignable_properties + tx-local typ id)
+7e73e79 Record director agent turn          (revision-4 review, flagged D5 + assignable_properties)
+0915401 Record claude-1 agent turn          (mapping rev 4: created mapping doc + initial design)
+```
 
-   - **"Type definition shape" subsection rewritten** — prose now
-     names the actual field (`assignable_properties: ["position"]`)
-     instead of describing it abstractly. Explicitly states the
-     field is "names only — no per-name shape (no
-     `{ name, type, required, default }` objects)" so a reader
-     cannot misread it as a richer-schema slot. Future-extension and
-     future-`ent`/`loc`-type-roots paragraphs preserved with the
-     same field name.
+Two relevant facts follow:
 
-   - **Design-brief alignment table row 3** — "Decision in this doc"
-     cell narrowed from "D5, "Type definition shape" subsection" to
-     just "Type definition shape" subsection (D5 is now about id
-     scope, not type shape); summary cell updated to call out
-     `assignable_properties: ["position"]` explicitly.
+1. **The in-scope mapping/report edits are already on `director`.**
+   Commits `0915401` and `deec62b` ("Record claude-1 agent turn")
+   touched only `docs/agents/claude-1-next-step.md` and
+   `docs/architecture/clarity-esp-container-mapping.md`, both inside
+   claude-1's base owned paths or the `TASK-019` scope expansion.
+   They are merged into `director` and `claude-1` and contain the
+   accepted design fixes (`assignable_properties: ["position"]`,
+   transaction-local `typ~contents` id).
 
-   No edits to: D1, D2, D3, D4, D6, D7 prose; the sampled-evidence
-   section; the four `loc` materialized roots; the four `loc + create`
-   messages; the open/commit messages; expected Mongo collections;
-   read-side verification; known ambiguities A1–A6; verification
-   commands; alternatives & tradeoffs sections; intro; vocabulary
-   paragraph.
+2. **The `docker/couchdb-bootstrap.sh` change is on the branch via a
+   separate, direct human commit, not a claude-1 merge.** Commit
+   `8b54a0f` ("Set CouchDB max document size during bootstrap",
+   authored Fri May 1 22:19 PT by the human) modified only
+   `docker/couchdb-bootstrap.sh`. It is not a "Record claude-1 agent
+   turn" commit; it is independent of any TASK-019 merge from
+   claude-1. The director's instruction to remove the docker change
+   "from the TASK-019 merge" is therefore already satisfied by
+   construction: there is no pending TASK-019 merge from claude-1
+   that bundles docker, and the docker edit currently lives on
+   `director` only via the human's own authored commit.
 
-2. `docs/agents/claude-1-next-step.md` (base owned path) — this
-   pre-work response.
+This pre-work turn cannot meaningfully "remove" `8b54a0f` from
+claude-1's branch without rewriting or reverting a commit authored
+directly by the human, which would be destructive and outside both
+base owned paths and `TASK-019` scope. Any such revert would need
+explicit director authorization and an explicit scope expansion that
+covers `docker/couchdb-bootstrap.sh`.
+
+### Proposed plan for this turn
+
+1. Produce no edits beyond this file. The in-scope mapping-doc
+   revision-5 fixes are already accepted and merged; the
+   `docker/couchdb-bootstrap.sh` edit is detached from any pending
+   claude-1 TASK-019 merge.
+2. Surface the situation to the director with a concrete open
+   question (Q-19-L below) so the director can either:
+   - confirm the docker concern is resolved by the separate human
+     commit and advance `TASK-019` to `READY_FOR_IMPLEMENTATION` (or
+     to `ACCEPTED` if the director judges the pre-work proposal
+     itself as the deliverable for this design task), or
+   - authorize a follow-up turn that explicitly reverts
+     `docker/couchdb-bootstrap.sh` under a separate Docker/bootstrap
+     task with corresponding scope expansion, or
+   - issue a different mapping-doc edit if a new blocker is
+     identified.
+3. Carry forward all other open questions from revision 5
+   (Q-19-A through Q-19-K) so they remain visible.
+
+### Files this turn will touch
+
+- `docs/agents/claude-1-next-step.md` — base owned path; this file.
 
 ### Files intentionally not touched this turn
 
-- `docs/architecture/jade-tipi-object-model-design-brief.md` — the
-  brief is human input and is read-only for this task.
+- `docs/architecture/clarity-esp-container-mapping.md` — already
+  carries the accepted revision-5 fixes; no further design blocker
+  identified.
+- `docs/architecture/jade-tipi-object-model-design-brief.md` — human
+  input; read-only for this task.
 - `docs/orchestrator/tasks/TASK-019-clarity-esp-container-materialization.md`
-  — task-expanded but director-owned; not touched in pre-work.
+  — task-expanded but director-owned; no edit warranted.
 - `docs/agents/claude-1.md`, `docs/agents/claude-1-changes.md` —
-  base owned, not touched (no implementation outcome to record).
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/`,
-  `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/`,
-  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/containers/`,
-  `jade-tipi/src/integrationTest/resources/` — task-expanded for
-  implementation; not touched in pre-work.
+  base owned; no implementation outcome to record.
+- `docker/couchdb-bootstrap.sh` — outside claude-1's base owned
+  paths and outside the `TASK-019` scope expansion; touching it
+  (including a revert) requires explicit director authorization.
+- `jade-tipi/src/main/groovy/...service/`,
+  `jade-tipi/src/test/groovy/...service/`,
+  `jade-tipi/src/integrationTest/groovy/...containers/`,
+  `jade-tipi/src/integrationTest/resources/` — task-expanded for a
+  later implementation turn only; pre-work is not implementation.
 
-No edits to `CommittedTransactionMaterializer`,
-`ContentsLinkReadService`, the Kafka listener, DTOs, schemas,
-canonical-example messages, Docker, Gradle, security, or frontend.
-
-### Decisions in the revised mapping doc (D1–D7)
+### Decisions in the accepted mapping doc (D1–D7), unchanged
 
 - D1 — Prototype materializes only `loc`, `typ`, and `lnk` roots; no
-  `ent`. Unchanged.
-- D2 — Plate wells stay as `lnk.properties.position`. Unchanged.
-- D3 — Per-parent-kind position vocabulary
-  (`freezer_slot`, `bin_slot`, `plate_well`, `tube_position`).
-  Unchanged.
+  `ent`. The accepted materializer supports `loc + create`,
+  `typ + create` for `data.kind == "link_type"`, and `lnk + create`,
+  matching this prototype.
+- D2 — Plate wells stay as `lnk.properties.position` (option A);
+  child-`loc` and hybrid alternatives documented with tradeoffs.
+- D3 — Per-parent-kind position vocabulary (`freezer_slot`,
+  `bin_slot`, `plate_well`, `tube_position`).
 - D4 — Identifier convention embeds source key in short-name plus
-  `properties.source_id` and `properties.source_system`. Unchanged.
-- **D5 (rewritten)** — Mint a transaction-local `typ~contents` id
+  `properties.source_id` and `properties.source_system`.
+- D5 — Transaction-local `typ~contents` id
   (`...~018fd849-c0c0-7000-8a01-c1a141e5e500~typ~contents`) so the
-  TASK-019 transaction is self-contained and does not collide with a
-  canonical `typ~contents`. Read service resolves by `kind`/`name`,
-  so coexistence is safe.
+  TASK-019 transaction is self-contained; coexistence with any
+  canonical `typ~contents` is safe because `ContentsLinkReadService`
+  resolves by `kind`/`name`, not by id.
 - D6 — Parentage is single-sourced in `lnk + contents`. No
-  `parent_location_id` on `loc`. Unchanged.
+  `parent_location_id` on `loc`.
 - D7 — Directional labels live on the `typ~contents` declaration
-  only. Unchanged.
+  only.
+- Type-definition shape — `typ~contents` root declares
+  `assignable_properties: ["position"]` (flat list of names) plus
+  link-type metadata. No required/optional, no defaults, no
+  per-name schema.
 
-Plus the "Type definition shape" subsection: the `typ~contents` root
-declares `assignable_properties: ["position"]` (flat list of names)
-plus link-type metadata. No required/optional, no defaults, no
-per-name schema.
+### Blockers and open questions
 
-### Blockers
+**New this turn:**
 
-None. The mapping doc is in scope (task-expanded path); the brief is
-in scope (read-only). The two director-flagged blockers from
-revision 4 are addressed directly in the mapping doc this turn. No
-sampling, credentials, or remote reads were required.
+- **Q-19-L — Disposition of `8b54a0f` (`docker/couchdb-bootstrap.sh`).**
+  The director's revision-5 review instructed claude-1 to remove the
+  docker change "from the TASK-019 merge". That edit is no longer
+  bundled with any pending claude-1 merge — it lives on `director`
+  via a separate human-authored commit. Two paths forward; please
+  confirm which the director wants:
+  - **L-1 (proposed default).** Treat the docker concern as resolved
+    by `8b54a0f` and advance `TASK-019`. Claude-1 makes no further
+    edits to `docker/couchdb-bootstrap.sh`.
+  - **L-2.** Open a separate bounded Docker/bootstrap task with
+    explicit ownership over `docker/couchdb-bootstrap.sh`, and
+    decide there whether the `couchdb.max_document_size` setting
+    stays, is parameterized, or is reverted. `TASK-019` does not
+    block on this.
+  - **L-3.** Explicitly authorize a revert of `8b54a0f` under
+    claude-1 with a one-turn scope expansion to
+    `docker/couchdb-bootstrap.sh`. Requires director confirmation
+    that overwriting a direct human commit is intended.
 
-If a future re-run finds local CouchDB stopped, the documented setup
-commands remain:
+**Carried forward (still open from revision 5):**
 
-```sh
-docker compose -f docker/docker-compose.yml up -d couchdb
-docker compose -f docker/docker-compose.yml up -d couchdb-init
-```
-
-If the local `.env` lacks `COUCHDB_USER` / `COUCHDB_PASSWORD`, add
-them to the orchestrator overlay
-`/Users/duncanscott/orchestrator/jade-tipi/config/env/project.env.local`
-and re-materialize the worktree. These are setup steps, not product
-blockers.
-
-### Open questions for director review
-
-Carrying revision-4 questions; all answered per the director's
-defaults. Listed so the director can override quickly if any default
-was unintended.
-
-- **Q-19-J — Field name `assignable_properties`.** Revision 5 picks
-  `assignable_properties` as the field that lists assignable
-  property names on a `typ` root. Alternatives the director might
-  prefer: `instance_properties`, `assignable`, `properties_declared`,
-  or a different shape entirely. The chosen name is descriptive and
-  avoids overloading the existing `properties` keyword. Confirm or
-  override.
-- **Q-19-K — Transaction-local typ id format.** Revision 5 mints
-  `jade-tipi-org~dev~<txn-uuid>~typ~contents` using the same
-  `txn-uuid` as the four `loc` and two `lnk` roots. This matches the
-  D4 identifier convention without modification. Confirm or override.
-- **Q-19-E — Wells recommendation.** Wells stay as
-  `lnk.properties.position` (option A); B and C documented with
-  tradeoffs. Recommendation: ship A, document C as forward path.
-- **Q-19-F — Type-definition shape.** `typ~contents` declares only
-  assignable property names plus link-type metadata. No
-  required/optional, no defaults. Now expressed as the concrete
-  field `assignable_properties: ["position"]`.
-- **Q-19-G — Parentage exclusivity.** D6 makes parentage exclusive
-  to `lnk`. Both alternatives documented and rejected.
-- **Q-19-H — Brief-vs-mapping authority.** Intro explicitly states
-  the brief wins. Mapping doc has been narrowed in place to match.
-- **Q-19-I — Scope of doc edits.** Append-style and narrow in-place;
-  no decision other than D5 is rewritten this turn.
-- **Q-19-A — Prototype acceptance.** Loc/lnk-only with the four
-  sampled containers (Clarity tube + ESP freezer/bin/plate), or
-  drop the Clarity tube for a single ESP chain.
-- **Q-19-C — Integration spec inclusion.** Default proposal: unit
-  tests only; confirm whether a `JADETIPI_IT_KAFKA`-gated
-  integration spec is wanted.
-- **Q-19-D — Position vocabulary names.** Per-parent-kind names
+- Q-19-A — Prototype acceptance: loc/lnk-only with the four sampled
+  containers (Clarity tube + ESP freezer/bin/plate), or drop the
+  Clarity tube for a single ESP chain.
+- Q-19-C — Integration-spec inclusion. Default proposal: unit tests
+  only; confirm whether a `JADETIPI_IT_KAFKA`-gated integration spec
+  is wanted.
+- Q-19-D — Position vocabulary names: per-parent-kind
   (`freezer_slot`, `bin_slot`, `plate_well`, `tube_position`) vs a
   single neutral `slot` key.
+- Q-19-E — Wells recommendation: ship A
+  (`lnk.properties.position`); document C (child-`loc` wells) as
+  forward path.
+- Q-19-F — Type-definition shape: `typ~contents` declares
+  `assignable_properties: ["position"]` plus link-type metadata
+  only.
+- Q-19-G — Parentage exclusivity: D6 makes parentage exclusive to
+  `lnk`; alternatives documented and rejected.
+- Q-19-H — Brief-vs-mapping authority: brief wins; mapping intro
+  states this.
+- Q-19-I — Scope of doc edits: append/narrow in-place only.
+- Q-19-J — Field name `assignable_properties` vs alternatives
+  (`instance_properties`, `assignable`, `properties_declared`).
+- Q-19-K — Transaction-local typ id format
+  (`jade-tipi-org~dev~<txn-uuid>~typ~contents`) reusing the same
+  `txn-uuid` as the four `loc` and two `lnk` roots.
+
+### Stay-in-scope check
+
+This turn edits exactly:
+
+- `docs/agents/claude-1-next-step.md` — base owned path.
+
+No other paths modified. No code, tests, Gradle, Docker, MongoDB,
+CouchDB, Kafka, frontend, security, DTO/schema, or HTTP-endpoint
+changes were made or proposed for this turn.
 
 ### Verification
 
 For this pre-work turn:
 
-- Static review only. The expected diff against `origin/director` is
-  exactly two paths:
-  - `docs/architecture/clarity-esp-container-mapping.md`
-  - `docs/agents/claude-1-next-step.md`
-- After all edits, a grep for the prior canonical typ id
-  `018fd849-2a49-7999-8a09-aaaaaaaaaaab` against the mapping doc
-  returned zero hits, confirming no stale id references remain.
-- No CouchDB, Docker, Gradle, or MongoDB commands were executed
-  this turn.
+- Static review only.
+- Branch-state checks performed:
+  - `git rev-parse HEAD == git rev-parse origin/director` → equal.
+  - `git diff --stat origin/director..HEAD` → empty.
+  - `git log --oneline -10` confirms the recent commit ordering
+    cited above.
+  - `git show --stat 0915401`, `git show --stat deec62b` confirm
+    those "Record claude-1 agent turn" commits touched only
+    `docs/agents/claude-1-next-step.md` and
+    `docs/architecture/clarity-esp-container-mapping.md` — never
+    `docker/couchdb-bootstrap.sh`.
+  - `git show --stat 8b54a0f` confirms the docker edit is a
+    standalone human commit, not part of any "Record claude-1 agent
+    turn" merge.
+- No CouchDB, Docker, Gradle, MongoDB, Kafka, or HTTP commands were
+  executed this turn.
 
-For the implementation turn (only after `READY_FOR_IMPLEMENTATION`):
+For a later implementation turn (only after
+`READY_FOR_IMPLEMENTATION` or `PROCEED_TO_IMPLEMENTATION`):
 
 ```sh
 ./gradlew :jade-tipi:compileGroovy
@@ -231,22 +255,26 @@ director judges unit-test evidence insufficient):
 JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*ClarityEspContainerMaterializationSpec*'
 ```
 
-If implementation-iteration setup blocks any of these,
-`docker compose -f docker/docker-compose.yml up -d` and
-`./gradlew --stop` are the documented setup steps; blockers will be
-reported with the exact command and error rather than treated as
+Documented setup (only if implementation iteration is blocked by
+local stack state):
+
+```sh
+docker compose -f docker/docker-compose.yml up -d
+./gradlew --stop
+```
+
+If local CouchDB read inspection is requested in a later turn, the
+documented setup remains:
+
+```sh
+docker compose -f docker/docker-compose.yml up -d couchdb
+docker compose -f docker/docker-compose.yml up -d couchdb-init
+```
+
+Local CouchDB credentials, if missing, belong in the orchestrator
+overlay
+`/Users/duncanscott/orchestrator/jade-tipi/config/env/project.env.local`
+as `COUCHDB_USER` / `COUCHDB_PASSWORD`. These are setup steps, not
 product blockers.
-
-### Stay-in-scope check
-
-This turn edits exactly:
-
-- `docs/agents/claude-1-next-step.md` — base owned path.
-- `docs/architecture/clarity-esp-container-mapping.md` —
-  task-expanded owned path under TASK-019.
-
-Both are inside the union of base owned paths plus the TASK-019
-scope expansion in `DIRECTIVES.md`. No paths outside that union were
-modified.
 
 STOP.
