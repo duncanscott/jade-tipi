@@ -90,3 +90,61 @@ VERIFICATION:
 LATEST_REPORT:
 Created by director on 2026-05-02 from human direction. This task is the next
 prioritized bounded implementation unit after accepted `TASK-016`.
+
+Director pre-work review on 2026-05-02: REQUEST_NEXT_STEP. Do not move to
+implementation yet.
+
+Scope check passed: claude-1 changed only
+`docs/agents/claude-1-next-step.md`, which is inside the developer-owned
+pre-work paths. Static whitespace verification passed with
+`git diff --check origin/director..HEAD`.
+
+The plan is directionally aligned with the task: it inspected the compose
+stack, existing environment files, CouchDB initialization, persistent volumes,
+`_replicator` documents, structured `auth.basic`, large dataset scale, and
+non-secret verification boundaries. However, revise the pre-work before
+implementation for these blockers:
+
+- Compose environment handling is not sound. The proposed compose snippets use
+  `${JADE_TIPI_COUCHDB_*:?}` interpolation while also claiming
+  `env_file: ["../.env"]` will provide those values. Local verification with
+  `docker compose` v5.1.2 showed service `env_file` values do not satisfy
+  compose interpolation; `--env-file .env` does. The task's documented
+  commands remain `docker compose -f docker/docker-compose.yml ...`, so revise
+  the design to either avoid compose-side interpolation for these variables or
+  explicitly justify and document a command change. The current plan would fail
+  `docker compose -f docker/docker-compose.yml config` in an orchestrator
+  worktree where the credentials are materialized only in the worktree-root
+  `.env` and not exported in the shell.
+- Re-check the CouchDB image/version choice. Current official CouchDB
+  materials show the stable release line is 3.5.x and Docker tags include
+  `latest`, `3.5.1`, `3.5`, `3`, and `3.4.3`/`3.4`. If pinning to
+  `couchdb:3.4` is still intentional, explain why 3.4 is preferred over
+  `3.5`/`3.5.1` for this local development bootstrap. Otherwise update the
+  proposed tag.
+- The bootstrap script must JSON-escape URLs, usernames, and passwords before
+  writing `_replicator` documents. A raw shell `printf` JSON template is not
+  robust for credentials containing quotes, backslashes, or other JSON-special
+  characters, even though structured `auth.basic` correctly avoids URL
+  userinfo.
+- Tighten idempotency for existing `_replicator` documents. Do not rewrite the
+  document on every 409 conflict unless the existing non-secret fields differ
+  or credentials/source URLs were intentionally changed. Rewriting an otherwise
+  equivalent continuous replication document risks unnecessary scheduler churn,
+  which conflicts with the "must not restart replication from scratch
+  unnecessarily" criterion.
+- Resolve the local admin credential decision. Reusing the remote JGI
+  credential pair as the local CouchDB server admin is not clearly required by
+  the task and broadens where those credentials are stored. Either justify the
+  reuse or propose separate non-secret local admin variable names in
+  `.env.example` while continuing to use
+  `JADE_TIPI_COUCHDB_ADMIN_USERNAME`/`JADE_TIPI_COUCHDB_ADMIN_PASSWORD` only
+  for the remote sources.
+- Align verification with Compose one-shot behavior. The plan says a second
+  plain `docker compose -f docker/docker-compose.yml up -d` should rerun
+  `couchdb-init`, but later notes that `restart: "no"` one-shot services do
+  not normally restart on plain `up -d`. Update the verification plan so it
+  matches actual Compose behavior and still proves resumability.
+
+Keep the next pre-work response scoped to resolving those design issues. Do
+not implement until this task is moved to `READY_FOR_IMPLEMENTATION`.
