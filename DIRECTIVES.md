@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
@@ -25,10 +25,10 @@ CouchDB initialization layer is currently needed; Docker-level replication is
 the accepted mechanism for keeping the local CouchDB populated.
 
 Next product direction: full Clarity and ESP import/synchronization are already
-underway elsewhere. Jade-Tipi's next useful unit is a test-only prototype that
-materializes the sampled Clarity/ESP container mapping through the accepted
-`loc`/`lnk` root-document model without adding import or synchronization
-machinery.
+underway elsewhere. Jade-Tipi's next useful unit is design work, not
+implementation: compare human object-model direction with sampled
+Clarity/ESP container data and propose JSON shapes for `loc`, `lnk`, contents
+links, plates, wells, and source provenance.
 
 ## Active Task
 
@@ -44,69 +44,58 @@ machinery.
 - `TASK-018 - Plan Spring CouchDB initialization` is accepted as superseded by
   human direction. Do not route it.
 - `TASK-019 - Prototype Clarity/ESP container materialization` is
-  `READY_FOR_IMPLEMENTATION` and prioritized next.
+  `READY_FOR_PREWORK` and prioritized next.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
 ## Scope Expansion
 
-For `TASK-019`, claude-1 may implement within:
+For `TASK-019`, claude-1 may inspect and propose changes within:
 
 - `docs/architecture/clarity-esp-container-mapping.md`
+- `docs/architecture/jade-tipi-object-model-design-brief.md`
 - `docs/orchestrator/tasks/TASK-019-clarity-esp-container-materialization.md`
 - `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/`
 - `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/`
 - `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/containers/`
 - `jade-tipi/src/integrationTest/resources/`
 
-Implementation is authorized only for the bounded prototype described below.
-Treat `TASK-012` and `TASK-018` as historical context only; do not route or
-implement them as-is.
+Pre-work only is authorized. Do not implement code, tests, materializer changes,
+DTO/schema changes, HTTP endpoints, or CouchDB integration in this turn. Treat
+`TASK-012` and `TASK-018` as historical context only; do not route or implement
+them as-is.
 
-## TASK-019 Implementation Direction
+## TASK-019 Design Direction
 
-- Use `docs/architecture/clarity-esp-container-mapping.md` as the accepted
-  source of truth for the sampled records and mapping decisions.
-- Add the smallest test-only artifact under
-  `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/`, preferably
-  `ClarityEspContainerMappingSpec.groovy`.
-- The test should construct the design-doc transaction messages for the ESP
-  freezer/bin/plate chain and the Clarity tube, build a
-  `CommittedTransactionSnapshot`, invoke
-  `CommittedTransactionMaterializer.materialize(snapshot)`, and assert the
-  four `loc`, one `typ`, and two `lnk` roots match the documented shape,
-  ignoring only `_head.provenance.materialized_at`.
-- Stay within the existing materializer surface: `loc + create`, `typ + create`
-  for `data.kind == "link_type"`, and `lnk + create`. Do not add `ent`
-  materialization, update/delete replay, semantic validation, import jobs,
-  Spring CouchDB initialization, Docker changes, DTO/schema changes, HTTP API
-  changes, frontend changes, or broad source schema support.
-- Default to unit-test-only coverage. Add an opt-in integration spec only if
-  the implementation discovers a real behavior gap that unit tests cannot cover
-  and keeps it under the task-owned containers integration-test path.
-- Verification should include `./gradlew :jade-tipi:compileGroovy`,
-  `./gradlew :jade-tipi:compileTestGroovy`, the focused
-  `*ClarityEspContainerMappingSpec*` test, and `./gradlew :jade-tipi:test`.
+- Read `docs/architecture/jade-tipi-object-model-design-brief.md` first. It
+  captures human discussion that was not available to the earlier Claude pass.
+- Revisit `docs/architecture/clarity-esp-container-mapping.md` as a
+  data-grounded proposal, not as final schema. Revise or supplement it with
+  alternatives and tradeoffs where the object JSON format remains unsettled.
+- Address these specific design points:
+  - collection members are objects; not every object is an `ent`;
+  - object roots should separate `_head`, `properties`, and `links`;
+  - type definitions declare assignable properties, with no required/optional
+    property complexity and no defaults for now;
+  - `parent_location_id` should not be duplicated on `loc` if the canonical
+    relationship belongs in `lnk`;
+  - `contents` is a link type whose directional labels belong on the type;
+  - well position is a candidate property on a `contents` link, but child
+    `loc` wells may be compared as an alternative.
+- Use sampled Clarity/ESP data only as evidence. Full import/sync is out of
+  scope and already handled elsewhere.
+- Stop after writing the proposal and report. Do not begin implementation.
 
 ## TASK-019 Director Pre-work Review
 
-- Director review on 2026-05-02 accepts claude-1 revision-2 pre-work and moves
-  `TASK-019` to `READY_FOR_IMPLEMENTATION` with
-  `SIGNAL: PROCEED_TO_IMPLEMENTATION`. Scope check passed: the latest merge
-  changed only `docs/agents/claude-1-next-step.md` and the task-owned
-  `docs/architecture/clarity-esp-container-mapping.md`.
-- The design doc now contains sampled Clarity/ESP source skeletons, field
-  paths, representative Clarity tube and ESP freezer/bin/plate examples,
-  materialized root examples, transaction messages, known ambiguities, and
-  read-only reproduction commands. The chosen prototype resolves the `ent`
-  gap by using only `loc`, `typ link_type`, and `lnk` roots.
-- Director static verification passed with
-  `git diff --check HEAD~1..HEAD`. Local CouchDB re-verification in the
-  director shell was blocked because nothing was listening on
-  `127.0.0.1:5984`; this is setup state, not a product blocker. Use the
-  documented setup commands if re-sampling is needed:
-  `docker compose -f docker/docker-compose.yml up -d couchdb` and
-  `docker compose -f docker/docker-compose.yml up -d couchdb-init`.
+- Director correction on 2026-05-02 moves `TASK-019` back to
+  `READY_FOR_PREWORK` with `SIGNAL: REQUEST_NEXT_STEP`. The earlier move to
+  implementation was premature because the Jade-Tipi object JSON format is
+  still a design question.
+- Claude's existing sampled-data mapping remains useful evidence, but it is not
+  accepted as the final object model. The next claude-1 turn should receive the
+  broader human design discussion and produce a revised proposal with
+  alternatives and tradeoffs.
 
 ## TASK-019 Historical Pre-work Review
 

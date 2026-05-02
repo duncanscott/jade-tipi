@@ -3,7 +3,7 @@
 ID: TASK-019
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: READY_FOR_PREWORK
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-017
@@ -12,6 +12,7 @@ SOURCE_TASK:
 PAUSE_SOURCE_TASKS: true
 OWNED_PATHS:
   - docs/architecture/clarity-esp-container-mapping.md
+  - docs/architecture/jade-tipi-object-model-design-brief.md
   - docs/orchestrator/tasks/TASK-019-clarity-esp-container-materialization.md
   - jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/
   - jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/
@@ -23,8 +24,8 @@ REQUIRED_CAPABILITIES:
   - gradle-verification
 GOAL:
 Use already-replicated local CouchDB records from `clarity` and `esp-entity`
-to design, then prototype in a later implementation step, how a tiny set of
-real LIMS container records become Jade-Tipi `loc` and `lnk` objects in MongoDB.
+plus the human design brief to propose how a tiny set of real LIMS container
+records could become Jade-Tipi `loc` and `lnk` objects in MongoDB.
 
 ACCEPTANCE_CRITERIA:
 - Pre-work inspects the accepted root-document materialization behavior from
@@ -48,9 +49,13 @@ ACCEPTANCE_CRITERIA:
 - Write or update `docs/architecture/clarity-esp-container-mapping.md` with
   the source samples, mapping decisions, known ambiguities, and proposed
   verification commands.
-- Implementation may begin only after the director accepts pre-work and moves
-  this task to `READY_FOR_IMPLEMENTATION`; implementation remains limited to
-  the bounded prototype described in `LATEST_REPORT`.
+- Read `docs/architecture/jade-tipi-object-model-design-brief.md` and respond
+  to its design constraints explicitly.
+- Provide alternatives and tradeoffs where the JSON object shape is not settled,
+  especially whether plate wells should be child `loc` objects or properties on
+  `contents` links.
+- Implementation must not begin until a later director directive explicitly
+  moves this task, or a follow-up task, to `READY_FOR_IMPLEMENTATION`.
 
 OUT_OF_SCOPE:
 - Do not build or operate the full Clarity/ESP import or synchronization.
@@ -58,6 +63,7 @@ OUT_OF_SCOPE:
 - Do not add Spring Boot CouchDB initialization, design-document loaders, or
   application startup dependencies on CouchDB.
 - Do not attempt broad schema coverage for Clarity or ESP.
+- Do not add tests or production code in this pre-work turn.
 - Do not change the root-document contract, contents read API, Kafka listener,
   transaction persistence semantics, security, frontend, or production
   endpoints unless a later implementation directive explicitly expands scope.
@@ -84,47 +90,21 @@ DEPENDENCIES:
 VERIFICATION:
 - Pre-work should report the exact CouchDB read commands or queries used,
   redacting credentials.
-- Pre-work should propose exact Gradle commands for any later implementation,
-  such as `./gradlew :jade-tipi:compileGroovy`,
-  `./gradlew :jade-tipi:compileTestGroovy`, and focused tests.
-- Implementation should verify the test-only prototype with
-  `./gradlew :jade-tipi:compileGroovy`,
-  `./gradlew :jade-tipi:compileTestGroovy`,
-  `./gradlew :jade-tipi:test --tests '*ClarityEspContainerMappingSpec*'`,
-  and `./gradlew :jade-tipi:test`.
+- Pre-work should propose exact Gradle commands only for a later
+  implementation, not run implementation checks as proof of design.
 - If local CouchDB, replicated data, credentials, Gradle, Docker, or MongoDB
   setup blocks work, report the exact command and error. Do not treat missing
   replicated examples as an import/sync task.
 
 LATEST_REPORT:
-Director pre-work review on 2026-05-02 accepts claude-1 revision-2 pre-work and
-moves this task to `READY_FOR_IMPLEMENTATION`.
+Director correction on 2026-05-02 moves this task back to
+`READY_FOR_PREWORK`. The human clarified that Claude should receive the broader
+object-model design discussion and produce a proposal, not be treated as the
+sole owner of the Jade-Tipi JSON object format and not begin implementation.
 
-Scope and ownership passed. The latest merge changed only
-`docs/agents/claude-1-next-step.md` and
-`docs/architecture/clarity-esp-container-mapping.md`; both are inside
-claude-1's base assignment or this task's expanded owned paths.
-
-The design doc now provides the required sampled evidence: redacted source
-skeletons and field paths for Clarity tube `containers_27-10000` and an ESP
-freezer/bin/plate chain, selected representative examples, materialized
-root-document examples, transaction messages, expected Mongo collections, known
-ambiguities, and read-only reproduction commands. The `ent` materializer gap is
-resolved for this bounded prototype by excluding biological/analyte records and
-using only `loc`, `typ link_type`, and `lnk` roots.
-
-Implementation is authorized as a test-only prototype. Add a focused Spock spec
-under `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/` that builds the
-documented transaction messages, constructs a `CommittedTransactionSnapshot`,
-invokes `CommittedTransactionMaterializer.materialize(snapshot)`, and asserts
-the four `loc`, one `typ`, and two `lnk` roots match the design-doc shape,
-ignoring only `_head.provenance.materialized_at`. Do not change production
-materializer/read-service behavior, DTO/schema contracts, CouchDB/Docker setup,
-HTTP endpoints, security, frontend, or broad import/synchronization machinery.
-
-Director static verification passed with `git diff --check HEAD~1..HEAD`.
-Director local CouchDB re-verification could not connect to
-`127.0.0.1:5984`; this is setup state, not a product blocker. If re-sampling is
-needed, use the documented setup commands:
-`docker compose -f docker/docker-compose.yml up -d couchdb` and then
-`docker compose -f docker/docker-compose.yml up -d couchdb-init`.
+Use the existing `docs/architecture/clarity-esp-container-mapping.md` as source
+evidence, but revise or supplement it in light of
+`docs/architecture/jade-tipi-object-model-design-brief.md`. The next claude-1
+turn should produce a data-grounded design proposal with alternatives and
+tradeoffs. No code, tests, Gradle work, materializer changes, or implementation
+authorization is active.
