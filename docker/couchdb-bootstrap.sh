@@ -30,6 +30,12 @@ set -eu
 
 LOCAL_AUTH="${COUCHDB_USER}:${COUCHDB_PASSWORD}"
 
+# CouchDB 3.x rejects replicator docs whose source/target is a bare local DB
+# name ("local_endpoints_not_supported"). The replicator client runs inside
+# the CouchDB process, so 127.0.0.1 reaches itself; an override is exposed for
+# topologies where that isn't true.
+COUCH_TARGET_BASE_URL="${COUCH_TARGET_BASE_URL:-http://127.0.0.1:5984}"
+
 # Bounded retry against /_up. The compose healthcheck already gates this
 # sidecar, but tolerate a brief startup window after an unclean restart.
 i=0
@@ -71,15 +77,17 @@ done
 # Build a desired _replicator JSON document with jq-escaped fields.
 build_desired() {
   jq -n \
-    --arg id    "$1" \
-    --arg url   "$2" \
-    --arg user  "$JADE_TIPI_COUCHDB_ADMIN_USERNAME" \
-    --arg pass  "$JADE_TIPI_COUCHDB_ADMIN_PASSWORD" \
-    --arg tgt   "$3" \
+    --arg id        "$1" \
+    --arg url       "$2" \
+    --arg user      "$JADE_TIPI_COUCHDB_ADMIN_USERNAME" \
+    --arg pass      "$JADE_TIPI_COUCHDB_ADMIN_PASSWORD" \
+    --arg tgturl    "$3" \
+    --arg localuser "$COUCHDB_USER" \
+    --arg localpass "$COUCHDB_PASSWORD" \
     '{
       _id: $id,
-      source: { url: $url, auth: { basic: { username: $user, password: $pass } } },
-      target: $tgt,
+      source: { url: $url,    auth: { basic: { username: $user,      password: $pass      } } },
+      target: { url: $tgturl, auth: { basic: { username: $localuser, password: $localpass } } },
       continuous: true,
       create_target: false,
       use_checkpoints: true
@@ -89,12 +97,14 @@ build_desired() {
 # Project the meaningful replication intent to compare desired vs. existing.
 project_intent() {
   jq '{
-    url: .source.url,
-    username: .source.auth.basic.username,
-    password: .source.auth.basic.password,
-    target: .target,
-    continuous: .continuous,
-    create_target: .create_target,
+    source_url:      .source.url,
+    source_username: .source.auth.basic.username,
+    source_password: .source.auth.basic.password,
+    target_url:      .target.url,
+    target_username: .target.auth.basic.username,
+    target_password: .target.auth.basic.password,
+    continuous:      .continuous,
+    create_target:   .create_target,
     use_checkpoints: .use_checkpoints
   }'
 }
@@ -149,7 +159,7 @@ upsert_replicator() {
   return 1
 }
 
-upsert_replicator "bootstrap-clarity"    "$JADE_TIPI_COUCHDB_CLARITY_URL"    "clarity"
-upsert_replicator "bootstrap-esp-entity" "$JADE_TIPI_COUCHDB_ESP_ENTITY_URL" "esp-entity"
+upsert_replicator "bootstrap-clarity"    "$JADE_TIPI_COUCHDB_CLARITY_URL"    "${COUCH_TARGET_BASE_URL}/clarity"
+upsert_replicator "bootstrap-esp-entity" "$JADE_TIPI_COUCHDB_ESP_ENTITY_URL" "${COUCH_TARGET_BASE_URL}/esp-entity"
 
 echo "couchdb-bootstrap: done"
