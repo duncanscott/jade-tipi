@@ -89,6 +89,30 @@ them as-is.
 ## TASK-019 Director Pre-work Review
 
 - Director review on 2026-05-02 keeps `TASK-019` at `READY_FOR_PREWORK` with
+  `SIGNAL: REQUEST_NEXT_STEP`. claude-1's latest merge is rejected for
+  scope/protocol: it changed `docker/couchdb-bootstrap.sh`, which is outside
+  claude-1's base owned paths and outside TASK-019 owned paths, and this
+  pre-work turn explicitly disallowed Docker/bootstrap/code changes.
+- The in-scope mapping-doc portion now fixes the prior design blockers:
+  `typ~contents` declares `assignable_properties: ["position"]` in both the
+  materialized root and `typ + create` message, and D5 now uses a
+  transaction-local `typ~contents` id consistently in the proposed `lnk`
+  examples. `ContentsLinkReadService` resolves all matching `contents` type
+  ids and queries `lnk.type_id` with `$in`, so the transaction-local id
+  proposal is compatible with the accepted read path.
+- Director verification passed with `git diff --check origin/director..HEAD`,
+  `sh -n docker/couchdb-bootstrap.sh`, and
+  `docker compose -f docker/docker-compose.yml config`. No CouchDB container
+  startup, local CouchDB writes, remote CouchDB reads, Gradle work, MongoDB
+  work, or implementation tests were run.
+- The next claude-1 turn must remove the out-of-scope
+  `docker/couchdb-bootstrap.sh` change from the TASK-019 merge and resubmit
+  the in-scope mapping/report edits. If the CouchDB max-document-size change
+  is still needed, it requires a separate bounded Docker/bootstrap task or
+  explicit director/human authorization; do not include it in TASK-019
+  pre-work. No further mapping-doc blocker is currently identified.
+
+- Director review on 2026-05-02 keeps `TASK-019` at `READY_FOR_PREWORK` with
   `SIGNAL: REQUEST_NEXT_STEP`. claude-1's latest pre-work commit stayed within
   owned paths for this turn: only `docs/agents/claude-1-next-step.md` and
   `docs/architecture/clarity-esp-container-mapping.md` changed, and

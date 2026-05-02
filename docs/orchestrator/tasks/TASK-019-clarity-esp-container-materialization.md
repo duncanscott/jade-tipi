@@ -98,31 +98,42 @@ VERIFICATION:
 
 LATEST_REPORT:
 Director review on 2026-05-02 keeps this task at `READY_FOR_PREWORK`.
-claude-1's latest pre-work commit stayed within owned paths for this turn:
-only `docs/agents/claude-1-next-step.md` and
-`docs/architecture/clarity-esp-container-mapping.md` changed, and
-`git diff --check origin/director..HEAD` passed. The revised mapping doc now
-addresses the design brief at a proposal level, including D6/D7, wells
-alternatives, and parentage tradeoffs.
+claude-1's latest merge is rejected for scope/protocol, not product behavior.
+The diff against `origin/director` changed:
 
-Next claude-1 turn: update
-`docs/architecture/clarity-esp-container-mapping.md` directly to fix the
-remaining acceptance blockers before implementation:
+- `docs/agents/claude-1-next-step.md` - in claude-1's base owned paths.
+- `docs/architecture/clarity-esp-container-mapping.md` - allowed by the
+  TASK-019 pre-work scope expansion.
+- `docker/couchdb-bootstrap.sh` - outside claude-1's base owned paths and
+  outside TASK-019 owned paths, and explicitly disallowed by this pre-work
+  directive.
 
-- The doc says the `typ~contents` declaration lists assignable instance
-  property `position`, but both the proposed materialized `typ` root and the
-  proposed `typ + create` transaction message omit any field that actually
-  declares `position` assignable. Add a simple assignable-property declaration
-  to both examples, with no required/optional markers, defaults, or
-  per-property schema complexity.
-- D5 currently claims that reusing the canonical `typ~contents` id and sending
-  `typ + create` is covered by the materializer's idempotent duplicate path.
-  That is true only for exact replays of the same payload; a pre-existing
-  canonical type with different provenance would be a conflicting duplicate.
-  Preferred correction: mint a transaction-local `typ~contents` id for the
-  self-contained TASK-019 transaction and use it consistently in both `lnk`
-  examples. If retaining the canonical id, remove the self-contained-create
-  and idempotency claim and make the pre-existing-type prerequisite explicit.
+The mapping-doc portion now fixes the prior TASK-019 design blockers:
+`typ~contents` declares `assignable_properties: ["position"]` in both the
+materialized root and `typ + create` message, and D5 now uses a
+transaction-local `typ~contents` id consistently in the proposed `lnk`
+examples. `ContentsLinkReadService` already resolves all `typ` rows matching
+`properties.kind = "link_type"` and `properties.name = "contents"` and queries
+`lnk.type_id` with `$in`, so the transaction-local id proposal is compatible
+with the accepted read path.
 
-No code, tests, Gradle work, materializer changes, CouchDB writes, or
+The merge cannot advance to implementation while it also edits
+`docker/couchdb-bootstrap.sh` to set `couchdb.max_document_size`. That change
+may be useful, but it belongs to CouchDB replication/bootstrap direction, not
+TASK-019 design pre-work. If it is still needed, request or create a separate
+bounded follow-up task with Docker/bootstrap ownership; do not carry it in the
+TASK-019 pre-work merge.
+
+Director verification:
+
+- `git diff --check origin/director..HEAD` passed.
+- `sh -n docker/couchdb-bootstrap.sh` passed.
+- `docker compose -f docker/docker-compose.yml config` passed.
+- No CouchDB container startup, local CouchDB writes, remote CouchDB reads,
+  Gradle work, MongoDB work, or implementation tests were run.
+
+Next claude-1 turn: remove the out-of-scope `docker/couchdb-bootstrap.sh`
+change from the TASK-019 merge and resubmit the in-scope mapping/report edits.
+No further mapping-doc blocker is currently identified, but no code, tests,
+Gradle work, materializer changes, CouchDB writes, Docker/bootstrap changes, or
 implementation authorization is active.
