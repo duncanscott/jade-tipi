@@ -12,6 +12,32 @@ contemplated by `TASK-019` would add only test-only artifacts that
 exercise the existing `CommittedTransactionMaterializer` against the
 canonical messages shown below.
 
+This revision responds to
+`docs/architecture/jade-tipi-object-model-design-brief.md`, which is
+the authoritative human direction. Where the brief and earlier text
+in this document conflict, the brief wins; the affected sections have
+been narrowed in place and the rest of the original mapping is
+preserved.
+
+## Design-brief alignment
+
+The design brief sets out six points that the prototype must answer.
+Each is matched to a specific decision below.
+
+| Brief point | Decision in this doc | Summary of response |
+|---|---|---|
+| 1. Collection members are **objects**; not every object is `ent`. | D1, framing in this section | The prototype materializes only `loc`, `typ`, and `lnk` roots — all are first-class objects under the brief's vocabulary. `ent` is the appropriate root only when the source record clearly represents a biological/sample entity rather than a container/location, and the sampled records do not require it. |
+| 2. Object roots separate `_head`, `properties`, and `links`. | Anchored constraint #1 | Every materialized root in this doc carries `_head` (functional metadata only — `schema_version`, `document_kind`, `root_id`, `provenance`), top-level `properties` (user/domain assignments), and `links: {}` (denormalized, currently empty in the prototype). No user-domain field appears under `_head`. |
+| 3. Type definitions declare assignable properties; no required/optional, no defaults. | D5, "Type definition shape" subsection | The prototype's `typ` root for `contents` declares only assignable property names (here: `position`) plus link-type metadata (`left_role`, `right_role`, directional labels, allowed collections). It carries no `required`/`optional` markers and no defaults. |
+| 4. No duplicated `parent_location_id` on `loc` if parentage belongs in `lnk`. | D6 | The four `loc` roots carry no `parent_location_id`-style field. ESP's `container.uuid` is read from the source record but materialized only as the `left` pointer of the corresponding `lnk + contents`. |
+| 5. `contents` directional labels live on the link type. | D7 | `left_to_right_label = "contains"` and `right_to_left_label = "contained_by"` live on the `typ~contents` declaration only. `lnk` instances carry only `left`, `right`, `type_id`, and instance `properties`. |
+| 6. Wells: link property vs child `loc`. | D2 + "Alternatives & tradeoffs — wells" | The prototype keeps wells as `lnk.properties.position` (option A) and explicitly documents child-`loc` (B) and hybrid (C) as comparison points with stated tradeoffs. |
+
+Vocabulary used below: an **object** is any member of a Jade-Tipi
+collection. `loc`, `lnk`, `typ`, and `ent` are all object collections.
+The prototype writes objects in `loc`, `typ`, and `lnk` only. The
+prototype does not assume that "object" and `ent` are synonyms.
+
 ## Anchored constraints
 
 These come from already-accepted artifacts in the worktree and bound
@@ -258,6 +284,10 @@ Bin slots (`A1..D3` for `Bin 9x3`) and freezer shelves
 (`slot: "2"` on the bin's parent reference) follow the same rule:
 position is a property of the containment link, not a separate root.
 
+This is option A in the wells question. See "Alternatives &
+tradeoffs — wells representation" below for the full A/B/C
+comparison and recommendation.
+
 ### D3 — Position vocabulary
 
 `properties.position.kind` is set per parent-container kind so that
@@ -311,6 +341,250 @@ off `properties.kind = "link_type"` and `properties.name = "contents"`
 regardless of id. The `typ + create` message is included in the
 prototype transaction below for self-containment; on a duplicate id
 the materializer's idempotent-duplicate path covers re-runs.
+
+### D6 — Parent/child containment is single-sourced in `lnk + contents`
+
+`loc.properties` carries no `parent_location_id`, `parent_loc_id`, or
+equivalent denormalized parent pointer. The four `loc` roots in the
+selected prototype confirm this: only canonical container facts (name,
+kind, barcode, format, source provenance) appear in `properties`.
+ESP's `container.uuid` is read from the source record but materialized
+only as the `left` pointer of the corresponding `lnk + contents`.
+
+Reasoning from the sampled data:
+
+- ESP's authoritative parent edge for any container is its own
+  `container.{uuid, slot}` reference. That edge already carries the
+  position label (`slot: "2"` for the bin in a freezer; `slot: "A1"`
+  for a plate in a bin). Both halves — parent identity and position —
+  belong on the link, not on the child `loc`.
+- A copy of `parent_location_id` on `loc` would require a second write
+  whenever a child is moved, and would be a second source of truth
+  that can disagree with the link table. The cost of resolving "what
+  is in plate X?" through `lnk` is identical to a `loc.parent` filter
+  but does not pay that update-cost or split-brain risk.
+- For freezers (`E1a`), `container` is `null` in the sampled embedded
+  reference; the materialized `loc` likewise has no parent pointer
+  and no parent link. Top-level locations are simply `loc` rows with
+  no inbound `contents` link.
+
+Rejected alternative — denormalize `parent_location_id` on `loc` for
+read ergonomics — is documented under "Alternatives & tradeoffs —
+parentage location" below.
+
+### D7 — Directional labels live on the `typ~contents` declaration
+
+Directional labels (`contains`, `contained_by`) are properties of the
+`typ~contents` link-type root only. `lnk` instances carry only
+`left`, `right`, `type_id`, and instance `properties` (currently
+`position`). Specifically:
+
+- `typ~contents.properties.left_to_right_label = "contains"`
+- `typ~contents.properties.right_to_left_label = "contained_by"`
+- `lnk` instances do not repeat these labels and do not carry a
+  per-instance directionality field.
+
+This matches the brief's "labels belong to the link type, not
+repeated on every link instance" position and matches the existing
+`ContentsLinkReadService` resolution path: the read service joins
+`lnk` to its `typ` and resolves the label from the type at read
+time, so per-instance label storage would be redundant and would
+risk drift if a label later changed on the type.
+
+Rejected alternative — record the label inline on each
+`lnk.properties.label` so reads do not need the type-side join — is
+not pursued because the join already exists in the accepted read
+service and the brief explicitly assigns labels to the type.
+
+### Type definition shape
+
+The brief states: type definitions declare the properties that may be
+assigned to objects of that type, with no required/optional property
+complexity and no defaults. The prototype's single `typ` root
+(`contents`) follows that rule:
+
+- The `typ~contents` declaration lists only **assignable property
+  names plus link-type metadata**:
+  - Link-type metadata: `kind = "link_type"`, `name = "contents"`,
+    `description`, `left_role`, `right_role`,
+    `left_to_right_label`, `right_to_left_label`,
+    `allowed_left_collections`, `allowed_right_collections`.
+  - Assignable instance properties for `lnk` rows of this type: the
+    only one used by the prototype is `position` (an object with
+    `kind`, `label`, and parent-shape-specific extras such as
+    `row`, `column`, `slot`).
+- The declaration carries **no `required: [...]` or `optional: [...]`
+  marker**, **no per-property type schema**, and **no defaults**. A
+  `lnk + contents` instance that omits `position` is a perfectly
+  valid materialized root under the prototype's rules; semantic
+  validation (e.g. "every plate-well link must have a `position`")
+  is intentionally deferred.
+- Future extension. If/when the design adds richer type metadata
+  (assignable property catalogs with allowed value spaces, required
+  flags, defaults, or per-type extension-document policy), it would
+  go on the `typ` root as additional `properties` fields. The
+  prototype anticipates that extension but does not encode it now.
+- The same shape rule will apply to entity-type and location-type
+  `typ` roots if they are introduced later: declare assignable
+  property names plus type-specific metadata, no required/optional,
+  no defaults. The prototype does not introduce such roots.
+
+## Alternatives & tradeoffs
+
+### Wells representation (relates to D2)
+
+The brief calls out wells as the model's least-settled question.
+Three options were considered against the sampled ESP plate
+(`PP050`'s A1 plate `27-474501`, with 80 entries in `contents`).
+
+**A. Wells as `lnk.properties.position`** (recommended; current D2).
+
+Wells exist only as positional keys on a `contents` link from the
+plate to whatever the well holds. No `loc` row per well.
+
+- Pros:
+  - Zero new `loc` rows per plate. For a 96-well plate fully loaded,
+    that is 96 fewer `loc` writes per plate, multiplied across
+    thousands of plates in the real ESP corpus.
+  - Mirrors ESP's source encoding 1:1: ESP encodes well position as
+    a key in the parent's `contents` map; the `lnk.properties.position`
+    encoding is the same shape. No synthetic identity is required.
+  - Already supported by the canonical example
+    (`12-create-contents-link-plate-sample.json`), the existing
+    `CommittedTransactionMaterializer`, and `ContentsLinkReadService`
+    without any code change.
+  - The position vocabulary travels with the link, so a future plate
+    move re-creates the link with its slot encoded inherently — no
+    need to update every well.
+- Cons:
+  - Wells have no independent identity. Queries like "what is in
+    plate X's well A1?" become a link-filter
+    (`lnk.left == plate_X AND properties.position.label == "A1"`)
+    rather than a direct `loc` lookup.
+  - Per-well metadata that does not belong on the contained item
+    itself (for example a well-level QC flag or a barcoded well
+    label) would have to live on the `contents` link or be deferred
+    to a future extension document on the plate.
+  - An empty well is implicitly absent — there is no row that says
+    "well B7 is empty"; it is simply not the right side of any
+    `contents` link from the plate.
+
+**B. Wells as child `loc` objects.**
+
+Each well becomes its own `loc` row whose parent is the plate, with a
+`contents` link plate→well. The well's `loc.properties.position`
+records its row/column. Items in the well are linked well→item.
+
+- Pros:
+  - Every well has a stable, independently queryable id. Per-well
+    metadata fits naturally as `loc.properties` on the well.
+  - Uniform parent/child treatment across the freezer→bin→plate→well
+    chain — wells become "just another `loc`" with the same shape
+    as bins and plates.
+- Cons:
+  - 96 (or 384) `loc` rows per plate for the prototype's plate kind.
+    For the sampled bin's 12 plates that is already 1,152 well rows
+    against 13 container rows. Across the real corpus this dominates
+    write/read cost for almost no read benefit, since most queries
+    are answered by the plate→item link directly.
+  - Identity stability across re-imports is fragile. ESP source data
+    does not separately identify wells, so well ids would have to
+    be synthesized (e.g. `<plate_uuid>:A1`). A re-import of the
+    same plate must regenerate the same well ids deterministically,
+    or downstream links break.
+  - Most wells are empty placeholders. The model would create 96
+    rows per plate but only a small fraction would ever be the
+    right side of a `contents` link to an item.
+  - A `contents` link is still needed plate→well **and** well→item,
+    doubling the link-graph for every loaded well.
+
+**C. Hybrid — child `loc` only when the well has independent identity.**
+
+Wells become child `loc` only when the source record gives the well
+its own identity (e.g. a barcoded well, or an ESP record with
+`class_name == "Container"` that points to a plate via `container`).
+For ESP plates as currently sampled this collapses to A. For future
+LIMS data with addressed wells, it admits B per-record without
+forcing it everywhere.
+
+- Pros:
+  - Matches source identity. No synthetic well ids unless the source
+    has them.
+  - Prototype is unchanged for the data we have; future addressed
+    wells slot in without a new design pass.
+- Cons:
+  - Heterogeneous reads. The same plate's wells may be a mix of
+    `loc` rows and link-side positions. Downstream code must handle
+    both shapes — a join through `loc` for some wells and a filter
+    over `lnk.properties.position` for others.
+  - Branch logic in import: per-record decision about whether a
+    well-shaped position becomes a `loc` or stays as a link
+    property.
+
+**Recommendation.** Ship A in the prototype. Document C as the
+forward path for the day the source carries addressable well
+identity. Reject B as the default because it pays a 96×–384× row
+multiplier up front for a query benefit the sampled data does not
+require, and because it forces synthetic well identity that the
+source does not provide.
+
+### Parentage location (relates to D6)
+
+A close cousin of the wells question: even when the parent is a
+proper container (bin, freezer), should the parent pointer live on
+the `loc` row, on the `lnk + contents`, or both?
+
+**A. Parentage on `lnk + contents` only** (recommended; current D6).
+
+Parent identity and position both live on the link. `loc.properties`
+holds only canonical container facts (name, kind, barcode, format,
+source provenance).
+
+- Pros:
+  - Single source of truth. Moving a child means writing one new
+    `lnk` row (and end-of-life'ing the previous one when link
+    versioning lands), with no edit to the child `loc`.
+  - Symmetric with non-containment relationships. Future link types
+    (e.g. `derived_from`, `aliquot_of`) follow the same shape.
+  - Matches `ContentsLinkReadService` directly: `findLocations` is
+    already a join over `lnk.right == childId`.
+- Cons:
+  - "What is the parent of `loc` X?" requires a single index hit on
+    `lnk.right` rather than a property read on `loc`. Index cost
+    is small but non-zero.
+
+**B. Parentage on `loc.properties.parent_location_id` only.**
+
+Drop containment links entirely; record the parent inline.
+
+- Pros:
+  - Direct parent lookup with no join.
+- Cons:
+  - Loses the position information unless it is also crammed onto
+    `loc` as `parent_position`, which violates the brief's rule
+    that contents directional/positional info belongs on the link.
+  - Links go missing from the model entirely, so multi-link
+    relationships (one container in two contexts) cannot be expressed
+    without re-introducing the link.
+  - Asymmetric with every other relationship type.
+
+**C. Both — denormalize parent on `loc` for read speed plus keep
+the link.**
+
+- Pros:
+  - Fast direct-parent reads without a join.
+- Cons:
+  - Two sources of truth that must be kept in sync on every move.
+  - Every `lnk` write must also update the child `loc`, undoing the
+    materializer's current "one root document per message" property.
+  - On a contradiction between the inline `parent_location_id` and
+    the `lnk + contents` graph, downstream code has to pick a
+    winner. Picking the link makes the inline field useless; picking
+    the inline field makes the link incorrect.
+
+**Recommendation.** Ship A; reject B and C explicitly. The cost of
+the join is small, the architectural cleanliness is worth it, and
+the brief points the same way.
 
 ## Selected prototype — examples and source-to-Mongo mapping
 
