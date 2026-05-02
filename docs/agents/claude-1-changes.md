@@ -3,6 +3,154 @@
 The developer writes completed work reports here.
 
 STATUS: READY_FOR_REVIEW
+TASK: TASK-016 — Plan root-shaped contents HTTP integration coverage
+DATE: 2026-05-02
+SUMMARY: Added one narrow opt-in integration spec
+`jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/contents/ContentsHttpReadIntegrationSpec.groovy`
+that proves a single canonical contents transaction can flow through
+Kafka ingestion, the accepted `TASK-014` root-shaped committed
+materialization, and the accepted `TASK-015` contents HTTP routes
+hardened against root-shaped `typ`/`lnk` documents. The spec uses
+`@SpringBootTest(webEnvironment = RANDOM_PORT)`,
+`@AutoConfigureWebTestClient`, `@ActiveProfiles('test')`, and a class-level
+`@IgnoreIf({ !ContentsHttpReadIntegrationSpec.integrationGateOpen() })`
+gate that runs before the Spring context loads. The gate composes three
+checks: the existing `JADETIPI_IT_KAFKA in ['1','true','TRUE','yes']`
+env flag, a 2-second `AdminClient.describeCluster` probe against
+`KAFKA_BOOTSTRAP_SERVERS` (default `localhost:9092`) reused verbatim
+from the accepted Kafka ingest spec pattern, and a new inline 2-second
+`HttpURLConnection` HEAD-style GET probe against
+`${KEYCLOAK_BASE_URL}/realms/jade-tipi/.well-known/openid-configuration`
+(`KEYCLOAK_BASE_URL` resolved from `TEST_KEYCLOAK_URL` then `KEYCLOAK_URL`
+then default `http://localhost:8484`); when any gate fails the spec is
+skipped entirely so the `test` profile's real Keycloak issuer is never
+resolved at startup. The Keycloak probe is inline per the director
+decision and does not refactor `KeycloakTestHelper` or the accepted
+Kafka ingest spec. Per-run isolation mirrors
+`TransactionMessageKafkaIngestIntegrationSpec`:
+`SHORT_UUID = UUID.randomUUID().toString().substring(0, 8)`,
+`TEST_TOPIC = "jdtp-txn-itest-contents-${SHORT_UUID}"`,
+`CONSUMER_GROUP = "jadetipi-itest-contents-${SHORT_UUID}"`, the topic is
+created up-front in `@DynamicPropertySource overrideProperties(...)`
+which also flips `jadetipi.kafka.enabled=true`, narrows
+`jadetipi.kafka.txn-topic-pattern` to the per-run topic, sets the
+unique consumer group, and shortens
+`spring.kafka.consumer.properties.metadata.max.age.ms` to `2000`. A
+`@Shared KafkaProducer<String, byte[]>` is created once in `setupSpec()`
+and closed in `cleanupSpec()`, which also best-effort deletes the
+per-run topic via `AdminClient.deleteTopics(...)`. Per feature, `setup()`
+builds a fresh `txn = Transaction.newInstance('jade-itest-org', 'kafka',
+'jade-itest-cli', 'itest-user')` plus per-feature object ids
+(`containerId`, `typeId`, `linkId`, `contentId`) keyed on a fresh
+8-character UUID prefix, and `cleanup()` deletes only this feature's
+rows: `txn` rows by `txn_id == txnId` and materialized `loc`/`typ`/`lnk`
+rows by exact `_id` — no collection drops, no global query, no shared
+state assumption. Messages are constructed with DTO helpers per the
+director decision (`Message.newInstance(txn, JtpCollection.<X>,
+Action.<Y>, [...])` with inline `Map` payloads that mirror canonical
+examples `10-create-location.json`, `11-create-contents-type.json`, and
+`12-create-contents-link-plate-sample.json` while substituting per-run
+ids), and produced as `byte[]` records keyed by `txnId` over a
+`KafkaProducer` configured with `acks=all`, `String` key serializer,
+and `byte[]` value serializer; the `send` helper does
+`producer.send(record).get(10, SECONDS); producer.flush()` so
+ordering of open → loc → typ → lnk → commit reaches the broker per
+feature. The first feature `'forward and reverse contents HTTP routes
+return the materialized link'` publishes that five-message transaction,
+then awaits the committed `txn` header
+(`state == 'committed' && commit_id != null`,
+`record_type == 'transaction'`, non-empty `commit_id` String, exact
+`_id == txnId`, `txn_id == txnId`), the root-shaped materialized `typ`
+row by `_id == typeId` (asserting `_id == typeId`, `id == typeId`,
+`collection == 'typ'`, `properties.kind == 'link_type'`,
+`properties.name == 'contents'`, and `_head.provenance.txn_id == txnId`),
+and the root-shaped materialized `lnk` row by `_id == linkId` (asserting
+`_id == linkId`, `id == linkId`, `collection == 'lnk'`, top-level
+`type_id == typeId`, `left == containerId`, `right == contentId`,
+`properties.position.kind == 'plate_well'`,
+`properties.position.label == 'A1'`, `properties.position.row == 'A'`,
+`properties.position.column == 1`, `_head.provenance.txn_id == txnId`,
+and a non-null `_head.provenance.materialized_at`). It then exercises
+the forward HTTP route
+`GET /api/contents/by-container/{id}` with the per-feature container id
+through the autowired `WebTestClient` carrying a real Keycloak bearer
+from `KeycloakTestHelper.getAccessToken()` and asserts HTTP 200 plus
+`expectBody().jsonPath(...)` on `length() == 1`, `[0].linkId`,
+`[0].typeId`, `[0].left`, `[0].right`, `[0].properties.position.kind/
+label/row/column`, `[0].provenance.txn_id`,
+`[0].provenance.commit_id` exists, and `[0].provenance.msg_uuid` equal
+to the published `lnkMsg.uuid()`. Then it exercises the reverse route
+`GET /api/contents/by-content/{id}` against the unresolved `ent`
+content id and asserts the same materialized link is returned (same
+`linkId`, `typeId`, `left`, `right`, `properties.position.label`, and
+`provenance.txn_id`); it is acceptable per the director decision that
+`right` is an unresolved `ent` id never materialized in this
+transaction because endpoint joins and semantic reference validation
+remain out of scope. The second feature
+`'empty-result contents HTTP routes return 200 with an empty array'`
+uses a fresh per-call container/content id that is never written to
+either Kafka or Mongo, exercises both
+`GET /api/contents/by-container/{id}` and
+`GET /api/contents/by-content/{id}`, and asserts HTTP 200 plus
+`expectBody().json('[]')` on each, satisfying the directive's
+empty-result HTTP 200 `[]` requirement. Polling helpers (`awaitMongo`)
+are private to this spec and copied verbatim from
+`TransactionMessageKafkaIngestIntegrationSpec` per the directive
+forbidding refactors of the accepted Kafka ingest spec; the awaitMongo
+window uses `AWAIT_TIMEOUT = 30s`, `POLL_INTERVAL = 250ms`, and
+`MONGO_BLOCK_TIMEOUT = 5s`. No production code change was made: the
+contents read service, controller, materializer, persistence service,
+Kafka listener, DTO/schema/example, Docker Compose, Gradle wiring,
+security policy, frontend, response envelope, pagination, endpoint
+joins, semantic write-time validation, update/delete replay, backfill,
+and plate-shaped UI/API projections all remain unchanged. No
+fixture/resource file was added — the integration test resource
+directory remains empty for this task. `application-test.yml` was not
+edited because the existing `test` profile already points the resource
+server at `http://localhost:8484/realms/jade-tipi`, which is exactly
+what the new Keycloak readiness probe checks; no source contradiction
+required an edit. The `KeycloakTestHelper` is unchanged. No refactor
+of `TransactionMessageKafkaIngestIntegrationSpec` was performed.
+
+VERIFICATION:
+The Docker stack was already running (`jade-tipi-mongo`,
+`jade-tipi-keycloak healthy`, `jade-tipi-kafka healthy`,
+`esplims-server-1 healthy` per `docker ps`). All required Gradle
+commands passed in the `developers/claude-1` worktree:
+- `./gradlew :jade-tipi:compileGroovy` → BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:compileTestGroovy` → BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:compileIntegrationTestGroovy` → BUILD
+  SUCCESSFUL with `compileIntegrationTestGroovy` executed (the new
+  spec compiled cleanly on the first try).
+- `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*ContentsHttpReadIntegrationSpec*'` → BUILD SUCCESSFUL with the
+  JUnit XML reporting `tests="2" skipped="0" failures="0"
+  errors="0"` for `org.jadetipi.jadetipi.contents.ContentsHttpReadIntegrationSpec`
+  (the forward/reverse feature and the empty-result feature both
+  passed).
+- `./gradlew :jade-tipi:test --rerun-tasks` → BUILD SUCCESSFUL with
+  the aggregated unit suite reporting `tests=113 skipped=0 failures=0
+  errors=0` across all `:jade-tipi` unit-test XMLs.
+- Optional time-permitting check
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*TransactionMessageKafkaIngestIntegrationSpec*'` → BUILD
+  SUCCESSFUL with `tests="2" skipped="0" failures="0" errors="0"`,
+  confirming the new spec coexists with the accepted Kafka ingest
+  integration pattern (per-run topic and consumer group isolated the
+  runs).
+No setup blocker was encountered; if a future runner hits Gradle/Docker
+issues, the documented setup commands remain
+`docker compose -f docker/docker-compose.yml up -d` and `./gradlew
+--stop`, with the exact blocked command/error reported alongside.
+
+FILES CHANGED:
+- `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/contents/ContentsHttpReadIntegrationSpec.groovy`
+  (new)
+- `docs/agents/claude-1-changes.md` (this report)
+
+---
+
+STATUS: READY_FOR_REVIEW
 TASK: TASK-015 — Update contents read service for root-shaped documents
 DATE: 2026-05-01
 SUMMARY: Updated `ContentsLinkReadService` so the contents read path
