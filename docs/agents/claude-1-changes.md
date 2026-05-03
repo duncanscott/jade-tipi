@@ -3,6 +3,161 @@
 The developer writes completed work reports here.
 
 STATUS: COMPLETED
+TASK: TASK-027 — Human-readable Kafka contents link submission path (implementation)
+DATE: 2026-05-03
+SUMMARY: Proved that the existing human-readable contents-flow Kafka examples
+already round-trip end-to-end into the documented root-shaped `typ` and `lnk`
+documents and remain consumable by `ContentsLinkReadService`, by adding two
+focused Spock features. No example resource, schema, materializer source,
+read-service source, HTTP endpoint, DTO type, or documentation file was
+changed: source review (see `docs/agents/claude-1-next-step.md`) and the
+director's pre-work review confirmed the shape is already correct. Added one
+backend co-presence test that materializes the canonical `typ + create`
+link-type and `lnk + create` snapshot pair through the real
+`CommittedTransactionMaterializer` and asserts the captured Mongo documents
+satisfy the dotted-path criteria the reader queries on. Added one DTO
+co-presence test asserting that the `01 → 11 → 12 → 09` example trio shares a
+single `txn.uuid`, that `12-…`'s `data.type_id` matches `11-…`'s `data.id`,
+and that `12-…`'s endpoints respect `11-…`'s `allowed_*_collections`.
+
+Files changed (this turn):
+
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`
+  — added one Spock feature, `'materialized typ link-type and lnk roots
+  satisfy ContentsLinkReadService resolution criteria'`. The feature:
+  1. Stubs `mongoTemplate.insert(_ as Map, 'typ')` and `... 'lnk'` to capture
+     the documents the materializer hands to Mongo (no in-memory Mongo, no
+     network).
+  2. Materializes a snapshot containing `linkTypeMessage()` and
+     `linkMessage()` (the existing helpers that mirror `11-create-contents-type.json`
+     and `12-create-contents-link-plate-sample.json`).
+  3. Asserts `result.materialized == 2` with `skippedUnsupported == 0`,
+     `skippedInvalid == 0`, `duplicateMatching == 0`, `conflictingDuplicate == 0`.
+  4. Asserts the captured `typ` doc carries `properties.kind == 'link_type'`
+     and `properties.name == 'contents'` — the exact dotted-path criteria
+     `ContentsLinkReadService.resolveContentsTypeIds()` queries on (root-shaped
+     `typ` filter on `properties.kind == 'link_type'` AND
+     `properties.name == 'contents'`).
+  5. Asserts the captured `lnk` doc carries top-level `_id`, `collection ==
+     'lnk'`, `type_id == capturedTyp._id` (the materialized cross-document
+     reference between the typ root and the referencing lnk root),
+     `left.endsWith('~loc~plate_b1')`, `right.endsWith('~ent~sample_x1')`,
+     and `properties.position.{kind, label}` populated with the canonical
+     plate-well facts.
+  6. Asserts both roots carry `_head.provenance.collection` matching their
+     source collection.
+  ~50 lines of Spock added; no production code changes; no other features
+  in the spec were modified.
+- `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`
+  — added one Spock feature, `"contents transaction example trio shares one
+  txn id and pairs typ link-type with a referencing lnk create"`. The
+  feature:
+  1. Reads `01-open-transaction.json`, `11-create-contents-type.json`,
+     `12-create-contents-link-plate-sample.json`, and
+     `09-commit-transaction.json` with the existing `JsonMapper.fromJson`
+     `Message` round-trip.
+  2. Asserts all four messages share the same `txn.uuid` (the in-resource
+     transaction chain that the materializer assumes).
+  3. Asserts `01-…` and `09-…` are transaction-control messages
+     (`Collection.TRANSACTION` + `Action.OPEN` / `Action.COMMIT`).
+  4. Asserts `lnkData.type_id == typData.id` (the explicit cross-reference
+     between the contents type and the contents link, which was previously
+     only asserted per-message and not as a paired check).
+  5. Asserts the lnk `data.left` is on `loc` and `data.right` is on `ent`,
+     consistent with `typData.allowed_left_collections` /
+     `allowed_right_collections`.
+  ~35 lines of Spock added. No example file rewrite; the existing
+  `EXAMPLE_PATHS` round-trip and schema-validation loops already exercise
+  every example file independently.
+
+Files NOT changed (in OWNED_PATHS but no edit was needed, as confirmed by
+the accepted pre-work plan and the director's pre-work review):
+
+- `DIRECTION.md` — already prescribes the canonical contents-link shape
+  (`type_id`, `left`, `right`, instance `properties` with `position`); no
+  wording mismatch.
+- `docs/architecture/kafka-transaction-message-vocabulary.md` — already
+  prescribes the human-readable `typ + create` link-type and `lnk + create`
+  shape, names the `11-…` / `12-…` reference examples, and explicitly
+  defers semantic validation. No edit needed.
+- `docs/architecture/jade-tipi-object-model-design-brief.md` — references
+  `contents` and well positions in line with the existing examples.
+- `docs/OVERVIEW.md` — not load-bearing for this change.
+- `libraries/jade-tipi-dto/src/main/resources/example/message/11-create-contents-type.json`
+  and `12-create-contents-link-plate-sample.json` — already match the
+  canonical human-readable shape from `DIRECTION.md` verbatim. The
+  `01 → 11 → 12 → 09` transaction sequence (shared
+  `txn.uuid = 018fd849-2a40-7abc-8a45-111111111111`) is complete.
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`
+  — `buildDocument()` already produces the documented root shape for both
+  `typ + create` link-type and `lnk + create`. Touching it would expand
+  scope past the bounded proof.
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/ContentsLinkReadService.groovy`
+  (out of OWNED_PATHS anyway) — its query criteria already match the
+  materialized roots; the new co-presence test confirms this.
+- `libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json`
+  (out of OWNED_PATHS anyway) — semantic validation of `data.type_id`,
+  `data.left`, and `data.right` is OUT_OF_SCOPE for TASK-027 and explicitly
+  deferred by the architecture doc.
+- `jade-tipi/src/integrationTest/...` — no new end-to-end Kafka spec was
+  added. The existing `ContentsHttpReadIntegrationSpec` (run during
+  verification, see below) already exercises the full Kafka → Mongo → HTTP
+  contents-flow path and stayed green with the new tests in place.
+- `docs/orchestrator/tasks/TASK-027-human-readable-kafka-contents-link-submission.md`
+  — director owns the task status field; no developer-side edit.
+
+Verification (run from `developers/claude-1/`, with the local Docker stack
+already up — `jade-tipi-mongo`, `jade-tipi-kafka`, `jade-tipi-keycloak`,
+`jade-tipi-couchdb` all reporting `Up (healthy)` per `docker ps`):
+
+- `./gradlew :libraries:jade-tipi-dto:test` — `BUILD SUCCESSFUL in 1s`. The
+  new "contents transaction example trio shares one txn id and pairs typ
+  link-type with a referencing lnk create" feature passed alongside the
+  existing `EXAMPLE_PATHS` round-trip and schema-validation loops over
+  `11-create-contents-type.json` and
+  `12-create-contents-link-plate-sample.json`.
+- `./gradlew :jade-tipi:test` — `BUILD SUCCESSFUL in 7s`. The new
+  "materialized typ link-type and lnk roots satisfy
+  ContentsLinkReadService resolution criteria" feature passed alongside
+  the existing `CommittedTransactionMaterializerSpec` typ/lnk root-shape
+  cases. `JadetipiApplicationTests.contextLoads` reached the running
+  local Mongo at `jade-tipi-mongo`.
+- `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*ContentsHttpReadIntegrationSpec*'` — `BUILD SUCCESSFUL in 11s`. The
+  existing end-to-end Kafka → Mongo → HTTP contents-flow spec exercised
+  the canonical contents-link wire shape against the running
+  `jade-tipi-kafka` and `jade-tipi-mongo` containers and stayed green.
+
+Setup commands referenced (per CLAUDE.md "Tooling Refresh"; not required
+this turn because the stack was already running):
+
+- `docker compose -f docker/docker-compose.yml up -d` — full local stack,
+  required when the Kafka/Mongo containers are not already up.
+- `docker compose -f docker/docker-compose.yml --profile mongodb up -d` —
+  Mongo only, sufficient for `:jade-tipi:test`'s `contextLoads`.
+- `./gradlew --stop` — only if a stale Gradle daemon is implicated; not
+  needed this turn.
+
+Stay-in-scope check:
+
+This turn edited exactly two source-of-truth files plus this report:
+
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`
+- `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`
+- `docs/agents/claude-1-changes.md` (this report; a base developer-owned
+  path)
+
+All three are inside TASK-027 `OWNED_PATHS` (the two test paths) or the
+base developer-owned set. No HTTP submission endpoint, schema tightening,
+materializer source change, read-service source change, `ent`
+materialization, property-assignment materialization, permission
+enforcement, endpoint projection maintenance, semantic reference
+validation, `parent_location_id`, or nested Kafka operation DSL was
+introduced.
+
+---
+
+STATUS: COMPLETED
 TASK: TASK-026 — Human-readable Kafka loc submission path (implementation)
 DATE: 2026-05-03
 SUMMARY: Made the human-readable `loc + create` Kafka shape materialize

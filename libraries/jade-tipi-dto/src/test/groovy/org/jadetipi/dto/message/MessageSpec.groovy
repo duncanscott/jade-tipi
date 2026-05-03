@@ -456,4 +456,41 @@ class MessageSpec extends Specification {
         position.row == 'A'
         position.column == 1
     }
+
+    def "contents transaction example trio shares one txn id and pairs typ link-type with a referencing lnk create"() {
+        given: 'open, contents-type create, contents-link create, and commit examples'
+        Message open = JsonMapper.fromJson(
+                readResource('/example/message/01-open-transaction.json'), Message)
+        Message typCreate = JsonMapper.fromJson(
+                readResource('/example/message/11-create-contents-type.json'), Message)
+        Message lnkCreate = JsonMapper.fromJson(
+                readResource('/example/message/12-create-contents-link-plate-sample.json'), Message)
+        Message commit = JsonMapper.fromJson(
+                readResource('/example/message/09-commit-transaction.json'), Message)
+
+        expect: 'all four messages chain through the same transaction uuid'
+        String txnUuid = open.txn().uuid()
+        typCreate.txn().uuid() == txnUuid
+        lnkCreate.txn().uuid() == txnUuid
+        commit.txn().uuid() == txnUuid
+
+        and: 'open and commit are transaction-control messages on the txn collection'
+        open.collection() == Collection.TRANSACTION
+        open.action() == Action.OPEN
+        commit.collection() == Collection.TRANSACTION
+        commit.action() == Action.COMMIT
+
+        and: 'the lnk create points to the typ link-type by id (the in-resource cross-reference)'
+        Map typData = typCreate.data()
+        Map lnkData = lnkCreate.data()
+        typData.kind == 'link_type'
+        typData.name == 'contents'
+        lnkData.type_id == typData.id
+
+        and: 'lnk endpoints respect the typ allowed_*_collections declarations'
+        typData.allowed_left_collections.contains('loc')
+        typData.allowed_right_collections.contains('ent')
+        lnkData.left.contains('~loc~')
+        lnkData.right.contains('~ent~')
+    }
 }

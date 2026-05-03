@@ -516,6 +516,53 @@ class CommittedTransactionMaterializerSpec extends Specification {
         captured.right.endsWith('~ent~sample_x1')
     }
 
+    def 'materialized typ link-type and lnk roots satisfy ContentsLinkReadService resolution criteria'() {
+        given: 'capture both inserts that the contents-flow snapshot triggers'
+        Map<String, Object> capturedTyp = null
+        Map<String, Object> capturedLnk = null
+        mongoTemplate.insert(_ as Map, 'typ') >> { Map doc, String _coll ->
+            capturedTyp = doc
+            return Mono.just(doc)
+        }
+        mongoTemplate.insert(_ as Map, 'lnk') >> { Map doc, String _coll ->
+            capturedLnk = doc
+            return Mono.just(doc)
+        }
+
+        when: 'snapshot mirrors the canonical 11 -> 12 contents-flow message pair'
+        MaterializeResult result = materializer.materialize(
+                snapshot([linkTypeMessage(), linkMessage()])).block()
+
+        then: 'both messages materialize and nothing is skipped'
+        result.materialized == 2
+        result.skippedUnsupported == 0
+        result.skippedInvalid == 0
+        result.duplicateMatching == 0
+        result.conflictingDuplicate == 0
+
+        and: 'the typ root carries the dotted-path facts ContentsLinkReadService queries on'
+        capturedTyp._id == TYP_ID
+        capturedTyp.id == TYP_ID
+        capturedTyp.collection == 'typ'
+        Map typProperties = capturedTyp.properties as Map
+        typProperties.kind == 'link_type'
+        typProperties.name == 'contents'
+
+        and: 'the lnk root references the typ root by _id at top-level type_id'
+        capturedLnk._id == LNK_ID
+        capturedLnk.collection == 'lnk'
+        capturedLnk.type_id == capturedTyp._id
+        capturedLnk.left.endsWith('~loc~plate_b1')
+        capturedLnk.right.endsWith('~ent~sample_x1')
+        Map position = (capturedLnk.properties as Map).position as Map
+        position.kind == 'plate_well'
+        position.label == 'A1'
+
+        and: 'both roots carry _head.provenance with the source collection'
+        ((capturedTyp._head as Map).provenance as Map).collection == 'typ'
+        ((capturedLnk._head as Map).provenance as Map).collection == 'lnk'
+    }
+
     def 'materializes a grp create as a root document with permissions under properties and _head.provenance'() {
         given:
         Map<String, Object> captured = null
