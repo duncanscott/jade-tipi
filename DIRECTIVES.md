@@ -60,19 +60,29 @@ A director hotfix after `TASK-023` added Keycloak access-token refresh handling
 for the frontend so the admin group UI does not keep sending expired bearer
 tokens.
 
-`TASK-024` is ready for pre-work. The next bounded goal is to update the
-Next.js frontend to the latest stable Next.js release available at
-implementation time and update all npm dependencies/devDependencies in
-`frontend/package.json` to current stable compatible versions.
+`TASK-024` is accepted. The frontend dependency refresh moved Next.js to
+16.2.4, React/React DOM to 19.2.5, Auth.js/NextAuth to the documented v5 beta
+exception, Playwright/Tailwind/type packages to the accepted current lines,
+and TypeScript to the director-approved 5.x line. The Next 16 toolchain
+required the committed `frontend/tsconfig.json` migration to `jsx:
+react-jsx` and `.next/dev/types/**/*.ts`.
+
+`TASK-025` is ready for pre-work. The next bounded goal is to evaluate the
+deferred TypeScript 6 frontend migration separately from the accepted Next.js
+and npm dependency refresh.
 
 ## Active Task
 
-- `TASK-024 - Update Next.js and npm dependencies` is
-  `READY_FOR_PREWORK`. Route to `claude-1` for pre-work first. The pre-work
-  must list current and target npm versions, call out any prerelease/stability
-  caveats, identify migration risks, and name the exact update/verification
-  commands. Do not begin implementation until the director advances the task
-  to `READY_FOR_IMPLEMENTATION`.
+- `TASK-025 - Plan TypeScript 6 frontend upgrade` is `READY_FOR_PREWORK`.
+  Route to `claude-1` for pre-work first. The pre-work must confirm the
+  latest stable TypeScript 6 version and compatibility with the accepted
+  Next.js 16 / React 19.2 frontend stack, then propose exact implementation
+  and verification commands. Do not begin implementation until the director
+  advances the task to `READY_FOR_IMPLEMENTATION`.
+- `TASK-024 - Update Next.js and npm dependencies` is accepted. The
+  implementation updated the frontend dependency set and lockfile, accepted
+  the required Next 16 `tsconfig` migration, and preserved the admin group,
+  Keycloak login, token refresh, document CRUD, and test-route workflows.
 - `TASK-023 - Fix NextAuth sign-out build error` is accepted. The
   implementation narrowed the `frontend/auth.ts` `events.signOut` callback
   message union with `'token' in message`, preserved Keycloak logout behavior
@@ -102,13 +112,42 @@ implementation time and update all npm dependencies/devDependencies in
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
-Active pre-work is limited to `TASK-024`. Broader authentication redesign,
+Active pre-work is limited to `TASK-025`. Broader authentication redesign,
 Keycloak changes, admin group-management changes, and permission
 evaluation/enforcement semantics remain future work unless the human selects
 one as a later bounded goal.
 
+## Orchestrator Protocol Direction
+
+- Developers must not broaden task ownership, acceptance criteria, or scope
+  during implementation. If an upgrade tool or build step requires edits
+  outside the active task's `OWNED_PATHS`, report the exact file and reason
+  for director review rather than self-expanding the task file.
+
+## TASK-025 Direction
+
+- Director created `TASK-025` on 2026-05-03 after accepting `TASK-024`.
+- Pre-work should evaluate the deferred TypeScript 6 migration only. Do not
+  update Next.js, React, NextAuth/Auth.js, Tailwind, Playwright, backend code,
+  Docker, Keycloak, or frontend UI behavior.
+- Verification for any later implementation remains `cd frontend && npm
+  install`, `cd frontend && npm run build`, and `cd frontend && npm test` or
+  the narrowest practical Playwright command.
+
 ## TASK-024 Direction
 
+- Director implementation review on 2026-05-03 accepts `TASK-024` with
+  `SIGNAL: REQUEST_NEXT_STEP` and creates `TASK-025` for TypeScript 6
+  pre-work. Director verification passed `git diff --check
+  origin/director..HEAD`, `cd frontend && npm install`, and `cd frontend &&
+  npm run build`; `cd frontend && npm test` was blocked by sandbox port-bind
+  permissions (`listen EPERM 0.0.0.0:3000`) and should be rerun in a normal
+  developer shell.
+- Ownership review: the original implementation handoff did not include
+  `frontend/tsconfig.json`, but Next 16 reapplies the committed
+  `jsx: react-jsx` / `.next/dev/types/**/*.ts` migration on build. Director
+  accepts that scope exception for `TASK-024` and records the stricter
+  protocol direction above for future tasks.
 - Director created `TASK-024` on 2026-05-03 after Duncan requested a frontend
   dependency refresh.
 - Pre-work should inspect `frontend/package.json` and npm metadata to identify

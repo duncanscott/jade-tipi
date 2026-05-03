@@ -3,10 +3,12 @@
 ID: TASK-024
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: ACCEPTED
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-023
+NEXT_TASK:
+  - TASK-025
 PAUSE_SOURCE_TASKS: true
 OWNED_PATHS:
   - frontend/package.json
@@ -124,3 +126,29 @@ DIRECTOR_PREWORK_REVIEW:
   missing, use/report `npx playwright install chromium`; if npm registry
   access is unavailable, report the exact failing npm command and the setup
   issue rather than treating it as a product blocker.
+
+DIRECTOR_IMPLEMENTATION_REVIEW:
+- 2026-05-03: Accepted. claude-1 updated the frontend dependency set and
+  lockfile, preserved the NextAuth/Auth.js v5 beta exception, kept
+  TypeScript on the director-approved 5.x line, applied the Next 16 generated
+  `frontend/tsconfig.json` migration, and patched the admin group Playwright
+  coverage needed for the upgraded session behavior.
+- Ownership review: implementation changed `frontend/package.json`,
+  `frontend/package-lock.json`, `frontend/tests/admin-groups.spec.ts`,
+  `frontend/tsconfig.json`, this task file, and
+  `docs/agents/claude-1-changes.md`. The package files, tests, task file,
+  and report are within the task/base ownership boundary. The original
+  implementation handoff did not include `frontend/tsconfig.json`; director
+  accepts it here as a required Next 16 configuration migration because
+  `next build` reapplies the same change. Future task ownership expansions
+  remain director decisions; developers should report required out-of-scope
+  tool edits instead of self-expanding ownership.
+- Director verification: `git diff --check origin/director..HEAD` passed.
+  `cd frontend && npm install` completed and refreshed the stale director
+  `node_modules`. `cd frontend && npm run build` passed on Next.js 16.2.4
+  with the pre-existing non-blocking `turbopack.root should be absolute`
+  warning. `cd frontend && npm test` was blocked in the Codex sandbox by
+  `listen EPERM: operation not permitted 0.0.0.0:3000`; rerun the same
+  documented command in a normal developer shell to verify Playwright locally.
+- Follow-up: `TASK-025` tracks the deferred TypeScript 6 migration as a
+  separate pre-work-first task.

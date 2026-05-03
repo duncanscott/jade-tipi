@@ -11,10 +11,9 @@ Report file: docs/agents/claude-1-changes.md
 
 ## Current Assignment
 
-- Active task: none. `TASK-023 - Fix NextAuth sign-out build error` is
-  accepted, and the frontend build-baseline repair chain is complete.
-- Current phase: idle. Wait for the director to assign the next bounded task
-  before writing new pre-work or implementation changes.
+- Active task: `TASK-025 - Plan TypeScript 6 frontend upgrade`.
+- Current phase: pre-work. Write the required plan in
+  `docs/agents/claude-1-next-step.md` only, then stop for director review.
 - Use `DIRECTIVES.md` as the current source of truth.
 
 ## Owned Paths
