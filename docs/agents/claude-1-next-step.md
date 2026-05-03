@@ -4,370 +4,458 @@ The developer writes pre-work plans here before implementation begins.
 
 STATUS: PRESENT
 
-## TASK-020 — Define and materialize group records (pre-work, revision 2)
+## TASK-021 — Add admin group management (pre-work, revision 1)
 
 ### Directive summary
 
 `DIRECTIVES.md` global signal is `REQUEST_NEXT_STEP`. The active task
-file `docs/orchestrator/tasks/TASK-020-group-record-model-and-materialization.md`
-is `READY_FOR_PREWORK` with `OWNER: claude-1`. The director's
-`PREWORK_REVIEW` block (2026-05-02) keeps the task at
-`READY_FOR_PREWORK`, accepts that revision-1's pre-work stayed inside
-the base owned-path boundary, but rejects revision-1's
-`data.permissions` list-of-`{grp_id, level}` shape because:
+file `docs/orchestrator/tasks/TASK-021-admin-group-management.md` is
+`READY_FOR_PREWORK` with `OWNER: claude-1`. The director recorded the
+new product direction from Duncan on 2026-05-03: do not integrate
+ORCID for this step; create a normal `jade-tipi` realm Keycloak user
+`dnscott` / `Duncan Scott` (`dnscott@jade-tipi.org`), grant a Jade-Tipi
+application admin role, and add JWT-protected group-management
+endpoints plus a minimal Next.js admin UI that can create and edit
+`grp` records. Authorization must come from the user's application JWT
+and not from the Keycloak `master` realm admin user. `TASK-020`
+remains accepted; this task narrowly authorizes admin endpoint
+authorization and intentionally skips broader permission evaluation,
+membership sync, and password-management features.
 
-1. The accepted task acceptance line requires "a simple group
-   permissions **map** that grants other group IDs either `rw` or `r`."
-2. `DIRECTION.md`, `docs/README.md`, `docs/Jade-Tipi.md`, and
-   `docs/user-authentication.md` already describe a permissions **map**
-   for other groups; a list-only implementation would create model
-   drift across the project's product direction docs.
+This pre-work turn produces a plan only. No realm import, security
+config, controller, service, schema, fixture, frontend, or test edit
+is made on this turn — no `READY_FOR_IMPLEMENTATION` /
+`PROCEED_TO_IMPLEMENTATION` signal is present yet.
 
-This revision answers the three concrete questions the director posed
-and recommends a single default path while keeping a backup option open
-in case the human/director rejects the schema-scope expansion. It
-produces a plan only — no schema, example, materializer, test, or doc
-edit will be made on this turn (no `READY_FOR_IMPLEMENTATION` /
-`PROCEED_TO_IMPLEMENTATION` signal is present).
+### Survey of current state (sources only, no proposed edits)
 
-### Resolution of the map / schema compatibility issue
+The following observations are from a focused source survey. They
+ground the answers in the next section.
 
-The blocker is concrete: `message.schema.json` types `Message.data` as
-`SnakeCaseObject`, whose recursive `additionalProperties` reference to
-`SnakeCaseValue` re-applies the `propertyNames: ^[a-z][a-z0-9_]*$` rule
-to every nested object. World-unique grp IDs are
-`<org>~<grp>~<uuid>~grp~<short>`, so they contain `~` and `-` and
-cannot be used as JSON object keys inside any `SnakeCaseObject`-typed
-subtree without a schema change.
+- Keycloak realm import `docker/jade-tipi-realm.json` defines the
+  `jade-tipi` realm with two clients: a confidential backend client
+  `jade-tipi` (direct-access grants enabled, audience and tipi-org/
+  tipi-group hardcoded mappers) and a public SPA client
+  `jade-tipi-frontend` (PKCE, redirect `http://localhost:3000/*`).
+  The realm currently has no realm or client roles defined and one
+  user `testuser` / `test@jade-tipi.org` with password `testpassword`
+  and no role mapping.
+- Spring backend reads
+  `spring.security.oauth2.resourceserver.jwt.issuer-uri =
+  http://localhost:8484/realms/jade-tipi` from
+  `jade-tipi/src/main/resources/application.yml` and configures a
+  default-converter resource server in
+  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/config/SecurityConfig.groovy`
+  via `.oauth2ResourceServer { oauth2 -> oauth2.jwt { } }`. There is
+  no custom `JwtAuthenticationConverter` and no parsing of
+  `realm_access.roles` or `resource_access.<client>.roles` today.
+- The accepted `TASK-020` materializer in
+  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`
+  supports `grp + create` only and writes a root-shaped doc with
+  `_id == data.id`, `id`, `collection: "grp"`, optional `type_id`,
+  `properties` (which carries `name`, `description`, and a
+  grp-id-keyed `permissions` map of `"rw"|"r"`), `links: {}`, and
+  `_head.provenance` with `txn_id`, `commit_id`, `msg_uuid`,
+  `collection`, `action`, `committed_at`, `materialized_at`. There is
+  no `grp + update` handling in the materializer today, no
+  `GroupController`, no `GroupAdminService`, and no `GrpRepository`.
+- Existing controllers under
+  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/controller/`
+  (`TransactionController`, `CommittedTransactionReadController`,
+  `ContentsLinkReadController`, `DocumentController`) inject
+  `@AuthenticationPrincipal Jwt jwt` and use `@RequestMapping('/api/...')`.
+- The Next.js Auth.js setup in `frontend/auth.ts` already uses the
+  Keycloak provider with `KEYCLOAK_ISSUER`, `KEYCLOAK_CLIENT_ID`,
+  `KEYCLOAK_CLIENT_SECRET`, persists `access_token` and `id_token`
+  through the `jwt` callback into `token`, and exposes
+  `session.accessToken` / `session.idToken` to client components.
+  `frontend/lib/api.ts` attaches `Authorization: Bearer <token>` to
+  fetch calls via `ensureAccessToken(accessToken)`. The header
+  navigation in `frontend/components/layout/Header.tsx` lists Home,
+  Documents, Create — no Groups link yet. Playwright tests live in
+  `frontend/tests/frontend.spec.ts`.
+- Backend test pattern: `WebTestClient.bindToController(...)` with a
+  custom `AuthenticationPrincipalArgumentResolver` for unit specs (see
+  `CommittedTransactionReadControllerSpec`); a real-Keycloak
+  `client_credentials` token helper for integration tests
+  (`KeycloakTestHelper`); and a mock `ReactiveJwtDecoder` returning
+  a synthetic `Jwt` for slice tests (`TestSecurityConfig`).
 
-Three candidate physical shapes were considered for the wire payload:
+### Concrete answers to the PREWORK_REQUIREMENTS questions
 
-- **Shape A — grp-id-keyed permissions map (RECOMMENDED).** Wire
-  payload places a `permissions` object inside `data` whose keys are
-  world-unique grp IDs and whose values are `"rw"` or `"r"`. This is
-  the shape the existing docs already describe and is the most
-  natural reading of "permissions map ... grants other group IDs
-  either `rw` or `r`." It does NOT validate against today's
-  `message.schema.json` because the inner keys violate the
-  `SnakeCaseObject.propertyNames` rule. Adopting Shape A requires a
-  bounded schema edit plus a director-approved owned-path expansion
-  (see "Schema edit sketch" and "Requested scope expansion" below).
+**Q1 — Where will `jade-tipi-admin` appear in the JWT, and how will
+Spring map it to an authority?**
 
-- **Shape B — level-keyed permissions map (BACKUP).** Wire payload
-  places a `permissions` object inside `data` whose keys are
-  exactly `"rw"` and `"r"` and whose values are arrays of
-  world-unique grp IDs. Both outer keys are valid `snake_case`, the
-  values are string arrays (allowed by `SnakeCaseValue`), so this
-  shape validates against today's schema with no schema edit. It is
-  still a map (only two stable keys, indexed by access level), so it
-  satisfies "permissions map" literally and lossless-converts to a
-  grp-id-keyed map at query time. It does require small wording
-  tweaks in `DIRECTION.md`,
-  `docs/README.md`, `docs/Jade-Tipi.md`, and
-  `docs/user-authentication.md` because text such as "use only two
-  permission **values**: `rw`, `r`" implies the values of the map
-  are `rw`/`r` — under Shape B the `rw`/`r` strings move from
-  values to keys, which is a slight semantic shift the docs would
-  need to acknowledge.
+Recommended placement: a **realm role** named `jade-tipi-admin`,
+assigned to the `dnscott` user via realm role mapping. Realm roles
+ride on the access token as `realm_access.roles: [..., "jade-tipi-admin"]`
+without any per-client wiring, which is the smallest viable change for
+a local development admin path. A client role on the `jade-tipi`
+backend client would require parsing `resource_access["jade-tipi"].roles`
+and a separate scope/audience setup; that complexity is unnecessary
+for a single dev admin user.
 
-- **Shape C — list of `{grp_id, level}` rows (REJECTED).** This was
-  the revision-1 default proposal. The director has explicitly
-  rejected it in `PREWORK_REVIEW` because it contradicts the "map"
-  language already in the accepted task file and four product-
-  direction docs. Not proposed here.
+Spring mapping: replace the default authorities converter with a
+narrow custom `Converter<Jwt, Collection<GrantedAuthority>>` that
+reads `realm_access.roles` (a `List<String>`), prefixes each with
+`ROLE_`, and returns a `List<SimpleGrantedAuthority>`. Wrap it in a
+`ReactiveJwtAuthenticationConverterAdapter` and set it on the resource
+server via `.oauth2ResourceServer { oauth2 -> oauth2.jwt {
+jwt.jwtAuthenticationConverter(...) } }`. Existing scope-based
+authorities mapped from the `scope`/`scp` claim are not needed for
+this task, so the converter only emits realm-role authorities.
 
-The recommendation is **Shape A with a director-approved owned-path
-expansion** because it is the only candidate that exactly matches
-every existing doc sentence with no rewording, and because the
-required schema edit is small, well-bounded, and reversible.
+The new admin path becomes:
 
-### Concrete answers to the PREWORK_REVIEW questions
+```groovy
+.pathMatchers('/api/admin/**').hasRole('jade-tipi-admin')
+```
 
-**Q1 — What exact canonical `grp + create` payload shape will preserve
-a permissions map granting other group IDs `rw` or `r` while still
-passing `MessageSpec` validation against `message.schema.json`?**
+while everything else keeps its current `permitAll` /
+`authenticated()` rules. Other controllers continue to receive
+`@AuthenticationPrincipal Jwt jwt` unchanged because the converter
+returns a `JwtAuthenticationToken` whose principal is still the `Jwt`.
 
-Two shapes pass `MessageSpec` validation while preserving the "map"
-semantics:
+**Q2 — Direct MongoDB write or synthesized Kafka transaction?**
 
-- Shape A passes only after a bounded schema change that adds a
-  `Permissions` `$def` and conditionally overrides `data.permissions`
-  for `collection: grp` so its inner property names are not subject to
-  the `SnakeCaseObject.propertyNames` rule. The wire payload would
-  read:
-  ```json
-  "data": {
-    "id": "jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-cccccccccccc~grp~analytics",
-    "name": "analytics",
-    "description": "analytics team",
-    "permissions": {
-      "jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~grp~lab_ops": "rw",
-      "jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-bbbbbbbbbbbb~grp~viewers": "r"
-    }
-  }
-  ```
+Two paths:
 
-- Shape B passes today's schema unchanged. The wire payload would
-  read:
-  ```json
-  "data": {
-    "id": "jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-cccccccccccc~grp~analytics",
-    "name": "analytics",
-    "description": "analytics team",
-    "permissions": {
-      "rw": [
-        "jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~grp~lab_ops"
-      ],
-      "r":  [
-        "jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-bbbbbbbbbbbb~grp~viewers"
-      ]
-    }
-  }
-  ```
+- **Path A — Direct MongoDB write from a new `GroupAdminService`
+  (RECOMMENDED first pass).** The service writes root-shaped `grp`
+  documents directly via `ReactiveMongoOperations` (or
+  `ReactiveMongoTemplate`), reusing the same field layout as the
+  materializer (`_id`, `id`, `collection: "grp"`, `properties`,
+  `links: {}`, `_head.provenance`). For provenance on admin writes,
+  generate a sentinel `txn_id == "admin~<uuidv7>"` and matching
+  `commit_id == txn_id`, a fresh `msg_uuid` per write, action
+  `"create"` or `"update"`, and `committed_at == materialized_at`
+  set to write time. This keeps the persisted documents schema-
+  compatible with the `TASK-020` root-shape contract while clearly
+  marking admin-origin records.
+- **Path B — Synthesize a `txn open + grp + create/update + commit`
+  Kafka transaction and let `CommittedTransactionMaterializer` do
+  the write.** Preserves the single-writer invariant for root
+  documents but requires (1) the materializer to learn `grp + update`,
+  which `TASK-020` deliberately did not cover, (2) a Kafka producer
+  in the admin controller path, and (3) the admin endpoint to wait
+  for materialization before responding. That re-opens
+  materializer scope and introduces synchronous coupling between an
+  admin click and Kafka.
 
-**Q2 — Should this task request an explicit owned-path expansion to
-update `message.schema.json` and its focused tests, or should the task
-be revised by the director/human to accept a list-shaped permissions
-representation?**
+Tradeoff: Path A loses the "one writer creates root docs" invariant
+for the narrow admin-grp surface only, but it stays inside what
+`TASK-021` actually authorizes (admin endpoints, narrow authorization
+scope) and avoids re-opening the `TASK-020`-frozen materializer for
+`grp + update`. Path B is principled but pushes the change footprint
+well beyond this task's stated scope.
 
-Recommendation: **request the owned-path expansion.** The expansion
-is small (one schema file plus one test file) and lets us deliver the
-documented direction with no doc rewording. Shape A is the cleanest
-fit for every existing sentence in `DIRECTION.md`,
-`docs/README.md`, `docs/Jade-Tipi.md`, and
-`docs/user-authentication.md`, and it is the shape any future
-permission-enforcement code will want at read time anyway.
+Chosen first-pass approach: **Path A.** The persisted documents stay
+shape-compatible with the materializer's `grp + create` output, the
+`_head.provenance.txn_id` sentinel form makes admin writes
+identifiable for a future task, and update semantics live in one new
+service rather than spreading into the materializer.
 
-The fallback (without an expansion) is **Shape B with bounded doc
-rewording** — also acceptable, also a true "map," requires no schema
-change, and stays inside today's owned paths. List-shaped
-representation (Shape C) is not proposed.
+**Q3 — Exact REST routes and request/response DTOs.**
 
-**Q3 — Which relevant docs will be updated so `DIRECTION.md`,
-`docs/README.md`, `docs/Jade-Tipi.md`, `docs/user-authentication.md`,
-and `docs/architecture/kafka-transaction-message-vocabulary.md` do
-not contradict each other on map versus list semantics?**
+All routes guarded by `hasRole('jade-tipi-admin')`. Request and
+response bodies are JSON. Numbers in parentheses are HTTP status
+codes for the success path; common error responses are `401`
+(unauthenticated), `403` (authenticated but missing the admin role),
+`400` (validation), and `404` (read/update of a missing id).
 
-Under Shape A (recommended):
+| Method | Path                              | Request body                                                                              | Success response (status, body)            |
+| ------ | --------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------ |
+| POST   | `/api/admin/groups`               | `GroupCreateRequest { id?, name, description?, permissions: { [grpId: string]: "rw"|"r" } }` | `201` + `GroupRecord`                      |
+| GET    | `/api/admin/groups`               | (none)                                                                                    | `200` + `{ items: GroupRecord[] }`         |
+| GET    | `/api/admin/groups/{id}`          | (none)                                                                                    | `200` + `GroupRecord`                      |
+| PUT    | `/api/admin/groups/{id}`          | `GroupUpdateRequest { name, description, permissions: { [grpId: string]: "rw"|"r" } }`    | `200` + `GroupRecord`                      |
 
-- `docs/architecture/kafka-transaction-message-vocabulary.md` — new
-  section ("Group Records And First-Pass Permissions") that documents
-  the canonical `grp + create` wire payload (grp-id-keyed map),
-  references the conditional schema rule, names the canonical example
-  `13-create-group.json`, documents the materialized root-document
-  layout (`_id`, `id`, `collection: "grp"`, `type_id`,
-  `properties.permissions` copied verbatim, `links: {}`,
-  `_head.provenance`), and states explicitly that no enforcement is
-  added in this task.
-- `DIRECTION.md` — no contradiction with Shape A as currently
-  written; add at most one sentence in the existing
-  "Groups And Permissions" section noting that the wire and storage
-  shape uses a map keyed by world-unique grp IDs with values
-  restricted to `rw`/`r`.
-- `docs/README.md` — no contradiction; the existing
-  "Groups and Permissions" subsection already describes the same map
-  shape. No edit required unless review surfaces a contradiction.
-- `docs/Jade-Tipi.md` — no contradiction; existing prose refers to
-  groups as ownership and permission units in general terms. No edit
-  required.
-- `docs/user-authentication.md` — the existing "Group Permission
-  Direction" section already documents the map-with-`rw`/`r`-values
-  shape and matches Shape A exactly. No edit required.
+DTOs (all in `org.jadetipi.jadetipi.dto`, kept narrow and
+admin-endpoint-specific so they do not collide with existing wire
+DTOs):
 
-Under Shape B (backup):
+```groovy
+record GroupCreateRequest(String id, String name, String description,
+                          Map<String, String> permissions) {}
+record GroupUpdateRequest(String name, String description,
+                          Map<String, String> permissions) {}
+record GroupRecord(String id, String collection, String name,
+                   String description, Map<String, String> permissions,
+                   GroupHead head) {}
+record GroupHead(GroupProvenance provenance) {}
+record GroupProvenance(String txnId, String commitId, String msgUuid,
+                       String collection, String action,
+                       String committedAt, String materializedAt) {}
+```
 
-- All five docs (the four above plus `kafka-transaction-message-
-  vocabulary.md`) need a small, consistent rewording so each refers
-  to a "permissions map keyed by access level (`rw`, `r`) with values
-  that are arrays of grp IDs holding that level," instead of the
-  current "permissions map ... use only two permission values:
-  `rw`, `r`." The reword is mechanical, but it is a genuine semantic
-  shift and should not be undertaken silently.
+Validation rules enforced server-side in `GroupAdminService`:
 
-In both paths, `docs/agents/claude-1-changes.md` is updated only after
-implementation is approved and only to record what was done.
+- `name` is non-blank, ≤ 255 chars.
+- `description` is optional, ≤ 4096 chars.
+- `permissions` map values are exactly `"rw"` or `"r"`. Any other
+  value yields `400`.
+- `permissions` keys must be non-blank. (We do not in this task
+  validate that the keys reference existing `grp` records — that
+  belongs in a later permission-evaluation task.)
+- For `POST` without an `id`, the service synthesizes a world-unique
+  grp id of the form
+  `jade-tipi-org~dev~<uuidv7>~grp~<slug-of-name>` matching the
+  shape used by canonical examples; for `POST` with an `id`, the
+  service rejects malformed ids and rejects duplicates with `409`.
+- `PUT` semantics: the body fully replaces the editable fields
+  (`name`, `description`, `permissions`); `_id`, `id`, `collection`
+  are immutable; `_head.provenance` is rewritten with action
+  `"update"` and a fresh `msg_uuid` while preserving an audit field
+  `_head.provenance.txn_id` per the chosen sentinel scheme.
 
-### Schema edit sketch (Shape A only)
+`GroupRecord` projects the stored Mongo document. Mongo `_id` is not
+exposed (only `id`); `permissions` is the same map persisted under
+`properties.permissions`; the `head.provenance` block is the same map
+persisted under `_head.provenance` with field names mapped from
+snake_case storage to camelCase response.
 
-The minimal change to `libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json`:
+**Q4 — How will the Next.js session expose the access token and admin
+signal without leaking secrets?**
 
-1. Add a new `$def`:
-   ```json
-   "Permissions": {
-     "title": "Permissions",
-     "description": "Map keyed by world-unique grp IDs, values constrained to read/write or read-only access.",
-     "type": "object",
-     "additionalProperties": {
-       "type": "string",
-       "enum": ["rw", "r"]
-     }
-   }
-   ```
-2. Append one conditional rule to the existing `allOf`:
-   ```json
-   {
-     "description": "Group create/update messages may carry a permissions map keyed by world-unique grp IDs.",
-     "if": {
-       "properties": { "collection": { "const": "grp" } },
-       "required": ["collection"]
-     },
-     "then": {
-       "properties": {
-         "data": {
-           "properties": {
-             "permissions": { "$ref": "#/$defs/Permissions" }
-           }
-         }
-       }
-     }
-   }
-   ```
+Current state already exposes `session.accessToken` to the client via
+`auth.ts`; the bearer-token attachment in `frontend/lib/api.ts`
+depends on that. We keep that path, scoped to dev-only behavior, and
+add an admin-role boolean signal that does **not** expose raw realm
+claims.
 
-JSON Schema 2020-12 semantics: when `data.properties.permissions` is
-named explicitly, it takes precedence over `data.additionalProperties`
-(SnakeCaseValue) for that property only, so the inner map keys are
-exempt from the `propertyNames` snake_case rule. All other `data`
-properties continue to flow through `SnakeCaseValue` recursively. The
-outer key `"permissions"` itself remains snake_case, satisfying the
-top-level `propertyNames` rule.
+Plan:
 
-Test impact is bounded: `MessageSpec.groovy` already iterates a
-constant `EXAMPLE_PATHS` list and validates each against the schema.
-Adding `13-create-group.json` to that list exercises the new
-conditional. One focused feature method confirms `grp + create`
-semantics. No other DTO or schema test file changes are anticipated.
+- In `frontend/auth.ts`, decode the access token once inside the
+  `jwt({ token, account })` callback when `account` is present
+  (initial sign-in). Use `jose`'s `decodeJwt` (no signature
+  verification on the frontend; the Spring backend still re-validates
+  every call). Read `realm_access.roles`, compute
+  `isAdmin = roles.includes('jade-tipi-admin')`, and store the
+  boolean on `token.isAdmin`. Forward to the session as
+  `session.isAdmin`.
+- Do **not** copy the raw `realm_access` object or the decoded
+  payload onto the session. Only the boolean flag and the existing
+  `accessToken` / `idToken` strings cross to the client.
+- Update `frontend/types/next-auth.d.ts` (creating it if it does not
+  exist) to type `Session.isAdmin: boolean` and confirm
+  `Session.accessToken: string | undefined` is already typed.
+- Server-side guard: a new `frontend/app/admin/groups/page.tsx`
+  layout calls `await auth()` and redirects unauthenticated users to
+  the home page; the page also returns a 403-style empty state when
+  `session.isAdmin` is false.
+- Client-side guard: `frontend/components/layout/Header.tsx`
+  conditionally renders the "Groups" nav link only when
+  `session.isAdmin` is true. This is convenience UX, not a security
+  boundary — the backend remains the authoritative gate.
+- Secret hygiene: `KEYCLOAK_CLIENT_SECRET` continues to live in the
+  server-only environment and is never copied onto session or token
+  fields. The realm import keeps the dev-only password documented as
+  dev-only.
 
-### Requested scope expansion (Shape A)
+Bearer attachment: a new `frontend/lib/admin-groups.ts` (or extension
+of `frontend/lib/api.ts`) reuses the existing `ensureAccessToken()`
+helper for all four admin endpoints (`POST`, `GET list`, `GET one`,
+`PUT`) so the bearer-token flow is one helper, not four.
 
-If the director adopts the recommendation, please add the following
-two paths to TASK-020's `OWNED_PATHS` (or to `DIRECTIVES.md` as a
-TASK-020 scope expansion):
+**Q5 — What minimal tests will prove unauthenticated, authenticated-
+non-admin, and admin flows?**
 
-- `libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json`
-- `libraries/jade-tipi-dto/src/test/resources/` (only if a fixture
-  or schema-text change is needed; expected to be unchanged because
-  the example resource lives under `src/main/resources/example/...`
-  which is already in OWNED_PATHS)
+Backend unit (Spock under `jade-tipi/src/test/groovy/...`):
 
-If the director adopts Shape B instead, no owned-path expansion is
-needed.
+1. `RealmAccessRolesAuthoritiesConverterSpec` — converter pulls
+   `realm_access.roles`, prefixes with `ROLE_`, ignores empty/missing
+   `realm_access`, and returns an empty authority list when the
+   claim is absent or wrong-typed.
+2. `GroupAdminControllerSpec` (using
+   `WebTestClient.bindToController(...)` with the project's
+   `AuthenticationPrincipalArgumentResolver` pattern, mocking
+   `GroupAdminService`):
+   - `GET /api/admin/groups` returns `200` + items when called with
+     a `JwtAuthenticationToken` carrying `ROLE_jade-tipi-admin`.
+   - `POST` validates request shape (rejects non-`rw`/`r` permissions
+     values, rejects blank `name`).
+   - `PUT` returns `404` when the service reports a missing id.
+3. `GroupAdminServiceSpec` (mocking `ReactiveMongoOperations`):
+   - `create` writes a root-shaped doc with `_id == id`,
+     `collection == "grp"`, `properties.{name,description,
+     permissions}` populated, `links == [:]`,
+     `_head.provenance.{collection: "grp", action: "create"}`, and a
+     sentinel `txn_id` of the form `admin~<uuid>`.
+   - `update` rewrites `properties.{name,description,permissions}`
+     and refreshes `_head.provenance.action == "update"` while
+     keeping `_id` and `id` unchanged.
+   - `update` of a missing id returns `Mono.empty()` and writes
+     nothing.
+   - `permissions` validation rejects values other than `rw`/`r`.
 
-### Revised file changes
+Backend integration (Spock under
+`jade-tipi/src/integrationTest/groovy/...`, gated like the existing
+opt-in pattern, e.g. `JADETIPI_IT_ADMIN_GROUPS=1` to keep CI hermetic):
 
-All paths below are inside TASK-020's `OWNED_PATHS` plus the requested
-schema expansion (Shape A only).
+4. `GroupAdminAuthIntegrationSpec`:
+   - Acquires a real JWT via Keycloak password grant for `dnscott`
+     using `directAccessGrantsEnabled` on the backend client. Uses
+     `KeycloakTestHelper`-style flow.
+   - Asserts `POST /api/admin/groups` returns `201`, the persisted
+     Mongo doc is root-shaped, and round-trip
+     `GET /api/admin/groups/{id}` returns the same record.
+   - Asserts `GET /api/admin/groups` without an `Authorization`
+     header returns `401`.
+   - Asserts `GET /api/admin/groups` with a `testuser` token (no
+     admin role) returns `403`.
+   - Cleans up exactly the records it created.
 
-1. **(Shape A only)** `libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json`
-   — add the `Permissions` `$def` and the one conditional `allOf`
-   entry described above. No other schema fields change.
+Frontend (Playwright under `frontend/tests/`):
 
-2. `libraries/jade-tipi-dto/src/main/resources/example/message/13-create-group.json`
-   — new canonical example. Same `txn` envelope shape as the existing
-   examples. World-unique grp id of the form
-   `jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-cccccccccccc~grp~analytics`
-   (UUIDv7 distinct from the existing example messages). Payload
-   carries `id`, `name`, `description`, and a two-entry
-   `permissions` payload using whichever shape is approved (A or B).
+5. `frontend.spec.ts` extension or a new `admin-groups.spec.ts`:
+   - Signed-out user does not see the "Groups" nav link.
+   - Authenticated non-admin user does not see the link and is
+     redirected when navigating directly to `/admin/groups`.
+   - Authenticated admin user (driven via a session-mocking helper
+     that injects `session.isAdmin = true` and a fake
+     `accessToken`) sees the nav link and reaches the page.
 
-3. `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`
-   — append `13-create-group.json` to `EXAMPLE_PATHS` (covers the
-   parameterized round-trip and schema-validation features). Add one
-   focused feature ("grp create example carries a permissions map
-   keyed by grp ids" under Shape A, or "... keyed by access level"
-   under Shape B) that asserts collection, action, id format, and
-   the two `rw`/`r` rows. No other changes to this file.
+Frontend unit/component tests where the existing harness supports
+them (the project currently uses Playwright; if `vitest` /
+`@testing-library/react` is not already wired, we will skip
+component-level tests and rely on the Playwright path rather than
+introducing a new harness in this task).
 
-4. `docs/architecture/kafka-transaction-message-vocabulary.md`
-   — append a "Group Records And First-Pass Permissions" section
-   that documents the wire payload (Shape A or B), the materialized
-   root-document layout, the explicit non-enforcement boundary, and
-   a reference to the canonical example.
+### Proposed file changes (to be made only after
+`READY_FOR_IMPLEMENTATION` / `PROCEED_TO_IMPLEMENTATION`)
 
-5. `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`
-   — single targeted edit:
-   - Add `static final String COLLECTION_GRP = 'grp'` next to the
-     existing collection constants.
-   - Add `case COLLECTION_GRP: return true` in the `isSupported(...)`
-     switch on `message.collection` (returns true for
-     `Action.CREATE` only, matching the `loc`/`lnk`/`typ` precedent).
-   - Update the class Javadoc bullet list to include
-     `grp + create` → `grp` collection.
-   - No change to `buildDocument`, `buildInlineProperties`,
-     `handleInsertError`, or any helper. The `default` branch in
-     `buildDocument` already produces the correct root shape with
-     `permissions` (Shape A or B) copied through
-     `properties.permissions` verbatim.
+All paths below are inside `TASK-021`'s `OWNED_PATHS`.
 
-6. `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`
-   — add focused features:
-   - "materializes a grp create as a root document with permissions
-     under properties and `_head.provenance`" — asserts shared root
-     fields (`_id`, `id`, `collection == 'grp'`,
-     `type_id == null` when omitted), `properties.name`,
-     `properties.description`, `properties.permissions` shape (A or
-     B), `links == [:]`, `_head.provenance.collection == 'grp'`,
-     `_head.provenance.action == 'create'`, no `_jt_provenance`.
-   - "skips a grp update message" — asserts
-     `result.skippedUnsupported == 1` and zero Mongo writes.
-   - "skips a grp delete message" — same shape for `grp + delete`.
-   - "skips a grp create with missing data.id" — asserts
-     `result.skippedInvalid == 1` and zero Mongo writes.
-   - "skips a grp create with blank data.id" — same with whitespace
-     id.
-   - The existing matching/conflicting/insert-error duplicate
-     features (which already exercise the generic `handleInsertError`
-     path through `loc`) are not duplicated for `grp` per the task
-     wording "where existing coverage does not already cover the
-     generic path."
+1. **Realm import** — `docker/jade-tipi-realm.json`:
+   - Add a realm role `jade-tipi-admin` (one entry under a new
+     `roles.realm` array).
+   - Add a normal enabled user `dnscott` with first name `Duncan`,
+     last name `Scott`, email `dnscott@jade-tipi.org`,
+     `emailVerified: true`, a single dev-only credential
+     (`type: "password"`, `temporary: false`, value documented as
+     dev-only), and `realmRoles: ["jade-tipi-admin"]`. Leave
+     `testuser` unchanged so a non-admin fixture remains available
+     for the 403 test.
 
-7. `DIRECTION.md`, `docs/README.md`, `docs/Jade-Tipi.md`,
-   `docs/user-authentication.md` — under Shape A, no edits expected
-   (existing prose already matches the recommended wire shape). Under
-   Shape B, small mechanical reword to relocate `rw`/`r` from
-   "values" to "keys" of the permissions map. Either way, edits in
-   these files are kept to the minimum needed for non-contradiction
-   with the new vocabulary section.
+2. **Spring security** —
+   `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/config/`:
+   - New `RealmAccessRolesAuthoritiesConverter.groovy` implementing
+     the JWT → authorities mapping described above.
+   - Edit `SecurityConfig.groovy` to wire the converter onto the
+     resource server and add `pathMatchers('/api/admin/**')
+     .hasRole('jade-tipi-admin')` ahead of the existing
+     `authenticated()` rule. Keep all other `permitAll` / auth
+     rules unchanged.
+
+3. **Admin controller and service** —
+   `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/controller/GroupAdminController.groovy`
+   and `.../service/GroupAdminService.groovy`:
+   - Implement the four routes and DTOs from Q3.
+   - Service writes root-shaped `grp` documents directly to MongoDB
+     using `ReactiveMongoOperations` for create/update; `find` for
+     list/read.
+
+4. **DTOs** —
+   `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/dto/GroupRecord.groovy`,
+   `GroupCreateRequest.groovy`, `GroupUpdateRequest.groovy`. These
+   are admin-endpoint shapes only and do not replace existing wire
+   DTOs.
+
+5. **Backend tests** — under
+   `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/`:
+   - `config/RealmAccessRolesAuthoritiesConverterSpec.groovy`
+   - `controller/GroupAdminControllerSpec.groovy`
+   - `service/GroupAdminServiceSpec.groovy`
+   - Optional opt-in
+     `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/admin/GroupAdminAuthIntegrationSpec.groovy`
+     gated on `JADETIPI_IT_ADMIN_GROUPS`.
+
+6. **Frontend**:
+   - `frontend/auth.ts` — decode the access token once on initial
+     sign-in, set `token.isAdmin`, expose `session.isAdmin`.
+   - `frontend/types/next-auth.d.ts` — extend `Session` (and
+     possibly `JWT`) types with `isAdmin: boolean`.
+   - `frontend/components/layout/Header.tsx` — render a "Groups"
+     nav link conditional on `session.isAdmin`.
+   - `frontend/app/admin/groups/page.tsx`,
+     `frontend/app/admin/groups/[id]/page.tsx`,
+     `frontend/app/admin/groups/new/page.tsx` — minimal admin UI
+     with list, create, and edit forms. Use existing form
+     primitives where they exist; otherwise plain HTML inputs
+     consistent with `frontend/app/document/create/page.tsx`.
+   - `frontend/lib/admin-groups.ts` — typed fetch wrappers for the
+     four endpoints, reusing `ensureAccessToken`.
+   - `frontend/tests/admin-groups.spec.ts` — Playwright coverage of
+     the three role flows.
+
+7. **Documentation** — `docs/user-authentication.md` and
+   `docs/OVERVIEW.md`:
+   - Document the dev-only `dnscott` user and its dev password.
+   - Document the `jade-tipi-admin` realm role and that the
+     application authorizes from the user's JWT (not the Keycloak
+     `master` admin).
+   - List the Docker services that must be running for local sign-in
+     and for the integration spec (Keycloak, MongoDB).
+   - State explicitly that ORCID/federated login is not part of
+     this task and that this is a development bootstrap admin
+     workflow.
+
+8. **Task and developer report files** (administrative only):
+   - `docs/orchestrator/tasks/TASK-021-admin-group-management.md` —
+     listed in `OWNED_PATHS` but director-owned in practice; will
+     not be edited unless the director requests it.
+   - `docs/agents/claude-1-changes.md` — updated only after
+     implementation is approved, recording what was actually done.
 
 ### Files intentionally not touched
 
-- `docs/orchestrator/tasks/TASK-020-group-record-model-and-materialization.md`
-  — listed in `OWNED_PATHS` but director-owned in practice. The
-  developer report file is `docs/agents/claude-1-changes.md`.
-- Anything under `clients/`, `frontend/`, `docker/`, Kafka topic
-  configuration, OAuth / SASL hardening, security-policy code,
-  `ContentsLinkReadService`, controllers, `_jt_provenance` migration
-  paths, or other read/write paths — explicitly out of scope by the
-  task file's `OUT_OF_SCOPE` block.
+- The accepted `CommittedTransactionMaterializer.groovy` — admin
+  writes deliberately bypass it (Path A) so that `grp + update`
+  semantics do not re-open `TASK-020`.
+- Anything under `clients/`, `libraries/`, the existing
+  `DocumentController`/`TransactionController`/contents read paths,
+  Kafka topic configuration, OAuth / SASL hardening, or production
+  account-lifecycle code. Out of scope by the task file.
+- General object/property/link permission evaluation, Keycloak group
+  synchronization, object-level overrides, property-value-level
+  overrides, password reset UI — explicitly excluded.
 
 ### Verification plan
 
 For this pre-work turn:
 
-- Static review only. No Gradle, Docker, MongoDB, or Kafka commands
-  executed.
-- Branch-state check: working tree clean at start of turn (per the
-  orchestrator pre-amble's `git status` snapshot).
+- Static review only. No Gradle, Docker, MongoDB, Keycloak, or Kafka
+  commands executed.
+- Branch state at start of turn: clean per the orchestrator pre-amble
+  `git status` snapshot.
 
-For the implementation turn (only after
-`READY_FOR_IMPLEMENTATION` or `PROCEED_TO_IMPLEMENTATION`):
+For the implementation turn (only after the director advances the
+task to `READY_FOR_IMPLEMENTATION` /
+`PROCEED_TO_IMPLEMENTATION`):
 
 ```sh
-./gradlew :libraries:jade-tipi-dto:test --tests '*MessageSpec*'
 ./gradlew :jade-tipi:compileGroovy
 ./gradlew :jade-tipi:compileTestGroovy
-./gradlew :jade-tipi:test --tests '*CommittedTransactionMaterializerSpec*'
+./gradlew :jade-tipi:test --tests '*GroupAdmin*' --tests '*RealmAccessRoles*'
+JADETIPI_IT_ADMIN_GROUPS=1 ./gradlew :jade-tipi:integrationTest --tests '*GroupAdminAuthIntegrationSpec*'
+cd frontend && npm install && npm run build
+cd frontend && npx playwright test admin-groups.spec.ts
 ```
 
-If local tooling, Gradle wrapper-cache locks under
-`/Users/duncanscott/.gradle`, Docker, or MongoDB block verification,
-the documented setup commands are:
+If local Docker, Keycloak, Mongo, Gradle wrapper-cache locks under
+`/Users/duncanscott/.gradle`, Node, or browser tooling block
+verification, the documented setup commands are:
 
 ```sh
-docker compose -f docker/docker-compose.yml --profile mongodb up -d
+docker compose -f docker/docker-compose.yml up -d
 ./gradlew --stop
+./gradlew generateFrontendEnv
+cd frontend && npx playwright install --with-deps
 ```
 
-These are setup steps, not product blockers.
+These are setup steps, not product blockers. Per the orchestrator
+preamble, blocked verification is reported with the documented setup
+command rather than treated as a feature failure.
 
 ### Stay-in-scope check for this pre-work turn
 
@@ -375,49 +463,59 @@ This turn edits exactly:
 
 - `docs/agents/claude-1-next-step.md` — base owned path.
 
-No other paths are modified. No code, schema, test, Docker, MongoDB,
-CouchDB, Kafka, frontend, security, DTO, HTTP-endpoint,
-`_jt_provenance`, doc, or example changes are made or proposed for
-this turn.
+No other paths are modified. No realm import, security config,
+controller, service, DTO, schema, fixture, frontend, or test changes
+are made or proposed for this turn.
 
 ### Open questions / blockers
 
-The following remain for director resolution before implementation
-can begin. Each has a default proposal so the director can accept or
-redirect with one signal change.
+Each has a default proposal so the director can accept or redirect
+with one signal change.
 
-- **Q-20-A — Permissions wire shape (Shape A vs Shape B).**
-  Default proposal: Shape A (grp-id-keyed map) with a director-
-  approved owned-path expansion to edit
-  `libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json`.
-  Backup: Shape B (level-keyed map) with mechanical reword in the
-  four product-direction docs. Either is implementable; the schema-
-  expansion path is preferred because it preserves every current doc
-  sentence verbatim.
-- **Q-20-B — Owned-path expansion request.** If the director adopts
-  Shape A, please add `libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json`
-  to TASK-020 `OWNED_PATHS` (and to the `Scope Expansion` section of
-  `DIRECTIVES.md` if that is the preferred publication channel).
-  Without this expansion, only Shape B is reachable.
-- **Q-20-C — `grp` `type_id` in the canonical example.** Default
-  proposal: omit `type_id` to mirror the existing
-  `loc`/`typ` examples and avoid introducing a group-typing taxonomy
-  in this task. If the director wants the first canonical example to
-  demonstrate a `grp` `type_id`, I would need direction on whether
-  to also include a companion `typ + create` example for that group
-  type.
-- **Q-20-D — End-to-end coverage scope.** Default proposal: focused
-  unit tests on `MessageSpec` and
-  `CommittedTransactionMaterializerSpec` only — no
-  `JADETIPI_IT_KAFKA`-gated integration spec. The TASK-020
-  acceptance criteria list materialization plus DTO/example
-  validation; HTTP/Kafka end-to-end is not requested. Confirming
-  because TASK-016 had a parallel integration spec.
-- **Q-20-E — `_id` shape for `grp` records.** No change requested.
-  The generic materializer sets `_id == data.id`, consistent with
-  `loc` and `typ`. Calling this out only because the permissions
-  map references peer grp `data.id` values, so the `_id` choice
-  matters for any future reverse lookup. The current plan does not
-  add reverse-lookup indexing — that is future work.
+- **Q-21-A — Realm role vs client role for `jade-tipi-admin`.**
+  Default: realm role (`realm_access.roles`). Backup: client role on
+  the `jade-tipi` backend client (`resource_access["jade-tipi"].roles`),
+  which would require an additional audience/scope mapper and a
+  matching converter branch. Realm role is the smaller change and
+  preferred unless the director wants per-client scoping for a
+  future production migration.
+- **Q-21-B — Direct MongoDB write vs synthesized Kafka transaction.**
+  Default: Path A (direct write) with a sentinel `_head.provenance.txn_id
+  == "admin~<uuid>"`. Backup: Path B requires extending the
+  materializer to support `grp + update` and adding a Kafka producer
+  to the admin path, which goes beyond this task's stated scope.
+- **Q-21-C — `dnscott` dev password.** Default: commit a clearly
+  dev-only static password into `docker/jade-tipi-realm.json` (e.g.,
+  `dnscott`), with `temporary: false` so login works without a
+  password-change step, and document the value in
+  `docs/user-authentication.md` as dev-only. Backup: set
+  `temporary: true` and document the local reset path. Please
+  confirm whether the dev password should be the literal string
+  `dnscott` or another value.
+- **Q-21-D — Provenance shape for admin direct-writes.** Default:
+  set `_head.provenance.txn_id == _head.provenance.commit_id ==
+  "admin~<uuidv7>"`, fresh `msg_uuid` per write, action `"create"`
+  or `"update"`, `committed_at == materialized_at` set to write time,
+  `collection: "grp"`. Backup: `txn_id == null` and `commit_id ==
+  null`. Default preserves the field shape while marking origin.
+- **Q-21-E — `testuser` role mapping.** Default: leave `testuser`
+  with no roles so the integration spec has a built-in non-admin
+  fixture for the 403 test.
+- **Q-21-F — `PUT` semantics.** Default: full replacement of the
+  editable fields (`name`, `description`, `permissions`). Backup:
+  PATCH-style partial diff. The frontend admin form sends a full
+  body either way, so PUT is the smaller surface.
+- **Q-21-G — Frontend test harness scope.** Default: Playwright
+  only, mirroring the existing `frontend/tests/frontend.spec.ts`
+  pattern. Component tests via `vitest` /
+  `@testing-library/react` are not introduced in this task because
+  the harness is not currently wired. If the director wants
+  component-level coverage, we should add the harness as a separate
+  task.
+- **Q-21-H — `GroupRecord.head.provenance` field exposure.**
+  Default: include the full provenance block in admin GET responses
+  so the admin UI can show audit details. Backup: hide
+  `provenance` from the response and keep it server-only. Default
+  is fine for a dev admin tool.
 
 STOP.
