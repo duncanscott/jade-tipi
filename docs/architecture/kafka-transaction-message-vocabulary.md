@@ -25,6 +25,48 @@ Every submitted message uses the DTO `Message` envelope and carries a first-clas
 
 `Message.getId()` is `<txn.getId()>~<uuid>~<action>` and intentionally does not include the collection. The collection is stored as a first-class field on the message and (later) on the persisted `txn` message record, so it does not need to round-trip through the ID.
 
+## Human-Readable Authoring Rule
+
+The Kafka submission format should be boring JSON. A person should be able to
+write a small transaction in a text editor, publish it with `kafka-kli`, and
+understand the resulting Mongo root document without decoding an embedded DSL.
+
+Use these rules for early domain messages:
+
+- Keep intent at the top level: `collection` names the target collection and
+  `action` names the operation.
+- Put the submitted object or relationship in `data`.
+- Use `data.id` for the long-term object ID to materialize.
+- Prefer plain JSON objects for `data.properties` and relationship
+  `properties`.
+- Keep `data.links` empty or absent on simple creates; canonical relationships
+  should be separate `lnk` messages.
+- Do not infer the collection from payload shape.
+- Do not use arrays of nested operations for the first implementation.
+
+A simple location creation should look like this inside the normal message
+envelope:
+
+```json
+{
+  "collection": "loc",
+  "action": "create",
+  "data": {
+    "id": "jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~freezer_01",
+    "type_id": "jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~freezer",
+    "properties": {
+      "name": "Freezer 01",
+      "description": "Minus 80 freezer in room 214"
+    },
+    "links": {}
+  }
+}
+```
+
+The early materializer may also tolerate older examples that put `name` and
+`description` directly under `data`, but new examples should prefer the explicit
+`data.properties` object because it mirrors the root-document shape.
+
 ## Transaction Records
 
 The `txn` MongoDB collection should contain two record kinds:

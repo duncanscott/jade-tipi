@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: HUMAN_REQUIRED
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
@@ -72,8 +72,20 @@ accepted Next.js 16.2.4 / React 19.2 stack. The package and lockfile changed
 only for the TypeScript bump; the existing `tsconfig.json` and frontend source
 remain compatible.
 
+`TASK-026` is created as the next product increment. The focus returns to the
+domain write path: prove that a human-readable Kafka transaction can create a
+root-shaped `loc` document in MongoDB using the existing ingest, commit, and
+materialization path. Keep Kafka as the first submission route; later HTTP
+endpoints should be thin adapters over the same behavior.
+
 ## Active Task
 
+- `TASK-026 - Human-readable Kafka loc submission path` is
+  `READY_FOR_PREWORK`. claude-1 should first inspect the existing `loc + create`
+  materializer behavior, confirm whether it already accepts the proposed
+  `data.id`, optional `data.type_id`, `data.properties`, and optional
+  `data.links` shape, and propose the smallest implementation/test changes.
+  Do not add HTTP submission endpoints or a complex Kafka operation DSL.
 - `TASK-025 - Plan TypeScript 6 frontend upgrade` is accepted. The
   implementation bumped TypeScript to `^6.0.3`, regenerated the lockfile for
   that package only, and required no source or `tsconfig.json` migration.

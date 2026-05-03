@@ -100,6 +100,42 @@ pages, pending pages, and committed transaction records that have not yet been
 materialized. That overlay model is future work; the first implementation should
 make the root-only case correct and easy to replace.
 
+## Human-Readable Kafka Submission
+
+Kafka is the preferred first write path for domain data because it imposes the
+harder ordering, replay, and idempotency constraints. HTTP submission can later
+be a thin adapter that builds the same messages and calls the same services.
+
+Kafka messages should remain easy for humans to read, write, and debug. Avoid a
+clever nested operation language. The top-level message should say what is being
+changed with `collection` and `action`, and `data` should look like the object
+or relationship being submitted.
+
+For a first-pass `loc + create` message, the intended shape is:
+
+```json
+{
+  "collection": "loc",
+  "action": "create",
+  "data": {
+    "id": "jade-tipi-org~dev~...~loc~freezer_01",
+    "type_id": "jade-tipi-org~dev~...~typ~freezer",
+    "properties": {
+      "name": "Freezer 01",
+      "description": "Minus 80 freezer in room 214"
+    },
+    "links": {}
+  }
+}
+```
+
+`data.id` is the object ID to materialize. `data.type_id` may be absent while
+type modeling is still immature. `data.properties` is a plain JSON object keyed
+by property name for the initial human-authored path; stricter property-ID-keyed
+maps and property-definition validation can be layered in after the submission
+route is proven. `data.links` should normally be empty on create because
+canonical relationships are submitted as separate `lnk` messages.
+
 ## Link-Centric Relationships
 
 Do not make `parent_location_id` canonical on `loc` records. Parentage and

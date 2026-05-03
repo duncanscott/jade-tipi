@@ -320,9 +320,12 @@ The realm configuration in `docker/jade-tipi-realm.json` is automatically import
 
 ## Next Steps
 
-- Define and implement the canonical materialized root document shape for
-  Jade-Tipi objects, including `type_id`, explicit `properties`, denormalized
-  `links`, and reserved `_head` metadata.
+- Prove the human-readable Kafka submission path for domain data: a complete
+  open/create/commit transaction should be easy to hand-author and should
+  materialize a root-shaped `loc` document in MongoDB.
+- Keep the first Kafka domain messages simple: top-level `collection` and
+  `action`, submitted object under `data`, explicit `properties`, and no nested
+  operation DSL.
 - Keep extension property/link pages as documented future work until the
   root-only model is proven with Kafka ingestion, commit, materialization, and
   reads.

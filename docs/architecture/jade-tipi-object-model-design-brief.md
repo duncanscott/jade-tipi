@@ -30,6 +30,21 @@ surface tradeoffs before implementation.
   consider committed data in long-term collections plus committed transaction
   records not yet materialized.
 
+## Kafka Submission Direction
+
+- Kafka remains the preferred first submission path because it exercises
+  ordering, replay, idempotency, and transaction-log durability directly.
+- HTTP submission should later be a thin adapter over the same service behavior,
+  not an alternate object model.
+- Messages must stay easy for humans to read and create. Use top-level
+  `collection` and `action`, keep the submitted object in `data`, and avoid
+  nested operation DSLs.
+- A first-pass `loc + create` should allow
+  `data: { id, type_id?, properties, links? }`, where `properties` is a plain
+  JSON object and `links` is usually empty.
+- Relationship creation should use explicit `lnk + create` messages rather than
+  hidden side effects in a `loc` message.
+
 ## Location and Link Modeling
 
 - `loc` should represent physical or logical locations and containers: tubes,
