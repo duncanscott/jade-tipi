@@ -44,9 +44,13 @@ export default function DocumentDetailPage() {
 
   // Load specific document
   useEffect(() => {
-    if (!documentId || !accessToken) return;
+    if (!documentId) return;
 
     async function loadDocument() {
+      if (!accessToken) {
+        return;
+      }
+
       try {
         setLoading(true);
         const doc = await getDocument(documentId, accessToken);

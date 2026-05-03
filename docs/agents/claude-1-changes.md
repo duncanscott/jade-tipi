@@ -2,6 +2,105 @@
 
 The developer writes completed work reports here.
 
+STATUS: BLOCKED
+TASK: TASK-022 — Restore frontend build baseline
+DATE: 2026-05-03
+SUMMARY: Applied the director-approved narrow source fix in
+`frontend/app/list/[id]/page.tsx`: kept the outer `if (!documentId) return;`
+guard, moved the `accessToken` guard into the inner `loadDocument` function
+(mirroring the sibling list-load effect just above), preserved the
+`useEffect` dependency array, and did not change the `getDocument` API
+helper signature. That source error in `frontend/app/list/[id]/page.tsx` is
+no longer reported by `npm run build`. However, `cd frontend && npm run
+build` then surfaces an unrelated pre-existing TypeScript error in
+`frontend/auth.ts`, which is outside this task's `OWNED_PATHS`. Per the
+task file's "additional unrelated pre-existing failures → stop and report"
+clause and pre-work plan Q-22-B, I stop here and report rather than widen
+scope.
+
+Files changed (this turn):
+
+- `frontend/app/list/[id]/page.tsx` — moved the `accessToken` guard from
+  the outer `useEffect` body into the inner `loadDocument` async function
+  so TypeScript narrows `accessToken` to `string` at the
+  `getDocument(documentId, accessToken)` call site. Outer
+  `if (!documentId) return;` and the `[documentId, accessToken]`
+  dependency array are unchanged. Behavior is preserved: when the token
+  is absent the effect still becomes a no-op; when the token arrives the
+  effect re-runs via the dependency array.
+
+Verification:
+
+- Setup: `frontend/node_modules` was already present in this worktree;
+  `npm install` was not required for this turn.
+- Ran `cd frontend && npm run build`. Compilation succeeded. Type-checking
+  no longer reports the previous error in `frontend/app/list/[id]/page.tsx`.
+- Build now fails at the next pre-existing TypeScript error, in
+  `frontend/auth.ts`. Exact failure (verbatim from `next build --turbopack`):
+
+  ```
+  ./auth.ts:80:21
+  Type error: Property 'token' does not exist on type
+  '{ session: void | AdapterSession | null | undefined; } | { token: JWT | null; }'.
+
+      78 |   },
+      79 |   events: {
+  >   80 |     async signOut({ token }) {
+         |                     ^
+      81 |       // Construct Keycloak logout URL to terminate the Keycloak session
+      82 |       if (token?.idToken) {
+      83 |         const issuerUrl = process.env.KEYCLOAK_ISSUER!
+  ```
+
+  Root cause (source-only inspection, no fix attempted): NextAuth's
+  `events.signOut` callback receives a discriminated union — either
+  `{ session }` (database strategy) or `{ token }` (JWT strategy).
+  Destructuring `{ token }` directly is not type-safe without first
+  narrowing the variant. This file was added under `TASK-021`; it
+  predates `TASK-022` and is outside `TASK-022`'s `OWNED_PATHS`
+  (`frontend/app/list/[id]/page.tsx`, `frontend/tests/`,
+  `docs/orchestrator/tasks/TASK-022-restore-frontend-build-baseline.md`).
+
+Smallest next-step recommendation (for director review, not
+implemented in this turn):
+
+- Open a follow-on narrow task that authorizes editing
+  `frontend/auth.ts` only, and changes the `events.signOut` callback to
+  accept the union and narrow before reading `token`. The minimal shape
+  that preserves current behavior:
+
+  ```ts
+  events: {
+    async signOut(message) {
+      if (!('token' in message)) return
+      const { token } = message
+      if (token?.idToken) {
+        // existing Keycloak logout body unchanged
+      }
+    }
+  }
+  ```
+
+  No other auth.ts behavior, NextAuth strategy choice, Keycloak realm
+  import, or backend code needs to change. After that fix, re-run
+  `cd frontend && npm run build` to confirm the full build baseline is
+  restored, or to surface any further pre-existing errors one at a time.
+
+Stay-in-scope check for this turn:
+
+- This implementation turn edits exactly:
+  - `frontend/app/list/[id]/page.tsx` — listed in `TASK-022`'s
+    `OWNED_PATHS`.
+  - `docs/agents/claude-1-changes.md` — base owned path; this report.
+- `frontend/auth.ts` was inspected (read-only) for the next-step
+  recommendation but not modified. No backend, realm import, package
+  manifest, lockfile, admin group-management UI, or unrelated frontend
+  route is touched.
+
+STOP.
+
+---
+
 STATUS: READY_FOR_REVIEW
 TASK: TASK-021 — Add admin group management
 DATE: 2026-05-03
