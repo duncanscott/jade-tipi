@@ -37,6 +37,10 @@ import java.time.Instant
  *       collection. Bare entity-type {@code typ} records are intentionally
  *       skipped here.</li>
  *   <li>{@code lnk + create} → {@code lnk} collection.</li>
+ *   <li>{@code ent + create} → {@code ent} collection. Top-level
+ *       {@code data.type_id} surfaces as the root {@code type_id};
+ *       semantic resolution that {@code data.type_id} points at a committed
+ *       {@code typ} record is intentionally deferred.</li>
  *   <li>{@code grp + create} → {@code grp} collection. The first-pass
  *       permissions map (keyed by world-unique grp IDs with values {@code "rw"}
  *       or {@code "r"}) is copied verbatim through {@code properties.permissions};
@@ -94,6 +98,7 @@ class CommittedTransactionMaterializer {
     static final String COLLECTION_TYP = 'typ'
     static final String COLLECTION_LNK = 'lnk'
     static final String COLLECTION_GRP = 'grp'
+    static final String COLLECTION_ENT = 'ent'
 
     static final String ACTION_CREATE = 'create'
     static final String DATA_KIND = 'kind'
@@ -216,6 +221,8 @@ class CommittedTransactionMaterializer {
             case COLLECTION_LNK:
                 return true
             case COLLECTION_GRP:
+                return true
+            case COLLECTION_ENT:
                 return true
             case COLLECTION_TYP:
                 Object kind = message.data?.get(DATA_KIND)

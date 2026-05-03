@@ -3,6 +3,194 @@
 The developer writes completed work reports here.
 
 STATUS: COMPLETED
+TASK: TASK-028 — Human-readable Kafka entity submission path (implementation)
+DATE: 2026-05-03
+SUMMARY: Added `ent + create` root materialization to the existing
+`CommittedTransactionMaterializer` so the human-readable
+`open + ent + commit` Kafka transaction now lands a root-shaped `ent`
+document in MongoDB with top-level `_id`, `id`, `collection: "ent"`,
+`type_id` from the message payload, explicit empty `properties` and
+`links`, and `_head.provenance` pointing at the source `txn_id`,
+`commit_id`, and `msg_uuid`. Updated `06-create-entity.json` to make the
+human-readable wire shape explicit with `data.properties: {}` and
+`data.links: {}`; preserved the existing `~en~plate_a` and `~ty~plate_96`
+ID strings verbatim per director direction. Bare entity-type
+`typ + create` (no `data.kind`) remains intentionally `skippedUnsupported`;
+no `data.kind: "entity_type"` discriminator was introduced; semantic
+resolution of `data.type_id` against a committed `typ` record remains
+deferred.
+
+Files changed (this turn):
+
+- `libraries/jade-tipi-dto/src/main/resources/example/message/06-create-entity.json`
+  — added explicit empty `data.properties: {}` and `data.links: {}`
+  blocks alongside the existing `data.id` and `data.type_id`. The
+  `~en~plate_a` and `~ty~plate_96` ID strings are unchanged per the
+  director's pre-work review (no broad ID-abbreviation cleanup).
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`
+  — added `static final String COLLECTION_ENT = 'ent'` constant and a
+  new `case COLLECTION_ENT: return true` branch in `isSupported()`
+  alongside the existing `loc`/`lnk`/`grp`/`typ link-type` branches.
+  Updated the class-level Javadoc supported-messages list to include
+  `ent + create` and to note that semantic resolution of `data.type_id`
+  is intentionally deferred. No other production code path changed:
+  `buildDocument()` already routes non-`lnk` collections through the
+  `data.properties`-Map preferred path so an `ent + create` with
+  explicit `data.properties: {}` materializes as
+  `properties: {}, links: {}` automatically; with only `id` and
+  `type_id` the inline-properties fallback yields the same empty maps.
+  `_head.provenance`, idempotent matching-duplicate handling, and
+  conflicting-duplicate detection are reused unchanged for `ent`.
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`
+  — refactored `entityCreateMessage(Map dataOverrides = [:])` to default
+  `data.type_id`, `data.properties: [:]`, and `data.links: [:]` and to
+  accept overrides for missing/blank-id and duplicate-payload scenarios.
+  Added new constants `ENT_ID`, `ENT_TYPE_ID`, and `ENT_MSG_UUID`.
+  Replaced the `'skips ppy and ent create messages'` feature with
+  `'skips a ppy create message'` (since `ent` is no longer skipped).
+  Added five new features:
+  1. `'materializes an ent create as a root document with top-level
+     type_id, empty properties, and empty links'` — captures
+     `mongoTemplate.insert(_, 'ent')`, asserts root `_id`/`id`/
+     `collection: 'ent'`/`type_id`/empty `properties`/empty `links`,
+     and `_head.{schema_version, document_kind, root_id}` plus full
+     `provenance.{txn_id, commit_id, msg_uuid, collection, action,
+     committed_at, materialized_at}`. Asserts no legacy
+     `_jt_provenance` field is written.
+  2. `'ent create without payload properties or links defaults root
+     properties and links to empty maps'` — uses an inline message with
+     only `id` and `type_id`; asserts the inline-properties fallback
+     yields `properties == [:]` and `links == [:]`.
+  3. `'ent create with missing data.id is counted as skippedInvalid'` —
+     mirrors the analogous `loc` and `grp` skip-on-missing-id features.
+  4. `'ent create with blank or whitespace data.id is also counted as
+     skippedInvalid'` — Spock `where:` block over `'', '   '`.
+  5. `'identical-payload ent duplicate is matching even when
+     materialized_at differs'` — stubs `springDuplicate()` insert error,
+     stubs `findById(ENT_ID, Map.class, 'ent')` to return a payload-
+     equivalent existing root with an earlier `materialized_at`,
+     asserts `result.duplicateMatching == 1`.
+  6. `'differing-payload ent duplicate is conflicting and not
+     overwritten'` — same scaffolding but the existing root's `type_id`
+     differs; asserts `result.conflictingDuplicate == 1` and that
+     `updateFirst`/`save` are never called.
+  Updated `'mixed-message snapshot inserts in snapshot order with
+  correct counts'` to expect insert order `['loc', 'typ', 'ent',
+  'lnk']`, `materialized == 4`, and `skippedUnsupported == 1` (the
+  lone remaining skip is the `ppy` message).
+- `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`
+  — added two Spock features that reuse the existing `EXAMPLE_PATHS`
+  round-trip / schema-validation loops:
+  1. `"ent create example uses the human-readable data.id,
+     data.type_id, and explicit empty data.properties / data.links
+     shape"` — reads `06-create-entity.json` and asserts
+     `Collection.ENTITY` + `Action.CREATE`, the verbatim `data.id`
+     ending in `~en~plate_a`, the verbatim `data.type_id` ending in
+     `~ty~plate_96`, `data.properties == [:]`, `data.links == [:]`,
+     and that the data root contains exactly
+     `{id, type_id, properties, links}` (no leakage of human-authored
+     facts next to `id`).
+  2. `"entity transaction example sequence shares one txn id and the
+     entity references the entity-type by id"` — reads `01-…`,
+     `04-…`, `06-…`, `09-…`; asserts all four messages share the
+     same `txn.uuid`; asserts `01`/`09` are `Collection.TRANSACTION`
+     `OPEN`/`COMMIT`; asserts `04` is `Collection.TYPE` + `CREATE`
+     and `06` is `Collection.ENTITY` + `CREATE`; asserts the
+     in-resource cross-reference `entData.type_id == typData.id`.
+- `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/EntityCreateKafkaMaterializeIntegrationSpec.groovy`
+  (new file) — opt-in (gated on `JADETIPI_IT_KAFKA=1` and a 2-second
+  Kafka `AdminClient.describeCluster` probe) end-to-end Kafka → Mongo
+  spec modeled on `TransactionMessageKafkaIngestIntegrationSpec`.
+  Publishes one canonical `open + ent + commit` transaction to a
+  per-spec topic and asserts:
+  1. The committed `txn` header reaches `state == 'committed'` with a
+     non-blank `commit_id`.
+  2. The materialized `ent` document at `findById(entityId, Map,
+     'ent')` carries top-level `_id == entityId`, `id == entityId`,
+     `collection == 'ent'`, `type_id == entityTypeId`,
+     `properties == [:]`, `links == [:]`, and
+     `_head.schema_version == 1`, `_head.document_kind == 'root'`,
+     `_head.root_id == entityId`, plus a full `_head.provenance`
+     pointing at `txnId`, the actual `commit_id`, the published
+     `entMsg.uuid()`, `collection: 'ent'`, `action: 'create'`, plus
+     non-null `committed_at` and `materialized_at`.
+  Per-feature `setup()` derives a fresh per-run `entityId`/
+  `entityTypeId` from a short UUID so concurrent or repeat runs do
+  not collide; `cleanup()` removes the `txn` rows by `txn_id` and the
+  `ent` row by `_id`. The spec does not gate on Keycloak (matches
+  the existing ingest spec, since this transaction never exercises
+  HTTP), and the `test` profile's mock `ReactiveJwtDecoder` is not
+  invoked.
+
+Files NOT changed (consciously):
+
+- `DIRECTION.md`, `docs/OVERVIEW.md`, and
+  `docs/architecture/jade-tipi-object-model-design-brief.md` — already
+  describe `ent` as a long-term materialized collection alongside
+  `loc`/`lnk`/`typ`/`grp`/`ppy`/`uni`/`vdn`. No wording mismatch
+  needed updating for this bounded `ent + create` materialization.
+- `docs/architecture/kafka-transaction-message-vocabulary.md` —
+  "Entity Creation" already documents the canonical
+  `collection: "ent"` / `action: "create"` / `data.id` /
+  `data.type_id` shape. The vocabulary code block uses
+  `~en~plate_a` and `~ty~plate_96`, matching the preserved IDs in
+  `06-create-entity.json`. No vocabulary change in this turn (the
+  director directed against broad ID-abbreviation cleanup here).
+- `04-create-entity-type.json` — the example remains the
+  bare-entity-type `typ + create` shape that the materializer
+  intentionally skips (no `data.kind: "entity_type"` discriminator was
+  introduced). The DTO sequence spec validates the in-resource
+  `data.type_id == 04-….data.id` cross-reference without requiring
+  any change to `04-…`.
+- `jade-tipi/src/main/resources/schema/message.schema.json` (out of
+  OWNED_PATHS anyway) — `data` already validates as
+  `SnakeCaseObject`, so the `06-…` shape with explicit empty
+  `properties`/`links` round-trips through schema validation
+  unchanged. Tightening the schema to require `ent.data.id` /
+  `ent.data.type_id` is OUT_OF_SCOPE for TASK-028.
+- `clients/kafka-kli/**`, `frontend/**`,
+  `ContentsLinkReadService.groovy`, `TransactionService.groovy`,
+  `CommittedTransactionReadService.groovy`,
+  `TransactionMessagePersistenceService.groovy` — none reference `ent`
+  materialization specifically; the persistence service already
+  invokes the materializer on commit, so an `ent` root is materialized
+  end-to-end without any further wiring change.
+
+Verification commands run (all pass):
+
+- `./gradlew :libraries:jade-tipi-dto:test` — green; the new
+  `06-create-entity.json` example continues to pass the round-trip and
+  schema-validation loops, and the two new focused features
+  (`"ent create example uses the human-readable data.id, data.type_id,
+  and explicit empty data.properties / data.links shape"` and
+  `"entity transaction example sequence shares one txn id and the
+  entity references the entity-type by id"`) pass.
+- `./gradlew :jade-tipi:test` — green; the materializer spec covers
+  the new `ent + create` root-shape, missing/blank-id, idempotent
+  duplicate, conflicting duplicate, and updated mixed-snapshot
+  features; the Spring boot context-loads test continues to start
+  against the running Mongo from the local Docker stack.
+- `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*EntityCreateKafkaMaterializeIntegrationSpec*'` — green; the new
+  spec drove `open + ent + commit` end-to-end and observed
+  `Materialized ent root: id=jadetipi-itest-ent~ent~plate_…` in the
+  service logs. Stack reachable: docker compose up confirmed
+  `jade-tipi-mongo`, `jade-tipi-kafka`, `jade-tipi-keycloak`, and
+  `jade-tipi-couchdb` all healthy on `127.0.0.1` ports
+  `27017`/`9092`/`8484`/`5984`.
+- `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*ContentsHttpReadIntegrationSpec*' --tests
+  '*TransactionMessageKafkaIngestIntegrationSpec*'` — green; existing
+  integration specs continue to pass after the materializer change.
+
+No setup blockers were encountered: the local Docker stack
+(`docker compose -f docker/docker-compose.yml ps`) was already running
+healthy, no Gradle daemon restart was needed, and no Gradle wrapper
+cache permission issue surfaced.
+
+---
+
+STATUS: COMPLETED
 TASK: TASK-027 — Human-readable Kafka contents link submission path (implementation)
 DATE: 2026-05-03
 SUMMARY: Proved that the existing human-readable contents-flow Kafka examples

@@ -36,6 +36,9 @@ class CommittedTransactionMaterializerSpec extends Specification {
     static final String GRP_ID = 'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-cccccccccccc~grp~analytics'
     static final String GRP_PEER_RW = 'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~grp~lab_ops'
     static final String GRP_PEER_R = 'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-bbbbbbbbbbbb~grp~viewers'
+    static final String ENT_ID = 'jade-tipi-org~dev~018fd849-2a42-7222-8a02-dddddddddddd~ent~plate_a'
+    static final String ENT_TYPE_ID = 'jade-tipi-org~dev~018fd849-2a48-7888-8a08-eeeeeeeeeeee~typ~plate_96'
+    static final String ENT_MSG_UUID = '018fd849-2a42-7222-8a02-dddddddddddd'
 
     ReactiveMongoTemplate mongoTemplate
     CommittedTransactionReadService readService
@@ -151,12 +154,19 @@ class CommittedTransactionMaterializerSpec extends Specification {
         )
     }
 
-    private static CommittedTransactionMessage entityCreateMessage() {
+    private static CommittedTransactionMessage entityCreateMessage(Map dataOverrides = [:]) {
+        Map<String, Object> data = [
+                id        : ENT_ID,
+                type_id   : ENT_TYPE_ID,
+                properties: [:],
+                links     : [:]
+        ]
+        data.putAll(dataOverrides)
         return new CommittedTransactionMessage(
-                msgUuid: '018fd849-2a42-7222-8a02-dddddddddddd',
+                msgUuid: ENT_MSG_UUID,
                 collection: 'ent',
                 action: 'create',
-                data: [id: 'jade-tipi-org~dev~018fd849-2a42-7222-8a02-dddddddddddd~ent~plate_a'],
+                data: data,
                 receivedAt: Instant.parse('2026-01-01T00:00:01Z'),
                 kafka: null
         )
@@ -698,15 +708,197 @@ class CommittedTransactionMaterializerSpec extends Specification {
         input << ['', '   ']
     }
 
-    def 'skips ppy and ent create messages'() {
+    def 'skips a ppy create message'() {
         when:
         MaterializeResult result = materializer.materialize(
-                snapshot([propertyCreateMessage(), entityCreateMessage()])).block()
+                snapshot([propertyCreateMessage()])).block()
 
         then:
         result.materialized == 0
-        result.skippedUnsupported == 2
+        result.skippedUnsupported == 1
         0 * mongoTemplate.insert(_, _)
+    }
+
+    def 'materializes an ent create as a root document with top-level type_id, empty properties, and empty links'() {
+        given:
+        Map<String, Object> captured = null
+        mongoTemplate.insert(_ as Map, 'ent') >> { Map doc, String _coll ->
+            captured = doc
+            return Mono.just(doc)
+        }
+
+        when:
+        MaterializeResult result = materializer.materialize(snapshot([entityCreateMessage()])).block()
+
+        then:
+        result != null
+        result.materialized == 1
+        result.duplicateMatching == 0
+        result.conflictingDuplicate == 0
+        result.skippedUnsupported == 0
+        result.skippedInvalid == 0
+
+        and: 'shared root fields use the payload id and source collection'
+        captured._id == ENT_ID
+        captured.id == ENT_ID
+        captured.collection == 'ent'
+        captured.type_id == ENT_TYPE_ID
+
+        and: 'explicit empty data.properties / data.links land at the root verbatim'
+        captured.properties == [:]
+        captured.links == [:]
+
+        and: '_head carries schema metadata and ent provenance'
+        Map head = captured._head as Map
+        head.schema_version == 1
+        head.document_kind == 'root'
+        head.root_id == ENT_ID
+        Map provenance = head.provenance as Map
+        provenance.txn_id == TXN_ID
+        provenance.commit_id == COMMIT_ID
+        provenance.msg_uuid == ENT_MSG_UUID
+        provenance.collection == 'ent'
+        provenance.action == 'create'
+        provenance.committed_at == COMMITTED_AT
+        provenance.materialized_at instanceof Instant
+
+        and: 'the legacy _jt_provenance field is not written on new ent roots'
+        !captured.containsKey('_jt_provenance')
+    }
+
+    def 'ent create without payload properties or links defaults root properties and links to empty maps'() {
+        given:
+        Map<String, Object> captured = null
+        mongoTemplate.insert(_ as Map, 'ent') >> { Map doc, String _coll ->
+            captured = doc
+            return Mono.just(doc)
+        }
+        CommittedTransactionMessage message = new CommittedTransactionMessage(
+                msgUuid: ENT_MSG_UUID,
+                collection: 'ent',
+                action: 'create',
+                data: [id: ENT_ID, type_id: ENT_TYPE_ID],
+                receivedAt: Instant.parse('2026-01-01T00:00:01Z'),
+                kafka: null
+        )
+
+        when:
+        MaterializeResult result = materializer.materialize(snapshot([message])).block()
+
+        then:
+        result.materialized == 1
+        captured._id == ENT_ID
+        captured.id == ENT_ID
+        captured.collection == 'ent'
+        captured.type_id == ENT_TYPE_ID
+
+        and: 'inline-properties fallback yields empty maps when only id and type_id are present'
+        captured.properties == [:]
+        captured.links == [:]
+    }
+
+    def 'ent create with missing data.id is counted as skippedInvalid'() {
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([entityCreateMessage([id: null])])).block()
+
+        then:
+        result.materialized == 0
+        result.skippedInvalid == 1
+        result.skippedUnsupported == 0
+        0 * mongoTemplate.insert(_, _)
+    }
+
+    def 'ent create with blank or whitespace data.id is also counted as skippedInvalid'() {
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([entityCreateMessage([id: input])])).block()
+
+        then:
+        result.skippedInvalid == 1
+        result.materialized == 0
+        0 * mongoTemplate.insert(_, _)
+
+        where:
+        input << ['', '   ']
+    }
+
+    def 'identical-payload ent duplicate is matching even when materialized_at differs'() {
+        given: 'existing ent root has the same payload but an earlier materialized_at'
+        Map existing = [
+                _id        : ENT_ID,
+                id         : ENT_ID,
+                collection : 'ent',
+                type_id    : ENT_TYPE_ID,
+                properties : [:],
+                links      : [:],
+                _head      : [
+                        schema_version: 1,
+                        document_kind : 'root',
+                        root_id       : ENT_ID,
+                        provenance    : [
+                                txn_id         : TXN_ID,
+                                commit_id      : COMMIT_ID,
+                                msg_uuid       : ENT_MSG_UUID,
+                                collection     : 'ent',
+                                action         : 'create',
+                                committed_at   : COMMITTED_AT,
+                                materialized_at: Instant.parse('2025-12-31T00:00:01Z')
+                        ]
+                ]
+        ]
+        mongoTemplate.insert(_ as Map, 'ent') >> Mono.error(springDuplicate())
+        mongoTemplate.findById(ENT_ID, Map.class, 'ent') >> Mono.just(existing)
+
+        when:
+        MaterializeResult result = materializer.materialize(snapshot([entityCreateMessage()])).block()
+
+        then:
+        result.materialized == 0
+        result.duplicateMatching == 1
+        result.conflictingDuplicate == 0
+        result.skippedUnsupported == 0
+        result.skippedInvalid == 0
+    }
+
+    def 'differing-payload ent duplicate is conflicting and not overwritten'() {
+        given:
+        Map existing = [
+                _id        : ENT_ID,
+                id         : ENT_ID,
+                collection : 'ent',
+                type_id    : 'jade-tipi-org~dev~018fd849-2a48-7888-8a08-ffffffffffff~typ~older_type',
+                properties : [:],
+                links      : [:],
+                _head      : [
+                        schema_version: 1,
+                        document_kind : 'root',
+                        root_id       : ENT_ID,
+                        provenance    : [
+                                txn_id         : TXN_ID,
+                                commit_id      : COMMIT_ID,
+                                msg_uuid       : ENT_MSG_UUID,
+                                collection     : 'ent',
+                                action         : 'create',
+                                committed_at   : COMMITTED_AT,
+                                materialized_at: Instant.parse('2025-12-31T00:00:01Z')
+                        ]
+                ]
+        ]
+        mongoTemplate.insert(_ as Map, 'ent') >> Mono.error(springDuplicate())
+        mongoTemplate.findById(ENT_ID, Map.class, 'ent') >> Mono.just(existing)
+
+        when:
+        MaterializeResult result = materializer.materialize(snapshot([entityCreateMessage()])).block()
+
+        then:
+        result.materialized == 0
+        result.duplicateMatching == 0
+        result.conflictingDuplicate == 1
+
+        and: 'no save, update, or overwrite path is taken'
+        0 * mongoTemplate.updateFirst(_, _, _)
+        0 * mongoTemplate.save(_, _)
     }
 
     def 'skips update and delete actions on supported collections'() {
@@ -943,12 +1135,16 @@ class CommittedTransactionMaterializerSpec extends Specification {
             insertOrder << 'typ'
             return Mono.just(doc)
         }
+        mongoTemplate.insert(_ as Map, 'ent') >> { Map doc, String _coll ->
+            insertOrder << 'ent'
+            return Mono.just(doc)
+        }
         mongoTemplate.insert(_ as Map, 'lnk') >> { Map doc, String _coll ->
             insertOrder << 'lnk'
             return Mono.just(doc)
         }
 
-        when: 'snapshot has loc, ppy (skip), typ link-type, ent (skip), lnk in that order'
+        when: 'snapshot has loc, ppy (skip), typ link-type, ent, lnk in that order'
         MaterializeResult result = materializer.materialize(snapshot([
                 locMessage(),
                 propertyCreateMessage(),
@@ -958,9 +1154,9 @@ class CommittedTransactionMaterializerSpec extends Specification {
         ])).block()
 
         then:
-        insertOrder == ['loc', 'typ', 'lnk']
-        result.materialized == 3
-        result.skippedUnsupported == 2
+        insertOrder == ['loc', 'typ', 'ent', 'lnk']
+        result.materialized == 4
+        result.skippedUnsupported == 1
         result.duplicateMatching == 0
         result.conflictingDuplicate == 0
         result.skippedInvalid == 0

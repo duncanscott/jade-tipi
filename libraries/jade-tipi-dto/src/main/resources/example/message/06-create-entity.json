@@ -13,6 +13,8 @@
   "action": "create",
   "data": {
     "id": "jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~en~plate_a",
-    "type_id": "jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~ty~plate_96"
+    "type_id": "jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~ty~plate_96",
+    "properties": {},
+    "links": {}
   }
 }

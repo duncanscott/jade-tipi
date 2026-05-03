@@ -457,6 +457,63 @@ class MessageSpec extends Specification {
         position.column == 1
     }
 
+    def "ent create example uses the human-readable data.id, data.type_id, and explicit empty data.properties / data.links shape"() {
+        given:
+        String json = readResource('/example/message/06-create-entity.json')
+
+        when:
+        Message message = JsonMapper.fromJson(json, Message)
+
+        then:
+        message.collection() == Collection.ENTITY
+        message.action() == Action.CREATE
+
+        and: 'data.id is the materialized entity object id; data.type_id references the entity type'
+        Map data = message.data()
+        data.id == 'jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~en~plate_a'
+        data.type_id == 'jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~ty~plate_96'
+
+        and: 'data.properties and data.links are present and explicitly empty on a simple create'
+        data.properties == [:]
+        data.links == [:]
+
+        and: 'no human-authored facts leak to the data root next to id and type_id'
+        data.keySet() == ['id', 'type_id', 'properties', 'links'] as Set
+    }
+
+    def "entity transaction example sequence shares one txn id and the entity references the entity-type by id"() {
+        given: 'open, entity-type create, entity create, and commit examples'
+        Message open = JsonMapper.fromJson(
+                readResource('/example/message/01-open-transaction.json'), Message)
+        Message typCreate = JsonMapper.fromJson(
+                readResource('/example/message/04-create-entity-type.json'), Message)
+        Message entCreate = JsonMapper.fromJson(
+                readResource('/example/message/06-create-entity.json'), Message)
+        Message commit = JsonMapper.fromJson(
+                readResource('/example/message/09-commit-transaction.json'), Message)
+
+        expect: 'all four messages chain through the same transaction uuid'
+        String txnUuid = open.txn().uuid()
+        typCreate.txn().uuid() == txnUuid
+        entCreate.txn().uuid() == txnUuid
+        commit.txn().uuid() == txnUuid
+
+        and: 'open and commit are transaction-control messages on the txn collection'
+        open.collection() == Collection.TRANSACTION
+        open.action() == Action.OPEN
+        commit.collection() == Collection.TRANSACTION
+        commit.action() == Action.COMMIT
+
+        and: 'the entity create points to the entity type by id (the in-resource cross-reference)'
+        Map typData = typCreate.data()
+        Map entData = entCreate.data()
+        typCreate.collection() == Collection.TYPE
+        typCreate.action() == Action.CREATE
+        entCreate.collection() == Collection.ENTITY
+        entCreate.action() == Action.CREATE
+        entData.type_id == typData.id
+    }
+
     def "contents transaction example trio shares one txn id and pairs typ link-type with a referencing lnk create"() {
         given: 'open, contents-type create, contents-link create, and commit examples'
         Message open = JsonMapper.fromJson(
