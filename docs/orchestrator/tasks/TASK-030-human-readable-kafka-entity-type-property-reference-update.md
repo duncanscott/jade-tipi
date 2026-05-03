@@ -3,7 +3,7 @@
 ID: TASK-030
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-029
@@ -104,3 +104,49 @@ VERIFICATION:
   for Mongo-backed unit tests, `docker compose -f docker/docker-compose.yml up -d`
   for the full Kafka/Mongo stack, and `./gradlew --stop` only when stale Gradle
   daemons are implicated.
+
+DIRECTOR_PREWORK_REVIEW:
+- 2026-05-03: claude-1's pre-work response in
+  `docs/agents/claude-1-next-step.md` is accepted. Scope check passed for the
+  pre-work turn: the latest claude-1 agent commit changed only
+  `docs/agents/claude-1-next-step.md`, which is inside the developer's base
+  owned paths for pre-work.
+- Proceed with the plan's bounded implementation unit: materialize only
+  `typ + update` messages where `data.operation == "add_property"`; preserve
+  Kafka as the submission route; do not add HTTP submission endpoints,
+  `ppy + create` materialization, semantic `data.property_id` resolution,
+  property-value assignment materialization, required-property enforcement,
+  broad ID-abbreviation cleanup, or a nested Kafka operation DSL.
+- Use `properties.property_refs.<property_id>` as the materialized reference
+  location on the root `typ` document. The value is reference metadata only:
+  include `required` when it is present on the wire, and do not invent
+  `required: false` when it is absent.
+- Add the proposed additive `MaterializeResult.skippedMissingTarget` counter
+  for supported update messages whose target `typ` root is missing. Treat
+  missing/blank `data.id` or `data.property_id` as `skippedInvalid`.
+- Repeated `add_property` with matching metadata should be idempotent and count
+  as `duplicateMatching` without writing. Repeated `add_property` with
+  conflicting metadata should count as `conflictingDuplicate` and must not
+  overwrite the existing reference.
+- Do not update `_head.provenance` for the successful `add_property` write in
+  this task. Updating only `_head.provenance.materialized_at` would make the
+  provenance subdocument mix create-message fields with an update timestamp;
+  full update history is out of scope for TASK-030.
+- Keep the existing example JSON IDs unchanged. It is acceptable for the unit
+  test helper to use its local synthetic `~ppy~` property ID unless the
+  implementation naturally switches it to the canonical `05-...` `~pp~` value
+  in a focused test; do not perform broad ID-abbreviation cleanup.
+- Add focused DTO tests for the existing `05-update-entity-type-add-property`
+  shape and the `01 -> 02 -> 04 -> 05 -> 09` transaction references. Add
+  materializer coverage for positive update shape, unsupported other
+  operations, missing target, idempotent repeat, conflicting metadata, and
+  missing `property_id`. Extend the narrow Kafka/Mongo integration proof when
+  the local Docker/Kafka stack is available; if tooling blocks it, report the
+  documented setup command and exact error.
+- Director static check on the pre-work artifact passed:
+  `git show --check --format=short aab8356 -- docs/agents/claude-1-next-step.md`.
+  The orchestrator status check could not run in this sandbox because `tsx`
+  failed to open its IPC pipe under `/var/folders/...` with `EPERM` while local
+  Node reported `v25.9.0`; per project guidance this is setup/sandbox friction,
+  not a product blocker. In a normal shell, use the documented Node 20
+  development environment before rerunning the orchestrator status command.
