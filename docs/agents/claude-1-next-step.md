@@ -4,395 +4,425 @@ The developer writes pre-work plans here before implementation begins.
 
 STATUS: PRESENT
 
-## TASK-025 — Plan TypeScript 6 frontend upgrade (pre-work, revision 1)
+## TASK-026 — Human-readable Kafka loc submission path (pre-work, revision 1)
 
 ### Directive summary
 
 `DIRECTIVES.md` global signal is `REQUEST_NEXT_STEP`. The active task file
-`docs/orchestrator/tasks/TASK-025-typescript-6-upgrade-prework.md` is
-`READY_FOR_PREWORK` with `OWNER: claude-1`. The director scoped TASK-025 to
-evaluate, and only after director pre-work review possibly upgrade, the
-frontend from the accepted TypeScript 5.x line to the latest stable
-TypeScript 6 line. Pre-work must:
+`docs/orchestrator/tasks/TASK-026-human-readable-kafka-loc-submission.md`
+is `READY_FOR_PREWORK` with `OWNER: claude-1`. The director scoped TASK-026
+to prove that a human-readable Kafka transaction can create a root-shaped
+`loc` document in MongoDB through the existing `txn` ingest, commit, and
+materialization path. The bounded outcome is:
 
-- Inspect the current `frontend/package.json`, `frontend/package-lock.json`,
-  `frontend/tsconfig.json`, and the Next.js / React type-check surface.
-- Determine the latest stable TypeScript 6 version on npm and identify
-  whether Next.js 16.2.4 and the installed React/Node `@types` packages
-  officially support it.
-- Document expected migration risks (compiler option changes, stricter
-  checks, DOM/lib typing changes, generated `.next` types, App Router type
-  generation).
-- Propose the smallest implementation plan and exact verification commands.
+- Document and, if necessary, adjust the accepted `loc + create` message
+  shape so it is easy to hand-author:
+  - top-level `collection: "loc"` and `action: "create"`,
+  - `data.id` is the materialized object ID,
+  - `data.type_id` is optional,
+  - `data.properties` is a plain JSON object,
+  - `data.links` is optional or empty on create.
+- Add or update example resource JSON showing one complete transaction
+  (open → create one `loc` → commit) under
+  `libraries/jade-tipi-dto/src/main/resources/example/message/`.
+- Ensure the materialized Mongo document remains root-shaped with `_id`,
+  `id`, `collection: "loc"`, `_head`, `properties`, and `links`.
+- Add focused automated coverage proving the example/message shape
+  round-trips through DTO validation and materializes a `loc` root with
+  the expected JSON shape.
 
-Out of scope for this task (per the task file): updating Next.js, React,
-NextAuth/Auth.js, Tailwind, Playwright, backend code, Docker, Keycloak,
-frontend UI, or applying TS 6 source migrations during pre-work.
+Out of scope (per task file): no new HTTP submission endpoints, no full
+property-definition / type-validation system, no `ent` materialization,
+no permission enforcement, no canonical `parent_location_id` on `loc`,
+no nested-operation Kafka DSL.
 
 This pre-work turn produces a plan only and edits exactly
-`docs/agents/claude-1-next-step.md` (a base owned path). No source change is
-made until the director advances TASK-025 to `READY_FOR_IMPLEMENTATION` /
-`PROCEED_TO_IMPLEMENTATION`.
+`docs/agents/claude-1-next-step.md` (a base owned path). No source change
+is made until the director advances TASK-026 to
+`READY_FOR_IMPLEMENTATION` / `PROCEED_TO_IMPLEMENTATION`.
 
-### Current TypeScript surface (HEAD of `claude-1`)
+### Authoritative product direction (read first)
 
-`frontend/package.json` (devDependencies excerpt):
+- `DIRECTION.md` "Human-Readable Kafka Submission" (lines 103–137)
+  prescribes the new shape, including `data.type_id` optional,
+  `data.properties` plain JSON object keyed by property name, and
+  `data.links` normally empty on create.
+- `docs/architecture/kafka-transaction-message-vocabulary.md`
+  "Human-Readable Authoring Rule" (lines 28–68) repeats the shape in the
+  vocabulary doc and explicitly notes that "the early materializer may
+  also tolerate older examples that put `name` and `description`
+  directly under `data`, but new examples should prefer the explicit
+  `data.properties` object." Back-compat is therefore a stated tolerance,
+  not a long-term contract.
+- `docs/architecture/kafka-transaction-message-vocabulary.md` lines
+  257–263 ("Committed Materialization Of Locations And Links") confirms
+  the materialized root-document contract: top-level `_id`, `id`,
+  `collection`, `type_id`, explicit `properties`, denormalized `links`,
+  and `_head.provenance`. The new shape must preserve those fields
+  unchanged.
+- TASK-013 (root-shaped contract), TASK-014 (root-shaped materializer),
+  and TASK-019 (Clarity/ESP container prototype) are all accepted; they
+  define the root-document shape and the existing materializer entry
+  point that this task must reuse rather than replace.
 
-```json
-"devDependencies": {
-  "@playwright/test": "^1.59.1",
-  "@tailwindcss/postcss": "^4.2.4",
-  "@types/node": "^20.19.39",
-  "@types/react": "^19.2.14",
-  "@types/react-dom": "^19.2.3",
-  "tailwindcss": "^4.2.4",
-  "typescript": "^5.9.3"
-}
-```
+### Current materializer behaviour (read of source on `claude-1`)
 
-`frontend/tsconfig.json`:
+`jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`:
+
+- `isSupported()` (lines 206–226) accepts `loc + create` unconditionally.
+- `buildDocument()` (lines 240–262) for non-`lnk` collections (so for
+  `loc`, `grp`, `typ` link-type) calls `buildInlineProperties(data)`,
+  which copies every `data` entry except `id` and `type_id` directly into
+  root `properties`. There is no recognition of `data.properties` or
+  `data.links` sub-objects for `loc`.
+- For `lnk` only, the materializer already does the right thing: it
+  reads `data.properties` and copies it via `copyProperties()` into root
+  `properties`. The existing `lnk` path is the model the `loc` path
+  should match.
+- Root `links` is hard-coded to an empty `LinkedHashMap` for every
+  supported collection; submitted `data.links` is currently ignored.
+
+Implication: the proposed human-readable shape
 
 ```json
 {
-  "compilerOptions": {
-    "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "react-jsx",
-    "incremental": true,
-    "plugins": [{ "name": "next" }],
-    "paths": { "@/*": ["./*"] }
-  },
-  "include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
-  ],
-  "exclude": ["node_modules"]
+  "collection": "loc",
+  "action": "create",
+  "data": {
+    "id": "...",
+    "type_id": "...",
+    "properties": { "name": "Freezer 01", "description": "..." },
+    "links": {}
+  }
 }
 ```
 
-Type-check surface in scope:
+does **not** materialize correctly today. The current code would write
+root `properties = { "properties": { "name": "...", ... }, "links": {} }`
+— a doubly-nested `properties` map and `links` mistakenly stored inside
+`properties`. The schema accepts the payload (snake-case keys), the
+ingest persists it, and the commit projection runs, but the projected
+shape violates the root-document contract and breaks
+`ContentsLinkReadService` / contents read service consumers that expect
+the documented root shape.
 
-- `frontend/auth.ts` — NextAuth v5 beta, Keycloak provider, JWT strategy,
-  `events.signOut` `'token' in message` narrowing (TASK-023), access-token
-  refresh.
-- `frontend/app/**/*.tsx` — App Router pages: `layout.tsx`, `page.tsx`,
-  `admin/groups/**`, `document/**`, `list/[id]/page.tsx` (already on
-  awaited `params`), and `api/auth/[...nextauth]/route.ts`.
-- `frontend/components/layout/Header.tsx`.
-- `frontend/lib/{admin-groups,api,uuid}.ts`.
-- `frontend/types/next-auth.d.ts` — module augmentation for the NextAuth
-  `Session` / `JWT` types.
-- `frontend/tests/*.spec.ts` — Playwright tests.
-- Generated `.next/types/**/*.ts` and `.next/dev/types/**/*.ts` — emitted
-  by Next.js at build time; included in the `include` list. Next 16's TS
-  plugin/type generator is built against TypeScript 5.9.
+### Schema status (`message.schema.json`)
 
-### TypeScript 6 npm metadata
+`libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json`:
 
-From `npm view typescript dist-tags --json`:
+- For `collection != "grp"`, `data` follows `SnakeCaseObject`
+  (lines 189–199), which permits any snake_case-keyed object (recursive).
+  `data.properties` and `data.links` (both snake-case) are valid keys
+  and may carry nested snake-case objects. Property values such as
+  `"Freezer 01"` and `"Minus 80 freezer in room 214"` are allowed string
+  `SnakeCaseValue`s; the snake_case rule applies to keys, not to string
+  values.
+- The schema does **not** enforce the new shape (it would also accept
+  the old flat shape, plus arbitrary extra snake_case keys at the `data`
+  root). Documenting the new shape is product/example-driven; tightening
+  the schema to require `data.properties` is intentionally **out of
+  scope** for this task because the back-compat tolerance is explicitly
+  stated by the architecture doc.
 
-```
-{
-  "dev": "3.9.4",
-  "tag-for-publishing-older-releases": "4.1.6",
-  "insiders": "4.6.2-insiders.20220225",
-  "beta": "6.0.0-beta",
-  "rc": "6.0.1-rc",
-  "latest": "6.0.3",
-  "next": "6.0.0-dev.20260416"
-}
-```
+Conclusion: no schema-file change is required to accept the new
+human-readable shape. A future task may layer in a stricter
+`LocationData` definition once the rest of the contract stabilizes; this
+task should not pre-empt that decision.
 
-Released 6.x stable line and dates (from `npm view typescript --json | .time`):
+### Example resource status
 
-| Version | Released |
-| --- | --- |
-| `6.0.1-rc` | 2026-03-06 |
-| `6.0.2` | 2026-03-23 |
-| `6.0.3` | 2026-04-16 |
+`libraries/jade-tipi-dto/src/main/resources/example/message/10-create-location.json`
+currently uses the **old flat shape** with `name` and `description`
+directly under `data` and no `properties`/`links`/`type_id`. This file
+is exercised by `MessageSpec` (lines 24–38) for round-trip and
+`message.schema.json` validation but does not currently exercise the
+new shape.
 
-Latest stable npm dist-tag is `latest=6.0.3`. `6.0.3` is a stable patch on
-the 6.0 line and is the proposed implementation target.
+The transaction envelope examples already cover open and commit:
 
-`npm view typescript@6.0.3 engines` reports `node: '>=14.17'`, which is
-compatible with the project Node 20 baseline (`CLAUDE.md`).
+- `01-open-transaction.json` (txn + open, txn uuid `018fd849-2a40-7abc-8a45-111111111111`)
+- `09-commit-transaction.json` (txn + commit on the same txn uuid)
 
-### Compatibility evidence
+So a "complete transaction that opens, creates one simple `loc`, and
+commits" can be expressed as the trio `01-…` → `10-…` (rewritten) →
+`09-…`, all sharing `txn.uuid = 018fd849-2a40-7abc-8a45-111111111111`.
+That mapping is consistent with how the existing examples already chain.
 
-| Consumer | Declares TS in `peerDependencies`? | Pinned/internal TS? | Effect |
-| --- | --- | --- | --- |
-| `next@16.2.4` | No (`npm view next@16.2.4 peerDependencies` does not list `typescript`) | Internal `devDependencies.typescript: '5.9.2'` | Next ships its own TS plugin built against 5.9; nothing forces the consumer to stay on 5.x. |
-| `next-auth@5.0.0-beta.31` | No (`peerDependencies` lists only `next`, `react`, `nodemailer`, `@simplewebauthn/*`) | None | Agnostic to TS major. |
-| `@types/react@19.2.14` | No (`peerDependencies` is `{}`) | None | Agnostic. |
-| `@types/react-dom@19.2.3` | No (matched pair to `@types/react`) | None | Agnostic. |
-| `@types/node@20.19.39` | No | None | Agnostic. |
-| `@playwright/test@1.59.1` | No TS pin | None | Agnostic. |
-| `@tailwindcss/postcss@4.2.4`, `tailwindcss@4.2.4` | No TS pin | None | Agnostic; not in TS compile path. |
+### Smallest implementation plan
 
-No package in the accepted dependency set declares a `peerDependencies`
-entry for TypeScript that would forbid `6.x`. The only "soft" coupling is
-that Next.js bundles a TypeScript Language Service plugin built against
-`typescript@5.9.2`. In practice, Next's TS plugin is loaded only by editors
-(via `tsserver`); the build path uses the user's installed `tsc` (or
-Next's own type checker invocation through the user's TS), so a 6.x TS
-should still type-check the project, but the editor LSP plugin may print a
-"plugin built against older TypeScript" notice or, in the worst case, fail
-to attach. That is a developer-experience risk, not a build-correctness
-risk, and is only observable in IDEs. Verification at implementation time
-is `npm run build`.
+Goal: smallest set of changes that makes the new human-readable
+`loc + create` shape ingest, commit, and materialize into a root-shaped
+Mongo `loc` document, with focused automated coverage and updated
+examples. Back-compat for the legacy flat shape is preserved per the
+architecture doc's stated tolerance.
 
-There is no upstream Next.js or Vercel announcement guaranteeing TS 6
-support for Next 16.2.4; treat the support as "compatible by absence of a
-peer constraint, pending build verification" rather than "officially
-supported". Default proposal recommends proceeding with `READY_FOR_PREWORK`
-review and a small implementation, with a clear backout path.
+#### File changes
 
-### Migration risks (TypeScript 5.9 → 6.0)
+1. `libraries/jade-tipi-dto/src/main/resources/example/message/10-create-location.json`
+   — rewrite to the new human-readable shape:
 
-Because TS 6.0 is brand new, expect the following risk classes; mitigations
-note where the project already tolerates them.
+   - Top-level: `txn` (reuse `018fd849-2a40-7abc-8a45-111111111111`),
+     `uuid`, `collection: "loc"`, `action: "create"`.
+   - `data.id` = the existing `jade-tipi-org~dev~…~loc~freezer_a` ID
+     (same value already used today, to keep `MessageSpec` deterministic).
+   - `data.type_id` = `null` or omitted (the directive marks it optional;
+     `null` makes the optionality explicit in the round-trip example).
+     **Default proposal:** omit the key entirely so the example shows the
+     minimum payload; the materializer already treats a missing
+     `type_id` as `null` (see `data.get(FIELD_TYPE_ID)` in the
+     materializer).
+   - `data.properties = { "name": "freezer_a", "description": "minus-80
+     freezer in room 110" }` — keep the same human values that exist in
+     the current flat example so the change is purely structural.
+   - `data.links = {}` — present as an explicit empty map so the example
+     documents the canonical "no links on create" convention.
 
-1. **`lib.dom.d.ts` updates.** TS major releases roll forward DOM lib
-   typings, which can surface stricter typings on `Response`, `Request`,
-   `URLSearchParams`, `Buffer` interop, `Headers`, and event handlers.
-   Mitigation: `skipLibCheck: true` is already set in
-   `frontend/tsconfig.json`, which suppresses errors inside `.d.ts` files
-   themselves. App-code call sites that pass DOM values still get checked.
-   Likely surface area: `frontend/auth.ts` (`fetch`, `Buffer.from(...)`,
-   `Response`), `frontend/lib/api.ts` (HTTP fetch wrappers), and route
-   handlers in `frontend/app/api/**`.
+2. `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`
+   — extend `buildDocument()` / `buildInlineProperties()` so that for
+   non-`lnk` supported collections (`loc`, `grp`, `typ` link-type), the
+   materializer chooses one of two branches based on payload shape:
 
-2. **Stricter narrowing / control-flow analysis.** TS 6 typically tightens
-   inference for `unknown`, discriminated unions, and `in` narrowing.
-   Mitigation: the codebase already uses defensive `typeof x === 'string'`,
-   `Array.isArray(...)`, and explicit `'token' in message` narrowing
-   patterns (see `frontend/auth.ts`, `frontend/lib/admin-groups.ts`).
-   Likely surface area: any place doing `as Record<string, unknown>` on
-   parsed JWT payloads (`frontend/auth.ts`).
+   - **Explicit shape (preferred):** if `data` contains a `properties`
+     key whose value is a `Map`, use that map directly (via the existing
+     `copyProperties()` helper) for root `properties`. If `data` also
+     contains a `links` key whose value is a `Map`, copy that map into
+     root `links` (via a parallel `copyLinks()` helper). Otherwise
+     default `links` to `[:]` as today.
+   - **Legacy flat shape (back-compat):** if `data.properties` is
+     missing or not a `Map`, fall back to the current behaviour: copy
+     every `data` entry except `id` and `type_id` directly into root
+     `properties`, and leave root `links` as `[:]`.
 
-3. **Removed deprecated compiler options.** TS 6 removes deprecation flags
-   that were warned in TS 5.x (e.g. `--out`, `--keyofStringsOnly`,
-   `--suppressExcessPropertyErrors`, `--suppressImplicitAnyIndexErrors`,
-   `--noStrictGenericChecks` — exact removal list is documented in the
-   official TS 6 release notes; verify against the runtime build error
-   list). Mitigation: `frontend/tsconfig.json` does not set any of these
-   deprecated flags; current options are `target`, `lib`, `allowJs`,
-   `skipLibCheck`, `strict`, `noEmit`, `esModuleInterop`, `module`,
-   `moduleResolution`, `resolveJsonModule`, `isolatedModules`, `jsx`,
-   `incremental`, `plugins`, `paths` — none of which are deprecated as of
-   TS 5.9.
+   Detection rule chosen so that the legacy shape (which currently
+   carries `name` and `description` at `data` root and no `properties`
+   key) keeps working unchanged. The explicit shape is preferred when
+   `data.properties` is present and Map-typed.
 
-4. **Module resolution / `.tsbuildinfo` invalidation.** TS bumps the
-   incremental file format, so `frontend/tsconfig.tsbuildinfo` is stale on
-   the first 6.x build. Mitigation: `tsc` deletes/rewrites it
-   automatically on version mismatch; no manual cleanup required, but the
-   first build will be a full re-check (longer than incremental).
+   Implementation notes:
+   - Add a small helper `copyLinks(Object linksValue)` mirroring
+     `copyProperties()`.
+   - Keep `lnk`-specific branch unchanged (it already reads
+     `data.properties` correctly).
+   - Do **not** touch `_head.provenance`, `_id`, `id`, `collection`, or
+     `type_id` handling. The contract from TASK-013 / TASK-014 stays.
+   - Keep the duplicate-key idempotency / conflicting-payload paths
+     unchanged. `isSamePayload()` already strips
+     `_head.provenance.materialized_at` only.
 
-5. **Generated `.next/types/**/*.ts` and `.next/dev/types/**/*.ts`.**
-   These are emitted by Next 16's TS-aware route-type generator (built
-   against TS 5.9.x). If TS 6 added new strictness around route-shape
-   inference (e.g. `params: Promise<...>` typing patterns), the generated
-   files could fail compile. Mitigation: the build script is
-   `next build --turbopack`, which regenerates these files. If they fail,
-   the right response is to report the file/line of the error rather than
-   editing generated output. `.next/` is already in `.gitignore`.
+3. `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`
+   — add focused Spock cases (Mock-driven, matches the existing style):
 
-6. **Next.js TS Language Service plugin compatibility.** The project pins
-   `plugins: [{ "name": "next" }]` in `tsconfig.json`. Editors may emit a
-   "plugin built against older TypeScript" warning under 6.x. This is an
-   IDE-only signal and does not affect `tsc`/`next build`.
+   - "materializes a loc create with explicit data.properties /
+     data.links into the root shape" — submits the new human-readable
+     shape and asserts:
+     - `captured._id == LOC_ID`, `captured.id == LOC_ID`,
+       `captured.collection == 'loc'`, `captured.type_id == null`.
+     - `captured.properties == [name: 'freezer_a', description:
+       'minus-80 freezer in room 110']` (no doubly-nested
+       `properties.properties`).
+     - `captured.links == [:]` (or the submitted `data.links` value if
+       non-empty).
+     - `_head.schema_version`, `_head.document_kind`, `_head.root_id`,
+       and `_head.provenance.{txn_id, commit_id, msg_uuid, collection,
+       action, committed_at, materialized_at}` all populated as today.
+   - "materializes a loc create with explicit data.type_id and
+     data.properties" — confirms `type_id` is set at root and excluded
+     from `properties`.
+   - "preserves legacy flat loc create back-compat" — keeps the existing
+     "materializes a loc create as a root document with inline
+     properties" assertions intact (the current first test already
+     covers this path; the assertion is that it remains green).
 
-7. **`@types/react@19.2` and `@types/node@20.19` under TS 6.** Both
-   packages have empty `peerDependencies`. `skipLibCheck: true` further
-   reduces drift. Risk is contained to call-site type errors that already
-   show up in normal compilation. No type-package upgrade is in scope.
+4. `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`
+   — the existing example loop at lines 24–38 already round-trips and
+   schema-validates `10-create-location.json`. After the example file is
+   rewritten, the same loop validates the new shape against
+   `message.schema.json` for free. Add one focused case that asserts:
 
-8. **Module augmentation in `frontend/types/next-auth.d.ts`.** TS major
-   versions have, in the past, tightened how `declare module` augmentation
-   is required to be exported. Mitigation: review the file shape during
-   implementation; it is a single small `.d.ts` in OWNED_PATHS.
+   - `Message` parsed from `10-create-location.json` exposes
+     `collection() == LOCATION`, `action() == CREATE`,
+     `data().properties` is a `Map` with the expected entries, and
+     `data().links` is an empty `Map`.
 
-9. **`auth.ts` JWT decode path.** Uses `Buffer.from(base64, 'base64')` and
-   casts `JSON.parse(...)` to `Record<string, unknown>`. TS 6 may tighten
-   `Buffer` typings via `@types/node` interplay; `skipLibCheck` mitigates
-   inside `.d.ts`, but call sites are checked. No expected source change,
-   but a candidate for build-surfaced errors.
+5. `docs/architecture/kafka-transaction-message-vocabulary.md` —
+   confirm the human-readable example block (lines 50–64) still matches
+   the rewritten resource and that the back-compat sentence on lines
+   65–68 stays accurate after the example file flips. **Default
+   proposal:** no edit needed; the doc already prescribes the new
+   shape and notes legacy tolerance. Confirm during implementation; if
+   a wording clarification is needed (e.g. "see
+   `10-create-location.json` for the canonical shape"), add a single
+   sentence under "Reference Examples" on line 285.
 
-Risk summary: TS 5.9 → 6.0 is a controlled minor-major-style bump. The
-project already runs in `strict` mode, has `skipLibCheck` on, and is
-already defensively narrowed. Expected churn is small (likely 0–3 files);
-the realistic worst case is a handful of explicit type assertions or
-`as never`/`satisfies` adjustments in `auth.ts`, `lib/api.ts`, and any
-admin/document route handlers.
+6. `docs/OVERVIEW.md` — within OWNED_PATHS but not load-bearing for
+   this change. **Default proposal:** no edit. If the OVERVIEW currently
+   describes the legacy `loc` shape, update one sentence; otherwise
+   leave it untouched.
 
-### Expected file touch list (implementation turn, only after director approval)
+Expected total surface: 1 example resource rewritten, ~30 lines of
+materializer logic added (one helper + branching), ~50–80 lines of
+Spock test added across two specs. No public API change, no schema
+change, no DTO type change, no Kafka topic change.
 
-In-scope per TASK-025 `OWNED_PATHS`:
+#### Out-of-scope guardrails (will **not** edit)
 
-- `frontend/package.json` — bump `"typescript": "^5.9.3"` →
-  `"typescript": "^6.0.3"`. One-line change.
-- `frontend/package-lock.json` — regenerated by `npm install`. Mechanical.
-- `frontend/tsconfig.json` — only if a TS 6 build error explicitly demands
-  a config change. Default expectation: no change. If `target: "ES2017"`
-  becomes deprecated in TS 6 (it is not deprecated as of TS 5.9), bump to
-  `"ES2022"` only with explicit notation.
-- `frontend/auth.ts`, `frontend/lib/**`, `frontend/app/**`,
-  `frontend/components/**`, `frontend/types/next-auth.d.ts`,
-  `frontend/tests/**` — only if `npm run build` reports a TS 6 strictness
-  error. Each touch is justified in the implementation report
-  (`docs/agents/claude-1-changes.md`) with the file/line of the build
-  error that drove it.
+- `clients/kafka-kli/**` — kli already accepts `--collection loc` and
+  passes `data` through unchanged; no CLI change is needed to publish
+  the new shape.
+- `frontend/**` — no UI surface for `loc` create yet.
+- `src/main/groovy/.../service/TransactionService.groovy`,
+  `CommittedTransactionReadService.groovy`,
+  `TransactionMessagePersistenceService.groovy` — they treat `data` as
+  an opaque map; the new shape is preserved verbatim through ingest,
+  commit, and snapshot read.
+- `message.schema.json` — see Schema status above.
+- `frontend/.env.local` — generated; never hand-edited (per CLAUDE.md).
 
-Expected size: 1 line in `package.json`, lockfile regen, 0–3 small source
-edits driven by build errors. No re-architecture, no flag flips, no API
-surface change.
+### Verification plan (implementation turn)
 
-If the build surfaces churn larger than ~10 unrelated files, the
-implementation turn stops with `STATUS: BLOCKED` and reports the error
-list rather than self-expanding TASK-025; the director can then choose to
-back out (revert to TS 5.9.x) or expand scope.
-
-### Exact update / verification commands
-
-Implementation turn (only after director advances task to
-`READY_FOR_IMPLEMENTATION` / `PROCEED_TO_IMPLEMENTATION`):
+Per task `VERIFICATION` section. Run inside the developer worktree
+(`/Users/duncanscott/orchestrator/jade-tipi/developers/claude-1`).
 
 ```sh
-cd /Users/duncanscott/orchestrator/jade-tipi/developers/claude-1/frontend
+# 1. DTO library tests — round-trips and schema validation for the
+#    rewritten 10-create-location.json example.
+./gradlew :libraries:jade-tipi-dto:test
 
-# 1. Bump only TypeScript to the newest stable 6.x. Stays inside
-#    OWNED_PATHS; no other dependency changes.
-npm install --save-dev typescript@6.0.3
+# 2. Backend unit tests — CommittedTransactionMaterializerSpec covers
+#    the new + legacy loc shapes and the round-shape assertions.
+./gradlew :jade-tipi:test
 
-# 2. Idempotent install to confirm the lockfile is clean.
-npm install
-
-# 3. Production build (the project's primary verification path; this is
-#    what regenerates .next/types/**/*.ts and exercises the TS plugin).
-npm run build
-
-# 4. Narrowest practical frontend test command. If Playwright browser
-#    binaries are missing or stale, the documented setup command is:
-#      npx playwright install chromium
-#    Per CLAUDE.md "Tooling Refresh", missing browser binaries are a
-#    setup issue, not a product blocker; the implementation report names
-#    the setup command and the result.
-npm test
+# 3. Narrowest practical Kafka/Mongo integration test (only if local
+#    Docker is running and the project documents an opt-in flag).
+#    The existing TransactionMessageKafkaIngestIntegrationSpec is
+#    gated on KAFKA_BOOTSTRAP_SERVERS / docker-compose. If running:
+docker compose -f docker/docker-compose.yml up -d mongo kafka zookeeper keycloak
+./gradlew :jade-tipi:integrationTest \
+  --tests org.jadetipi.jadetipi.kafka.TransactionMessageKafkaIngestIntegrationSpec
 ```
 
-If `npm run build` reports new TS 6 errors that are local to a small
-number of files (≤3) and are mechanical (e.g. `'X' is possibly null`
-narrowings, missing `as const`, `satisfies` adjustments), the
-implementation turn applies the smallest fix per file and re-runs
-`npm run build`.
+Setup commands (per CLAUDE.md "Tooling Refresh"; if local tooling is
+missing they are reported, not treated as product blockers):
 
-If `npm run build` reports broad TS 6 errors (>10 files, generated
-`.next/types/**/*.ts` self-incompatibility, or compiler-option removals
-that require a `tsconfig.json` redesign), the implementation turn stops
-with `STATUS: BLOCKED` (or `HUMAN_REQUIRED` for compiler-option
-redesign), reports the list, and recommends backing out the
-`typescript@6.0.3` bump to `5.9.3`.
+- Docker-compose stack required for `:jade-tipi:test` because
+  `JadetipiApplicationTests.contextLoads` opens a Mongo connection per
+  the project CLAUDE.md. Run
+  `docker compose -f docker/docker-compose.yml up -d` first.
+- If the Gradle wrapper cache is missing, the first `./gradlew` invocation
+  bootstraps it; that is normal first-run behaviour, not a blocker.
+- If integration tests cannot run because Docker is not available in the
+  sandbox, report the exact `docker compose ... up` command and stop
+  rather than treating it as a product blocker.
 
-Backout path: `npm install --save-dev typescript@5.9.3` reverts the only
-in-scope source change other than the lockfile. The pre-existing baseline
-remains the accepted TS 5.9.x state from TASK-024.
-
-If npm registry / network is unreachable, the implementation turn reports
-the exact failing `npm install` command and treats it as a tooling /
-environment issue, not a product blocker.
-
-### Stay-in-scope check for this pre-work turn
+### Stay-in-scope check (this pre-work turn)
 
 This turn edits exactly:
 
 - `docs/agents/claude-1-next-step.md` — base owned path.
 
 No other files are touched. The implementation turn (gated on a director
-signal) will edit only paths inside TASK-025 `OWNED_PATHS`:
-`frontend/package.json`, `frontend/package-lock.json`,
-`frontend/tsconfig.json`, `frontend/app/`, `frontend/components/`,
-`frontend/lib/`, `frontend/types/`, `frontend/tests/`, plus the report
-file `docs/agents/claude-1-changes.md`. No backend, Gradle, Docker,
-Keycloak realm, frontend `.env.local`, or workspace orchestrator file is
-touched.
+signal) will edit only paths inside TASK-026 `OWNED_PATHS`:
+
+- `libraries/jade-tipi-dto/src/main/resources/example/message/10-create-location.json`
+- `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/`
+  (`MessageSpec.groovy` extension)
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`
+- `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/`
+  (only if a narrow integration test is added and Docker is available)
+- `docs/architecture/kafka-transaction-message-vocabulary.md` —
+  clarification only, if needed
+- `docs/orchestrator/tasks/TASK-026-human-readable-kafka-loc-submission.md`
+  — if status update is required
+- `docs/agents/claude-1-changes.md` — the implementation report
+
+`DIRECTION.md` and `docs/architecture/jade-tipi-object-model-design-brief.md`
+are within TASK-026 `OWNED_PATHS` but the **Default proposal** is to
+leave them untouched. Both already describe the new direction; no edit
+is needed unless the implementation surfaces a wording mismatch.
 
 ### Open questions / blockers
 
 Each has a default proposal so the director can accept or redirect with
 one signal change.
 
-- **Q-25-A — Target `typescript@6.0.3` vs hold on `5.9.3`.** TS `latest`
-  is `6.0.3`, released 2026-04-16, two patches into the 6.0 line. No
-  consumer in the accepted dependency set pins TypeScript via
-  `peerDependencies`. **Default proposal:** target `^6.0.3` and verify
-  via `npm run build`. **Backup:** hold on `5.9.3` and re-evaluate after
-  Next.js publishes a release that explicitly enumerates TS 6 support;
-  this is the lower-risk path if the director wants to wait for upstream
-  confirmation. Default favors moving forward because the project's
-  `skipLibCheck`, `strict`, and existing defensive narrowing reduce
-  expected churn to a small number of files.
+- **Q-26-A — Detection rule for the new vs legacy loc shape.**
+  **Default proposal:** treat a payload as "explicit shape" only when
+  `data.properties instanceof Map`. Otherwise fall back to the existing
+  flat-flatten behaviour. This keeps the existing
+  `10-create-location.json`-style payload working on stale clients
+  without flag-day coordination, matches the architecture-doc tolerance
+  sentence, and avoids brittle "is this object empty" heuristics. **Backup:**
+  drop legacy back-compat and require `data.properties` always — only if
+  the director wants to harden the contract earlier than the architecture
+  doc currently states.
 
-- **Q-25-B — Bump `tsconfig.json` `target` from `ES2017` to `ES2022`.**
-  TS 6 still supports `ES2017` as a valid target as of TS 5.9 docs;
-  there is no deprecation signal yet. **Default proposal:** leave
-  `target: "ES2017"` unchanged for this task. **Backup:** if TS 6
-  release notes (verify at implementation time) deprecate `ES2017` as a
-  warning, bump to `ES2022` (the project's runtime is Node 20, which
-  supports ES2022 natively) as a one-line change inside OWNED_PATHS and
-  document it in the report.
+- **Q-26-B — Treatment of submitted `data.links` on a `loc + create`.**
+  The directive says `data.links` is "optional or empty on create".
+  **Default proposal:** if `data.links` is a `Map`, copy it verbatim
+  into root `links` (mirrors how `lnk` already handles
+  `data.properties`). If absent or non-Map, default to `[:]`. This keeps
+  endpoint-projection maintenance out of scope and matches the architecture
+  doc's "links is empty or absent on create" wording. **Backup:** ignore
+  any submitted `data.links` and always write `[:]`, deferring the
+  contract decision; rejected because it would silently drop submitted
+  data for callers that follow the human-readable example literally.
 
-- **Q-25-C — Behaviour on broad TS 6 type churn.** **Default proposal:**
-  if `npm run build` surfaces TS 6 errors in >10 files or in generated
-  `.next/types/**/*.ts`, stop with `STATUS: BLOCKED`, list the errors,
-  and recommend backing out to `typescript@5.9.3`. **Backup:** absorb
-  the churn within TASK-025 only if the director explicitly expands
-  scope, mirroring how TASK-022/023 propagated.
+- **Q-26-C — Schema tightening (`LocationData`).** Mirroring the existing
+  `GroupData` pattern, the schema could declare a `LocationData`
+  definition that pins `properties: object` and `links: object`. **Default
+  proposal:** **defer** — this task documents and materializes the new
+  shape, but the architecture doc explicitly tolerates the legacy shape.
+  A schema tightening would force a flag-day across any client still
+  emitting the flat shape (today, including the bundled example before
+  the rewrite). **Backup:** accept a schema-only follow-up task once the
+  ecosystem is on the new shape.
 
-- **Q-25-D — Next.js TypeScript Language Service plugin warning.** Next
-  16.2.4 ships a TS plugin built against `typescript@5.9.2`. Editors may
-  log a "plugin built against older TypeScript" notice under 6.x.
-  **Default proposal:** treat this as a non-blocking IDE signal; do not
-  remove the `plugins: [{ "name": "next" }]` entry from
-  `tsconfig.json`, and do not gate the upgrade on a Next.js TS plugin
-  release. **Backup:** if the plugin actively breaks `tsserver`, file a
-  follow-up task and consider deferring TS 6 until Next.js publishes a
-  matched plugin.
+- **Q-26-D — `data.type_id` representation in the new example.** The
+  directive marks `type_id` as optional. **Default proposal:** omit the
+  `type_id` key entirely from `10-create-location.json` to keep the
+  minimal-payload example honest; the materializer already reads
+  `data.get(FIELD_TYPE_ID)` and stores `null` when absent (covered by
+  the existing test "materializes a loc create … type_id == null").
+  **Backup:** include `type_id: null` so the canonical example shows the
+  field name; rejected because that conflates "absent" with "explicitly
+  null", and the architecture doc shows the field omitted.
 
-- **Q-25-E — Treatment of pre-existing build/test errors unrelated to
-  the TS bump.** **Default proposal:** if `npm run build` surfaces
-  errors that reproduce on the pre-bump tree as well, report them with
-  file/line and stop with `STATUS: BLOCKED` rather than widening
-  TASK-025. **Backup:** fold a small fix into TASK-025 only if the
-  director explicitly expands scope.
+- **Q-26-E — Integration test coverage.** The directive lists "the
+  narrowest practical Kafka/Mongo integration test if local Docker is
+  running and the project has a documented opt-in flag for it" as a
+  verification-time expectation. **Default proposal:** the
+  implementation turn adds focused unit-level Spock coverage in
+  `CommittedTransactionMaterializerSpec` and reuses the existing
+  `TransactionMessageKafkaIngestIntegrationSpec` for the ingest path;
+  it does **not** add a new full end-to-end ingest→commit→materialize
+  Kafka spec unless the director explicitly requests one, because the
+  matrix coverage is already provided by unit tests for the
+  materializer and an existing integration spec for the ingest path.
+  **Backup:** add a new
+  `LocCreateMaterializationIntegrationSpec` in
+  `jade-tipi/src/integrationTest/...` that publishes the rewritten
+  example via `kli`-equivalent producer, awaits commit, and asserts the
+  resulting Mongo `loc` root document; only if Docker is available in
+  the sandbox and the director expands scope.
 
-- **Q-25-F — Playwright browser-binary install in the verification
-  turn.** `npm test` requires a chromium browser binary; if absent,
-  Playwright errors at test launch. **Default proposal:** in the
-  implementation turn, run `npx playwright install chromium` once
-  before `npm test` if binaries are missing (per CLAUDE.md "Tooling
-  Refresh"). If install fails (sandboxed network, missing GTK on macOS,
-  etc.), the developer reports the exact error and command and treats
-  it as a setup issue, not a product blocker. **Backup:** restrict
-  verification to `npm run build` only, document Playwright as
-  out-of-reach, and stop.
+- **Q-26-F — Architecture doc wording update.** **Default proposal:**
+  no edit to `kafka-transaction-message-vocabulary.md`; the document
+  already prescribes the new shape and notes legacy tolerance. The
+  rewritten example file will be the canonical exemplar referenced from
+  the doc's "Reference Examples" section. **Backup:** add one sentence
+  to the "Reference Examples" block explicitly calling out
+  `10-create-location.json` as the canonical human-readable shape.
 
-- **Q-25-G — Lockfile regeneration vs targeted edits.** **Default
-  proposal:** let `npm install --save-dev typescript@6.0.3` rewrite
-  `frontend/package-lock.json` end-to-end as the natural product of
-  the version pin; do not hand-edit the lockfile. The diff will be
-  small (typescript dependency tree only). **Backup:** none — lockfile
-  regeneration is npm-canonical.
+- **Q-26-G — Pre-existing setup blockers.** `:jade-tipi:test` requires
+  Docker-compose services to be running because
+  `JadetipiApplicationTests.contextLoads` opens a Mongo connection. If
+  Docker is unavailable in the implementation sandbox, **default
+  proposal:** report the exact `docker compose -f
+  docker/docker-compose.yml up -d` setup command and the resulting
+  Gradle test failure, then stop with `STATUS: BLOCKED`. **Backup:**
+  none; spinning up Docker, mutating ports, or reconfiguring
+  Mongo/Kafka is outside TASK-026 OWNED_PATHS and CLAUDE.md
+  "Tooling Refresh" guidance.
 
 STOP.
