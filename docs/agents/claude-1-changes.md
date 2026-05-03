@@ -3,6 +3,215 @@
 The developer writes completed work reports here.
 
 STATUS: READY_FOR_REVIEW
+TASK: TASK-021 — Add admin group management
+DATE: 2026-05-03
+SUMMARY: Implemented the accepted pre-work plan for a local-development
+admin path against `grp` records using regular Keycloak username/password
+authentication. The Keycloak realm import now declares a `jade-tipi-admin`
+realm role and a normal `dnscott` / Duncan Scott user (dev-only password
+`dnscott`); the existing `testuser` is left non-admin so the 403 fixture is
+preserved. The Spring backend gains a WebFlux JWT authentication converter
+that pulls `realm_access.roles` and emits `ROLE_jade-tipi-admin`, wired
+through `JwtAuthenticationConverter` and
+`ReactiveJwtAuthenticationConverterAdapter` per the director's
+implementation direction; `/api/admin/**` is now role-protected.
+A new `GroupAdminController` exposes `POST/GET/GET/{id}/PUT` under
+`/api/admin/groups`, backed by a new `GroupAdminService` that writes
+root-shaped `grp` documents directly to MongoDB. Persisted documents follow
+the accepted `TASK-020` root contract (`_id == id`, `collection == "grp"`,
+`properties.{name, description, permissions}`, `links == {}`,
+`_head.{schema_version, document_kind, root_id, provenance}`) with admin
+direct writes marked under `_head.provenance.txn_id == commit_id ==
+"admin~<uuid>"`. `PUT` fully replaces the editable fields and refreshes
+provenance to `action == "update"` while leaving `_id`, `id`, and
+`collection` untouched. Validation rejects blank names, descriptions over
+4096 chars, blank permission keys, and any permission value other than
+`"rw"` or `"r"`; duplicate ids surface as 409. The Next.js frontend gains
+an `isAdmin` boolean signal derived in `auth.ts` from a local decode of the
+access token's `realm_access.roles`; raw realm claims are never copied
+onto the session. The header conditionally renders a Groups link when
+`session.isAdmin` is true. New pages under `/admin/groups`, `/admin/groups/new`,
+and `/admin/groups/[id]` provide the list/create/edit workflow, backed by a
+new `frontend/lib/admin-groups.ts` typed fetch wrapper that reuses the
+existing access-token attachment pattern. Backend unit coverage proves
+realm-role conversion, controller route surface, and service create/list/
+read/update behavior. An opt-in
+`JADETIPI_IT_ADMIN_GROUPS=1`-gated integration spec drives the real
+Keycloak password grant for `dnscott` / `testuser` and asserts the 401, 403,
+and 200 paths plus root-shape persistence. Playwright coverage exercises the
+three role flows (signed out, authenticated non-admin via session mocking,
+authenticated admin via session mocking + API mocking).
+
+Files changed:
+
+- `docker/jade-tipi-realm.json` — added a `roles.realm` block with one
+  realm role `jade-tipi-admin`, and a new normal user `dnscott`
+  (firstName `Duncan`, lastName `Scott`, `dnscott@jade-tipi.org`,
+  `emailVerified: true`, dev-only password `dnscott` with
+  `temporary: false`, `realmRoles: ["jade-tipi-admin"]`). Existing
+  `testuser` is unchanged.
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/config/RealmAccessRolesAuthoritiesConverter.groovy`
+  — new `Converter<Jwt, Collection<GrantedAuthority>>` that reads
+  `realm_access.roles` and emits `ROLE_<name>` authorities. Tolerant of
+  missing/wrong-typed claims and blank/null role entries.
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/config/SecurityConfig.groovy`
+  — added a `ReactiveJwtAuthenticationConverterAdapter` bean that wraps
+  `JwtAuthenticationConverter` with the new authorities converter, wired
+  the bean into `oauth2ResourceServer { jwt { ... } }`, and inserted
+  `pathMatchers('/api/admin/**').hasRole('jade-tipi-admin')` ahead of the
+  existing `anyExchange().authenticated()` rule. All other rules unchanged.
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/dto/GroupCreateRequest.groovy`,
+  `GroupUpdateRequest.groovy`, `GroupRecord.groovy`, `GroupHead.groovy`,
+  `GroupProvenance.groovy` — admin-endpoint DTOs. `GroupRecord` projects
+  the stored Mongo doc; `GroupHead` and `GroupProvenance` surface the
+  `_head` block with field names mapped from snake_case storage to
+  camelCase JSON.
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/GroupAdminService.groovy`
+  — new service. `create` validates and writes a root-shaped `grp`
+  document with `_id == id`, `collection == "grp"`, `properties` carrying
+  `name`/optional `description`/`permissions`, `links == {}`, and a
+  `_head.provenance` block with `txn_id == commit_id == "admin~<uuid>"`,
+  `msgUuid`, `collection: "grp"`, `action: "create"`, and matching
+  `committed_at`/`materialized_at`. Synthesizes a world-unique id of the
+  form `jade-tipi-org~dev~<uuid>~grp~<slug-of-name>` when the caller does
+  not supply one. `list` and `findById` project `GroupRecord` from the
+  stored docs. `update` is a full-replacement rewrite of `properties.{name,
+  description, permissions}` plus a fresh `_head.provenance` block with
+  `action == "update"`; non-existent ids return `Mono.empty()`. Validation
+  rejects blank `name`, oversized `name`/`description`, blank permission
+  keys, and any permission value other than `"rw"` or `"r"`; duplicate ids
+  surface as 409 via `ResponseStatusException`.
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/controller/GroupAdminController.groovy`
+  — new WebFlux controller mounted at `/api/admin/groups`. Routes:
+  `POST` create (201), `GET` list (200, `{ items: [...] }`), `GET /{id}`
+  read (200/404), `PUT /{id}` update (200/404). All routes inject
+  `@AuthenticationPrincipal Jwt jwt` to mirror the existing controller
+  pattern.
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/config/RealmAccessRolesAuthoritiesConverterSpec.groovy`
+  — six features: emits `ROLE_<name>` for every realm role; missing
+  `realm_access`; non-Map `realm_access`; missing `roles`; non-Collection
+  `roles`; blank/null role entries are skipped; null `Jwt` returns empty.
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/GroupAdminServiceSpec.groovy`
+  — twelve features covering create with full and synthesized id,
+  rejection of blank name/non-rw-r value/blank permission key, duplicate id
+  → 409, list projection, findById hit and miss, update path including the
+  `Update` document captured for assertion of properties + provenance, and
+  update missing-id returning empty without a redundant `findById`.
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/controller/GroupAdminControllerSpec.groovy`
+  — eight features using `WebTestClient.bindToController(...)` with the
+  project's `AuthenticationPrincipalArgumentResolver` pattern: POST creates
+  201; POST surfaces 400 and 409 through `GlobalExceptionHandler`; GET list
+  returns `items[]`; GET by id returns 200 / 404; PUT updates 200 and
+  returns 404 when the service returns empty.
+- `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/admin/GroupAdminAuthIntegrationSpec.groovy`
+  — opt-in (`JADETIPI_IT_ADMIN_GROUPS=1` + Keycloak reachable) Spock
+  integration spec. Acquires JWTs via direct-access password grant on the
+  confidential `jade-tipi` client (its `directAccessGrantsEnabled` was
+  already true). Asserts admin token can create + read + list a real
+  root-shaped `grp` document; unauthenticated request to
+  `/api/admin/groups` returns 401; `testuser` token returns 403. Cleans up
+  exactly the records it creates.
+- `frontend/auth.ts` — adds a small local JWT-payload decoder (no signature
+  verification; the Spring backend remains the authoritative gate) to
+  derive `token.isAdmin = realm_access.roles.includes("jade-tipi-admin")`
+  on initial sign-in. Forwards only the boolean `session.isAdmin` plus
+  the existing `accessToken` and `idToken` strings; raw realm claims are
+  never copied onto session/token.
+- `frontend/types/next-auth.d.ts` — extends `Session` and `JWT` types with
+  optional `isAdmin: boolean`.
+- `frontend/lib/admin-groups.ts` — new typed fetch wrapper for the four
+  admin endpoints. Reuses the same bearer-token pattern as `lib/api.ts`
+  via a local `ensureAccessToken` helper. Normalizes 404 to `null` for
+  reads.
+- `frontend/components/layout/Header.tsx` — conditionally appends a
+  "Groups" nav link when `session.isAdmin === true`. Active-state styling
+  preserved; pathname matching extended to nested admin routes via
+  `startsWith` so `/admin/groups/[id]` keeps the link highlighted.
+- `frontend/components/admin/GroupFormFields.tsx` — new shared form
+  component used by both create and edit pages. Renders id (create only),
+  name, description, and a dynamic permissions grid keyed by grp id with
+  an `rw|r` access selector and add/remove rows.
+- `frontend/app/admin/groups/page.tsx`,
+  `frontend/app/admin/groups/new/page.tsx`,
+  `frontend/app/admin/groups/[id]/page.tsx` — new admin pages. Each page
+  short-circuits with a sign-in prompt when unauthenticated and a
+  forbidden message when the session does not carry `isAdmin === true`;
+  the backend remains the authoritative gate. The list page uses the typed
+  fetch wrapper to render a list of cards; new submits to `POST` and
+  redirects to the edit page on success; edit hydrates the form from the
+  current record, submits a full-replacement `PUT`, and renders an
+  expandable provenance block for audit display.
+- `frontend/tests/admin-groups.spec.ts` — new Playwright spec. Mocks
+  `/api/auth/session` for hermetic role coverage and mocks the backend
+  list endpoint for the admin happy path. Verifies the three role flows:
+  signed-out user does not see the Groups link and gets the sign-in prompt
+  at `/admin/groups`; non-admin user does not see the link and gets the
+  forbidden message; admin user sees the link, navigates successfully, and
+  sees backend-returned items.
+- `docs/user-authentication.md` — added a "Local Admin Group Management
+  (TASK-021)" section describing the required Docker services, realm
+  roles, realm users (including the dev-only `dnscott` password), the
+  Next.js sign-in flow that derives `session.isAdmin`, the four admin
+  endpoints with their provenance contract, and the opt-in integration
+  spec command.
+- `docs/OVERVIEW.md` — extended the Authentication section to mention the
+  `dnscott` admin user and the role-protected `/api/admin/**` namespace,
+  added an "Admin Group Management" entry to the API Highlights, and
+  added a Realm Roles row under the Realm Configuration section.
+
+Verification:
+
+- `./gradlew :jade-tipi:compileGroovy` → BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:compileTestGroovy` → BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:compileIntegrationTestGroovy` → BUILD SUCCESSFUL.
+- `./gradlew :jade-tipi:test --tests '*GroupAdmin*' --tests '*RealmAccessRoles*'`
+  → BUILD SUCCESSFUL; new specs pass.
+- `./gradlew :jade-tipi:test` (full suite) → BUILD SUCCESSFUL; no
+  regressions.
+- `cd frontend && npm install` → completed silently.
+- `cd frontend && npm run build` → fails on a pre-existing TypeScript
+  error in `frontend/app/list/[id]/page.tsx:52` (a `string | undefined`
+  not assignable to `string` argument to `getDocument`) that was not
+  introduced by this task. `git diff origin/director -- frontend/app/list/[id]/page.tsx`
+  is empty, confirming the file is unchanged. The new admin paths
+  (`frontend/auth.ts`, `frontend/types/next-auth.d.ts`,
+  `frontend/lib/admin-groups.ts`, `frontend/components/layout/Header.tsx`,
+  `frontend/components/admin/GroupFormFields.tsx`,
+  `frontend/app/admin/groups/page.tsx`,
+  `frontend/app/admin/groups/new/page.tsx`,
+  `frontend/app/admin/groups/[id]/page.tsx`) are not flagged by the type
+  checker.
+- The opt-in integration spec was not executed in this turn because the
+  Docker stack was not started here; the documented run command is
+  `docker compose -f docker/docker-compose.yml up -d` followed by
+  `JADETIPI_IT_ADMIN_GROUPS=1 ./gradlew :jade-tipi:integrationTest --tests '*GroupAdminAuthIntegrationSpec*'`.
+- Playwright was not executed in this turn because the dev server was not
+  started here; the documented run command is
+  `cd frontend && npx playwright test admin-groups.spec.ts` (the spec
+  config's `webServer` section will start `npm run dev` automatically).
+  Note that the pre-existing `frontend/app/list/[id]/page.tsx` build error
+  may also block `npm run dev` in strict mode; if so, that is unrelated to
+  the admin path and outside this task's scope.
+
+Stay-in-scope check:
+
+All edits land inside `TASK-021`'s `OWNED_PATHS`. No edits to the accepted
+`CommittedTransactionMaterializer`, the existing transaction WAL, the
+ingest controllers, contents read service, root-document materializer,
+extension-page storage, CouchDB replication, Kafka topic configuration,
+OAuth/SASL hardening, the `clients/` or `libraries/` modules,
+`frontend/package.json`, or any production account-lifecycle code. ORCID
+was not integrated; the Keycloak `master` admin user is not used by the
+application; no general object/property/link permission evaluation,
+Keycloak group synchronization, object-level overrides,
+property-value-level overrides, or password-management features were
+added.
+
+---
+
+# Previous reports
+
+STATUS: READY_FOR_REVIEW
 TASK: TASK-020 — Define and materialize group records
 DATE: 2026-05-02
 SUMMARY: Implemented Shape A from the accepted pre-work: `data.permissions`

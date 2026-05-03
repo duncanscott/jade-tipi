@@ -38,7 +38,12 @@ An open scientific metadata framework and reference implementation focused on fl
 - Keycloak 26.0 provides OAuth2/OpenID Connect authentication.
 - Realm: `jade-tipi` with pre-configured clients for backend, frontend, and CLI tools.
 - Test user credentials: `testuser` / `testpassword`
+- Local admin user: `dnscott` / `dnscott` (development-only password) with the
+  `jade-tipi-admin` realm role; required for the local admin group-management
+  workflow under `/api/admin/groups` and the Next.js Groups screen.
 - JWT tokens are validated by the backend for all `/api/**` endpoints.
+  Routes under `/api/admin/**` additionally require the `jade-tipi-admin`
+  realm role pulled from `realm_access.roles`.
 
 ### Data & Persistence
 
@@ -139,6 +144,28 @@ AUTH_SECRET=jade-tipi-secret-change-in-production-minimum-32-characters-required
 
 - `POST /api/transactions/open` — issue a transaction token scoped to `organization` and `group`. Returns a public identifier plus write secret; intended for future multi-party write flows.
 
+### Admin Group Management (`/api/admin/groups`)
+
+**All admin endpoints require a JWT whose `realm_access.roles` includes
+`jade-tipi-admin`.** This is the local-development admin path for creating
+and editing first-class `grp` records. Permission enforcement on other
+collections (object/property/link) is intentionally not implemented; only
+these admin endpoints are role-protected.
+
+- `POST /api/admin/groups` — create a `grp` root. Synthesizes a
+  world-unique id when one is not supplied.
+- `GET /api/admin/groups` — list all `grp` roots.
+- `GET /api/admin/groups/{id}` — read one `grp` root.
+- `PUT /api/admin/groups/{id}` — full-replacement update of `name`,
+  `description`, and `permissions`.
+
+Persisted documents follow the accepted `TASK-020` root-shape contract.
+Admin direct writes record provenance with an `admin~<uuid>` sentinel for
+`txn_id` and `commit_id` so admin-origin records remain identifiable.
+
+See [`docs/user-authentication.md`](user-authentication.md) for the full
+local sign-in flow as `dnscott`.
+
 ### API Documentation
 
 - Swagger UI: `http://localhost:8765/swagger-ui/index.html`
@@ -215,6 +242,12 @@ The `jade-tipi` realm includes five pre-configured clients:
    - Client ID: `kafka-broker`
    - Client Secret: `kafka-broker-secret-12345`
    - Used for inter-broker communication and token validation
+
+**Realm Roles:**
+
+- `jade-tipi-admin` — application admin role. Authorizes `/api/admin/**`
+  (currently the group-management surface only). Assigned to the local
+  development user `dnscott`.
 
 **Realm Configuration:** `docker/jade-tipi-realm.json` is automatically imported on Keycloak startup.
 

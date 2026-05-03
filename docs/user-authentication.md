@@ -109,3 +109,101 @@ The backend trusts the CLI. The verification of the ORCID iD happens at the CLI 
 | Message broker | Apache Kafka |
 | Backend | Spring Boot (Groovy) with Kafka consumer |
 | Identity in messages | ORCID iD as a plain string, verified at CLI auth time |
+
+## Local Admin Group Management (TASK-021)
+
+This section documents the local-development admin path for creating and
+editing first-class Jade-Tipi `grp` records. ORCID and federated login are
+intentionally not part of this path. The web admin user authenticates against
+Keycloak with a normal username and password.
+
+### Required local services
+
+Bring up the project Docker stack before signing in or running the integration
+spec:
+
+```sh
+docker compose -f docker/docker-compose.yml up -d
+```
+
+The admin path requires:
+
+- **Keycloak** (port 8484) — issues realm-scoped access tokens that carry the
+  application admin role.
+- **MongoDB** — stores the root-shaped `grp` documents.
+
+### Realm and roles
+
+The `jade-tipi` realm import (`docker/jade-tipi-realm.json`) declares one
+realm role:
+
+| Realm role | Purpose |
+|---|---|
+| `jade-tipi-admin` | Authorizes `/api/admin/**` group-management endpoints. |
+
+The Spring backend reads the user's JWT and pulls roles from
+`realm_access.roles`. There is no dependency on the Keycloak `master` realm
+admin user; the application authorizes from the user's own JWT only. There is
+no Keycloak group synchronization, no general permission evaluation, and no
+property-level enforcement in this path.
+
+### Realm users
+
+| Username | Display name | Email | Realm roles | Notes |
+|---|---|---|---|---|
+| `dnscott` | Duncan Scott | `dnscott@jade-tipi.org` | `jade-tipi-admin` | Local development admin user |
+| `testuser` | (none) | `test@jade-tipi.org` | (none) | Pre-existing non-admin fixture |
+
+`dnscott`'s development password is `dnscott` (committed in the realm import
+as `temporary: false` so login does not require a password-change step).
+**This is a development-only credential.** Do not reuse this account or
+password in any deployed environment.
+
+### Signing in from the Next.js UI
+
+The frontend Auth.js (NextAuth v5) integration uses the public
+`jade-tipi-frontend` Keycloak client and the standard authorization-code +
+PKCE flow. After sign-in, `frontend/auth.ts` decodes the access token's
+payload locally to compute `session.isAdmin = realm_access.roles.includes("jade-tipi-admin")`,
+and exposes only `accessToken`, `idToken`, and `isAdmin` to the browser.
+Raw realm claims and the Keycloak client secret are never copied onto the
+session.
+
+To sign in as the local admin:
+
+1. Navigate to `http://localhost:3000` and click **Sign In with Keycloak**.
+2. Use username `dnscott` / password `dnscott`.
+3. The header will gain a **Groups** link visible only when
+   `session.isAdmin` is true.
+
+### Backend admin endpoints
+
+All admin routes live under `/api/admin/**` and are guarded by
+`hasRole('jade-tipi-admin')` in `SecurityConfig.groovy`. Unauthenticated
+requests return `401`; authenticated-non-admin requests return `403`.
+
+| Method | Path | Behavior |
+|---|---|---|
+| `POST` | `/api/admin/groups` | Create a `grp` root. Synthesizes a world-unique id when one is not supplied. |
+| `GET` | `/api/admin/groups` | List all `grp` roots. |
+| `GET` | `/api/admin/groups/{id}` | Read one. `404` when missing. |
+| `PUT` | `/api/admin/groups/{id}` | Full-replacement update of `name`, `description`, and `permissions`. |
+
+The persisted documents follow the accepted `TASK-020` root-shape contract:
+`_id == id`, `collection == "grp"`, `properties.{name, description,
+permissions}`, `links == {}`, `_head.{schema_version, document_kind, root_id,
+provenance}`. Admin direct writes mark provenance with an
+`admin~<uuid>` sentinel under `_head.provenance.txn_id` (and the same value
+under `commit_id`) so admin-origin records remain identifiable for future
+work.
+
+### Running the admin auth integration spec
+
+```sh
+docker compose -f docker/docker-compose.yml up -d
+JADETIPI_IT_ADMIN_GROUPS=1 ./gradlew :jade-tipi:integrationTest \
+    --tests '*GroupAdminAuthIntegrationSpec*'
+```
+
+The spec is gated on the env flag and a Keycloak reachability probe so it is
+a no-op in environments without local services.

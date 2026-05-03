@@ -5,6 +5,14 @@
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
   "resetPasswordAllowed": true,
+  "roles": {
+    "realm": [
+      {
+        "name": "jade-tipi-admin",
+        "description": "Application admin role granting access to /api/admin/** group-management endpoints"
+      }
+    ]
+  },
   "clients": [
     {
       "clientId": "jade-tipi",
@@ -372,6 +380,24 @@
           "value": "testpassword",
           "temporary": false
         }
+      ]
+    },
+    {
+      "username": "dnscott",
+      "enabled": true,
+      "firstName": "Duncan",
+      "lastName": "Scott",
+      "email": "dnscott@jade-tipi.org",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dnscott",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "jade-tipi-admin"
       ]
     }
   ]

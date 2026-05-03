@@ -16,6 +16,8 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity
 import org.springframework.security.config.web.server.ServerHttpSecurity
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter
+import org.springframework.security.oauth2.server.resource.authentication.ReactiveJwtAuthenticationConverterAdapter
 import org.springframework.security.web.server.SecurityWebFilterChain
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.reactive.CorsConfigurationSource
@@ -41,8 +43,26 @@ class SecurityConfig {
         return source
     }
 
+    /**
+     * Builds the WebFlux JWT-to-authentication converter that emits
+     * {@code ROLE_<name>} authorities from {@code realm_access.roles}. The
+     * underlying {@link RealmAccessRolesAuthoritiesConverter} returns the
+     * {@code Collection<GrantedAuthority>}; {@link JwtAuthenticationConverter}
+     * adapts it to a {@code JwtAuthenticationToken}; and
+     * {@link ReactiveJwtAuthenticationConverterAdapter} adapts that to the
+     * reactive shape WebFlux expects.
+     */
     @Bean
-    SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
+    ReactiveJwtAuthenticationConverterAdapter jwtAuthenticationConverter() {
+        JwtAuthenticationConverter delegate = new JwtAuthenticationConverter()
+        delegate.setJwtGrantedAuthoritiesConverter(new RealmAccessRolesAuthoritiesConverter())
+        return new ReactiveJwtAuthenticationConverterAdapter(delegate)
+    }
+
+    @Bean
+    SecurityWebFilterChain springSecurityFilterChain(
+            ServerHttpSecurity http,
+            ReactiveJwtAuthenticationConverterAdapter jwtAuthenticationConverter) {
         http
                 .cors { cors -> cors.configurationSource(corsConfigurationSource()) } // Enable CORS
                 .authorizeExchange { exchanges ->
@@ -60,10 +80,13 @@ class SecurityConfig {
                                     '/error',
                                     '/css/**'
                             ).permitAll()
+                            .pathMatchers('/api/admin/**').hasRole('jade-tipi-admin')
                             .anyExchange().authenticated()
                 }
                 .csrf { csrf -> csrf.disable() } // not needed for stateless APIs
-                .oauth2ResourceServer { oauth2 -> oauth2.jwt { } } // enable JWT-based auth
+                .oauth2ResourceServer { oauth2 ->
+                    oauth2.jwt { jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter) }
+                }
         return http.build()
     }
 
