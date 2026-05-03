@@ -79,23 +79,37 @@ uses `data.id`, optional `data.type_id`, explicit `data.properties`, and
 optional-or-empty `data.links`; the materializer preserves legacy flat
 location payload tolerance only as documented compatibility.
 
-`TASK-027` is created as the next product increment. Continue the Kafka-first
-domain write path by proving that a human-readable `contents` `lnk + create`
-message can materialize a root-shaped link document and remain readable by the
-existing contents read service. Do not add HTTP submission endpoints, endpoint
-projection maintenance, semantic reference validation, `ent` materialization,
-or a nested Kafka operation DSL.
+`TASK-027` is accepted. The existing human-readable `01 -> 11 -> 12 -> 09`
+contents-flow examples now have focused DTO and materializer assertions proving
+that the authored `typ + create` contents link type and `lnk + create` contents
+link share a transaction, materialize as root-shaped `typ`/`lnk` documents, and
+line up with `ContentsLinkReadService`'s `typ.properties.kind/name` and
+`lnk.type_id` read criteria. No production code, schema, example, HTTP
+submission endpoint, semantic reference validation, endpoint projection
+maintenance, `ent` materialization, or nested Kafka operation DSL was added.
+
+`TASK-028` is created as the next bounded product increment. Continue the
+Kafka-first domain write path by planning the smallest human-readable
+`ent + create` materialization step from the existing entity-type/entity
+examples. Start with pre-work only; do not implement until director review
+advances the task.
 
 ## Active Task
 
-- `TASK-027 - Human-readable Kafka contents link submission path` is
+- `TASK-028 - Human-readable Kafka entity submission path` is
   `READY_FOR_PREWORK`. claude-1 should first inspect the existing
-  `typ + create` link-type and `lnk + create` materializer/read behavior,
-  confirm whether the existing contents-type/link examples already express the
-  intended human-readable shape and complete transaction sequence, and propose
-  the smallest implementation/test changes. Do not add HTTP submission
-  endpoints, semantic reference validation, endpoint projection maintenance, or
-  a complex Kafka operation DSL.
+  `04-create-entity-type.json` and `06-create-entity.json` examples, DTO
+  validation, and `CommittedTransactionMaterializer` support/skipping behavior
+  for entity-type `typ + create` and `ent + create`. Determine the smallest
+  implementation/test changes needed to materialize a root-shaped `ent`
+  document from a human-readable Kafka transaction. Stop after pre-work. Do
+  not add HTTP submission endpoints, property assignment materialization,
+  semantic type-reference validation, permission enforcement, contents-link
+  read changes, or a nested Kafka operation DSL.
+- `TASK-027 - Human-readable Kafka contents link submission path` is accepted.
+  The existing contents examples already express the intended human-readable
+  shape and transaction sequence; focused tests now prove the DTO co-presence
+  and materialized `typ`/`lnk` roots used by the contents read path.
 - `TASK-026 - Human-readable Kafka loc submission path` is accepted. The
   canonical `10-create-location.json` example now uses explicit
   `data.properties` and `data.links: {}`; the materializer projects that shape
@@ -137,7 +151,7 @@ or a nested Kafka operation DSL.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
-`TASK-027` is the active bounded task. Broader authentication redesign,
+`TASK-028` is the active bounded task. Broader authentication redesign,
 Keycloak changes, admin group-management changes, permission
 evaluation/enforcement semantics, and unrelated product increments remain
 future work unless the human selects one as a later bounded goal.
@@ -151,6 +165,40 @@ future work unless the human selects one as a later bounded goal.
 
 ## TASK-027 Direction
 
+- Director implementation review on 2026-05-03 accepts `TASK-027` with
+  `SIGNAL: REQUEST_NEXT_STEP` and creates `TASK-028` for entity-submission
+  pre-work. Scope check passed: claude-1 changed only
+  `docs/agents/claude-1-changes.md`,
+  `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`,
+  and `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`.
+  The implementation honored the task and directive limits: no HTTP submission
+  endpoint, schema hardening, materializer source change, read-service source
+  change, `ent` materialization, property-assignment materialization,
+  permission enforcement, endpoint projection maintenance, semantic reference
+  validation, `parent_location_id`, or nested Kafka operation DSL was added.
+- Behavior review accepted the narrow proof that the canonical contents
+  examples and materialized roots already line up: the example transaction
+  shares one `txn.uuid`, `12-create-contents-link-plate-sample.json`
+  references `11-create-contents-type.json` by `type_id`, the materialized
+  `typ` root exposes `properties.kind == "link_type"` and
+  `properties.name == "contents"`, and the materialized `lnk` root exposes the
+  top-level `type_id`, raw endpoints, `properties.position`, and
+  `_head.provenance` that the contents read service expects.
+- Director static verification passed `git diff --check origin/director..HEAD`.
+  Director Gradle reruns were blocked before product tests by sandbox/tooling
+  permissions opening the Gradle wrapper cache lock under
+  `/Users/duncanscott/.gradle` with `Operation not permitted`. In a normal
+  developer shell, use `docker compose -f docker/docker-compose.yml up -d` if
+  the local stack is missing, run `./gradlew --stop` if stale Gradle daemons are
+  implicated, then rerun `./gradlew :libraries:jade-tipi-dto:test`,
+  `./gradlew :jade-tipi:test`, and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*ContentsHttpReadIntegrationSpec*'`.
+- Credited developer verification: claude-1 reported
+  `./gradlew :libraries:jade-tipi-dto:test`, `./gradlew :jade-tipi:test`, and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*ContentsHttpReadIntegrationSpec*'` passing with the local Docker stack
+  healthy.
 - Director created `TASK-027` on 2026-05-03 after accepting `TASK-026`.
 - Pre-work should evaluate the existing human-readable contents link path only:
   `typ + create` link-type examples/materialization, `lnk + create` examples
@@ -165,6 +213,30 @@ future work unless the human selects one as a later bounded goal.
   command when the local stack is available. If local setup blocks verification,
   report `docker compose -f docker/docker-compose.yml up -d`, `./gradlew --stop`
   when stale Gradle daemons are implicated, and the exact blocked command/error
+  rather than treating setup as a product blocker.
+
+## TASK-028 Direction
+
+- Director created `TASK-028` on 2026-05-03 after accepting `TASK-027`.
+- Pre-work should evaluate the existing human-readable entity path only:
+  `04-create-entity-type.json`, `06-create-entity.json`, DTO validation, and
+  `CommittedTransactionMaterializer` behavior for entity-type `typ + create`
+  and `ent + create`.
+- Determine whether the next implementation should materialize only
+  `ent + create` roots or also support the minimal entity-type `typ + create`
+  root required for the example relationship. If the ID convention or type
+  contract needs product judgment, stop with `STATUS: HUMAN_REQUIRED` rather
+  than guessing.
+- Do not add HTTP submission endpoints, property assignment materialization,
+  required property enforcement, semantic type-reference validation, permission
+  enforcement, contents-link read changes, or a nested Kafka operation DSL.
+- Verification proposal should include `./gradlew :libraries:jade-tipi-dto:test`,
+  `./gradlew :jade-tipi:test`, and the narrowest practical Kafka/Mongo
+  integration opt-in command when the local stack is available. If local setup
+  blocks verification, report
+  `docker compose -f docker/docker-compose.yml --profile mongodb up -d`,
+  `docker compose -f docker/docker-compose.yml up -d`, `./gradlew --stop` when
+  stale Gradle daemons are implicated, and the exact blocked command/error
   rather than treating setup as a product blocker.
 
 ## TASK-026 Direction

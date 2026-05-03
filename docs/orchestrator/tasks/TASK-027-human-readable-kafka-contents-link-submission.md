@@ -3,13 +3,15 @@
 ID: TASK-027
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: ACCEPTED
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-026
   - TASK-008
   - TASK-015
   - TASK-019
+NEXT_TASK:
+  - TASK-028
 PAUSE_SOURCE_TASKS: true
 OWNED_PATHS:
   - DIRECTION.md
@@ -124,3 +126,46 @@ DIRECTOR_PREWORK_REVIEW:
   only when the stack is available: run
   `docker compose -f docker/docker-compose.yml up -d` followed by
   `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*ContentsHttpReadIntegrationSpec*'`.
+
+DIRECTOR_IMPLEMENTATION_REVIEW:
+- Accepted on 2026-05-03. claude-1 followed the accepted narrow implementation
+  plan: no production code or example resources changed because source review
+  already showed the human-readable `01 -> 11 -> 12 -> 09` contents flow, the
+  `typ + create` link-type materialization, the `lnk + create` materialization,
+  and `ContentsLinkReadService` criteria already line up.
+- Scope review passed. The implementation changed only
+  `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`,
+  `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`,
+  and `docs/agents/claude-1-changes.md`. The two test files are inside
+  TASK-027 `OWNED_PATHS`; the report is inside claude-1's base assignment
+  paths. No HTTP submission endpoint, schema tightening, materializer source
+  change, read-service source change, `ent` materialization, property-assignment
+  materialization, permission enforcement, endpoint projection maintenance,
+  semantic reference validation, `parent_location_id`, or nested Kafka
+  operation DSL was introduced.
+- Behavior and assertion review passed. `MessageSpec` now asserts the example
+  transaction chain shares one `txn.uuid`, has transaction open/commit control
+  messages, pairs the contents `typ.data.id` with the `lnk.data.type_id`, and
+  keeps the authored endpoints consistent with the declared endpoint
+  collections. `CommittedTransactionMaterializerSpec` now captures the real
+  materialized `typ` and `lnk` roots from the canonical message helpers and
+  asserts the `typ.properties.kind/name` dotted-path facts plus the `lnk`
+  top-level `type_id`, endpoints, `properties.position`, and
+  `_head.provenance` source collection that the contents reader depends on.
+- Director static verification passed `git diff --check origin/director..HEAD`.
+  Director Gradle reruns were blocked before product tests by sandbox tooling
+  permissions opening
+  `/Users/duncanscott/.gradle/wrapper/dists/gradle-8.14.3-bin/.../gradle-8.14.3-bin.zip.lck`
+  with `Operation not permitted` while running
+  `./gradlew :libraries:jade-tipi-dto:test`. Docker was already running locally
+  with Mongo, Kafka, Keycloak, and CouchDB containers up. In a normal developer
+  shell, use `docker compose -f docker/docker-compose.yml up -d` if the full
+  local stack is missing, run `./gradlew --stop` if stale Gradle daemons are
+  implicated, then rerun `./gradlew :libraries:jade-tipi-dto:test`,
+  `./gradlew :jade-tipi:test`, and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*ContentsHttpReadIntegrationSpec*'`.
+- Credited developer verification: claude-1 reported
+  `./gradlew :libraries:jade-tipi-dto:test`, `./gradlew :jade-tipi:test`, and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*ContentsHttpReadIntegrationSpec*'` all passing with the local Docker stack
+  already healthy.

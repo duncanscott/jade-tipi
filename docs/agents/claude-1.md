@@ -11,7 +11,7 @@ Report file: docs/agents/claude-1-changes.md
 
 ## Current Assignment
 
-- Active task: `TASK-027 - Human-readable Kafka contents link submission path`.
+- Active task: `TASK-028 - Human-readable Kafka entity submission path`.
 - Current phase: pre-work. Write the required plan in
   `docs/agents/claude-1-next-step.md` only, then stop for director review.
 - Use `DIRECTIVES.md` as the current source of truth.
