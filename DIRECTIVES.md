@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: HUMAN_REQUIRED
 
 ## Active Focus
 
@@ -67,18 +67,16 @@ and TypeScript to the director-approved 5.x line. The Next 16 toolchain
 required the committed `frontend/tsconfig.json` migration to `jsx:
 react-jsx` and `.next/dev/types/**/*.ts`.
 
-`TASK-025` is ready for pre-work. The next bounded goal is to evaluate the
-deferred TypeScript 6 frontend migration separately from the accepted Next.js
-and npm dependency refresh.
+`TASK-025` is accepted. The frontend now uses TypeScript 6.0.3 with the
+accepted Next.js 16.2.4 / React 19.2 stack. The package and lockfile changed
+only for the TypeScript bump; the existing `tsconfig.json` and frontend source
+remain compatible.
 
 ## Active Task
 
-- `TASK-025 - Plan TypeScript 6 frontend upgrade` is `READY_FOR_PREWORK`.
-  Route to `claude-1` for pre-work first. The pre-work must confirm the
-  latest stable TypeScript 6 version and compatibility with the accepted
-  Next.js 16 / React 19.2 frontend stack, then propose exact implementation
-  and verification commands. Do not begin implementation until the director
-  advances the task to `READY_FOR_IMPLEMENTATION`.
+- `TASK-025 - Plan TypeScript 6 frontend upgrade` is accepted. The
+  implementation bumped TypeScript to `^6.0.3`, regenerated the lockfile for
+  that package only, and required no source or `tsconfig.json` migration.
 - `TASK-024 - Update Next.js and npm dependencies` is accepted. The
   implementation updated the frontend dependency set and lockfile, accepted
   the required Next 16 `tsconfig` migration, and preserved the admin group,
@@ -112,10 +110,10 @@ and npm dependency refresh.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
-Active pre-work is limited to `TASK-025`. Broader authentication redesign,
-Keycloak changes, admin group-management changes, and permission
-evaluation/enforcement semantics remain future work unless the human selects
-one as a later bounded goal.
+No active bounded task is selected. Broader authentication redesign, Keycloak
+changes, admin group-management changes, permission evaluation/enforcement
+semantics, and any next product increment remain future work unless the human
+selects one as a later bounded goal.
 
 ## Orchestrator Protocol Direction
 
@@ -126,6 +124,19 @@ one as a later bounded goal.
 
 ## TASK-025 Direction
 
+- Director implementation review on 2026-05-03 accepts `TASK-025` with
+  `SIGNAL: HUMAN_REQUIRED` because the bounded frontend dependency/TypeScript
+  upgrade sequence is complete and the next unit is not obvious without human
+  product direction. Scope check passed: claude-1 changed only
+  `frontend/package.json`, `frontend/package-lock.json`, and
+  `docs/agents/claude-1-changes.md`. Director verification passed
+  `git diff --check origin/director..HEAD`, `cd frontend && npm install`,
+  `cd frontend && npm run build`, and `cd frontend && npx tsc --noEmit`.
+  `cd frontend && npx playwright test --project=chromium --timeout=15000`
+  was blocked by the Codex sandbox port-bind restriction
+  (`listen EPERM 0.0.0.0:3000`) and should be rerun in a normal developer
+  shell; if Chromium binaries are missing, run
+  `cd frontend && npx playwright install chromium`.
 - Director created `TASK-025` on 2026-05-03 after accepting `TASK-024`.
 - Pre-work should evaluate the deferred TypeScript 6 migration only. Do not
   update Next.js, React, NextAuth/Auth.js, Tailwind, Playwright, backend code,
