@@ -3,6 +3,99 @@
 The developer writes completed work reports here.
 
 STATUS: COMPLETED
+TASK: TASK-029 — Human-readable Kafka entity-type submission path
+  (director follow-up fix for empty `data.links` inline payload)
+DATE: 2026-05-03
+SUMMARY: Applied the narrow fix the director requested in
+`DIRECTOR_IMPLEMENTATION_REVIEW`: an otherwise-flat bare entity-type
+`typ + create` whose `data` carries `links: [:]` (empty Map) but no
+`data.properties` was previously falling into
+`CommittedTransactionMaterializer.buildInlineProperties(data)` and copying
+the empty `links` Map into root `properties.links`, leaking a reserved
+field into properties. `buildInlineProperties()` now also excludes
+`FIELD_LINKS` alongside `FIELD_DATA_ID` and `FIELD_TYPE_ID`, so empty
+`data.links` is dropped from inline properties; the surrounding `else`
+branch in `buildDocument()` already initializes the root `links` to an
+empty `LinkedHashMap`, so this case now materializes with
+`root.links == [:]` and no `properties.links`. Added a focused new
+materializer feature
+`'bare entity-type typ create with empty data.links materializes with
+ root links == [:] and no properties.links'` that injects
+`links: [:]` into the existing `entityTypeMessage()` helper, captures
+the inserted document, and asserts root `links == [:]`, no
+`properties.links`, surviving `properties.name == 'plate_96'` /
+`properties.description == '96-well sample plate'`, and absence of
+`id`/`type_id` from properties. No production behavior change for the
+already-handled shapes (link-type `typ + create`, `loc + create` with
+`data.properties` Map, `lnk + create`, `grp + create`, `ent + create`,
+inline-flat bare entity-type without `data.links`); no example resource
+JSON, schema, ID convention, HTTP submission endpoint, property-assignment
+materialization, semantic `data.type_id` validation, permission
+enforcement, endpoint projection maintenance, contents-link read change,
+or nested Kafka operation DSL was added. `typ + update`
+property-reference changes remain intentionally `skippedUnsupported`.
+All edits stayed within TASK-029's `OWNED_PATHS`.
+
+Files changed (this turn):
+
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`
+  — Extended the `if`-guard inside `buildInlineProperties()` from
+  `key != FIELD_DATA_ID && key != FIELD_TYPE_ID` to also require
+  `key != FIELD_LINKS`. No other production code changed: the
+  `buildDocument()` branch structure, the `data.properties instanceof Map`
+  detection, the `data.links` propagation through `copyProperties()` for
+  the rich-shape branch, the `lnk` branch's `left`/`right`/`properties`/
+  `links: [:]` handling, `_head.provenance`, duplicate matching/conflict
+  handling, and `isSupported()`'s flat `case COLLECTION_TYP: return true`
+  arm are untouched.
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`
+  — Added the new feature
+  `'bare entity-type typ create with empty data.links materializes with
+   root links == [:] and no properties.links'` between the existing
+  `'materializes a bare entity-type typ create as a root document …'`
+  and `'skips a typ + update message even after dropping the kind guard'`
+  features. The new feature reuses the existing `entityTypeMessage(Map
+   dataOverrides = [:])` helper with `links: [:]` to build the otherwise-flat
+  bare entity-type payload, mocks `mongoTemplate.insert(_ as Map, 'typ')`
+  to capture the document, and asserts: `result.materialized == 1`,
+  `result.skippedUnsupported == 0`, `result.skippedInvalid == 0`,
+  `captured.links == [:]`, `!properties.containsKey('links')`,
+  `properties.name == 'plate_96'`, `properties.description ==
+  '96-well sample plate'`, `!properties.containsKey('id')`,
+  `!properties.containsKey('type_id')`. All previously added bare
+  entity-type, duplicate, skipped-update, mixed-snapshot, and link-type
+  features remain unchanged.
+
+Verification (this turn):
+
+- `./gradlew :jade-tipi:test --tests
+  'org.jadetipi.jadetipi.service.CommittedTransactionMaterializerSpec'
+  --console=plain` → BUILD SUCCESSFUL in 3s; recompiled production
+  Groovy + test Groovy and re-ran the materializer spec.
+- `./gradlew :jade-tipi:test --console=plain` → BUILD SUCCESSFUL in 5s.
+  Aggregated test report `jade-tipi/build/reports/tests/test/index.html`
+  shows 173 tests, 0 failures, 0 ignored, 100% success across the
+  jade-tipi unit-test set, including the existing bare entity-type
+  `typ + create` features and the new empty-`data.links` focused
+  feature.
+- `./gradlew :libraries:jade-tipi-dto:test --console=plain` → BUILD
+  SUCCESSFUL in 360ms (UP-TO-DATE; no DTO changes this turn). The
+  previously added DTO assertion proving `04-create-entity-type.json`
+  uses the human-readable `data.id` / `data.name` / optional
+  `data.description` / no `data.kind` / no `data.links` shape continues
+  to pass.
+- Did not rerun `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest
+  --tests '*EntityCreateKafkaMaterializeIntegrationSpec*'` this turn
+  because the integration spec exercises the same `buildDocument()`
+  inline path through Kafka/Mongo and would not change behavior for the
+  empty-`data.links` payload variant covered here. Local Docker stack
+  status was not re-verified for the integration suite this turn.
+
+Previous turn report retained verbatim below.
+
+---
+
+STATUS: COMPLETED
 TASK: TASK-029 — Human-readable Kafka entity-type submission path (implementation)
 DATE: 2026-05-03
 SUMMARY: Dropped the `data.kind == "link_type"` support gate from

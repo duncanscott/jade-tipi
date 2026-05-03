@@ -531,6 +531,33 @@ class CommittedTransactionMaterializerSpec extends Specification {
         !captured.containsKey('_jt_provenance')
     }
 
+    def 'bare entity-type typ create with empty data.links materializes with root links == [:] and no properties.links'() {
+        given:
+        Map<String, Object> captured = null
+        mongoTemplate.insert(_ as Map, 'typ') >> { Map doc, String _coll ->
+            captured = doc
+            return Mono.just(doc)
+        }
+
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([entityTypeMessage([links: [:]])])).block()
+
+        then:
+        result.materialized == 1
+        result.skippedUnsupported == 0
+        result.skippedInvalid == 0
+
+        and: 'empty data.links surfaces only at the root, never under properties'
+        captured.links == [:]
+        Map properties = captured.properties as Map
+        !properties.containsKey('links')
+        properties.name == 'plate_96'
+        properties.description == '96-well sample plate'
+        !properties.containsKey('id')
+        !properties.containsKey('type_id')
+    }
+
     def 'skips a typ + update message even after dropping the kind guard'() {
         when:
         MaterializeResult result = materializer.materialize(

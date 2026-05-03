@@ -275,7 +275,7 @@ class CommittedTransactionMaterializer {
     private static Map<String, Object> buildInlineProperties(Map<String, Object> data) {
         Map<String, Object> properties = new LinkedHashMap<>()
         data.each { String key, Object value ->
-            if (key != FIELD_DATA_ID && key != FIELD_TYPE_ID) {
+            if (key != FIELD_DATA_ID && key != FIELD_TYPE_ID && key != FIELD_LINKS) {
                 properties.put(key, value)
             }
         }
