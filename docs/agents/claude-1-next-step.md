@@ -4,189 +4,219 @@ The developer writes pre-work plans here before implementation begins.
 
 STATUS: PRESENT
 
-## TASK-023 — Fix NextAuth sign-out build error (pre-work, revision 1)
+## TASK-024 — Update Next.js and npm dependencies (pre-work, revision 1)
 
 ### Directive summary
 
-`DIRECTIVES.md` global signal is `REQUEST_NEXT_STEP`. The active task
-file `docs/orchestrator/tasks/TASK-023-fix-nextauth-signout-build-error.md`
-is `READY_FOR_PREWORK` with `OWNER: claude-1`. `TASK-022` is accepted; its
-`npm run build` verification surfaced the next pre-existing TypeScript
-blocker in `frontend/auth.ts` around the `events.signOut` callback. The
-director scoped `TASK-023` narrowly to a NextAuth callback union-narrowing
-repair — no provider, session/JWT callback, admin-role derivation,
-Keycloak realm, backend, dependency, or unrelated route changes. This
-pre-work turn produces a plan only; no source change is made until the
-director advances the task to `READY_FOR_IMPLEMENTATION` /
+`DIRECTIVES.md` global signal is `REQUEST_NEXT_STEP`. The active task file
+`docs/orchestrator/tasks/TASK-024-update-nextjs-and-npm-dependencies.md` is
+`READY_FOR_PREWORK` with `OWNER: claude-1`. The director scoped TASK-024 to:
+update the Next.js frontend to the latest stable Next.js release available at
+implementation time, and update all npm `dependencies` / `devDependencies` in
+`frontend/package.json` to current stable compatible versions, applying the
+small source migrations required by those upgrades. Stable npm dist-tags are
+preferred; intentional moves to prerelease/beta/RC/canary are only allowed
+when no stable replacement exists and the tradeoff is documented in pre-work.
+The upgrade must preserve the admin group-management workflow, Keycloak
+login, access-token refresh behavior, document CRUD pages, and test routes.
+
+This pre-work turn produces a plan only and edits exactly
+`docs/agents/claude-1-next-step.md` (a base owned path). No source change is
+made until the director advances TASK-024 to `READY_FOR_IMPLEMENTATION` /
 `PROCEED_TO_IMPLEMENTATION`.
 
-### Diagnosis (sources only, no proposed edits)
+### Current frontend dependency set
 
-`frontend/auth.ts:79-97` declares the `events.signOut` callback by
-destructuring `{ token }` directly from the message argument:
+From `frontend/package.json` at HEAD of `claude-1`:
 
-```ts
-events: {
-  async signOut({ token }) {
-    if (token?.idToken) {
-      const issuerUrl = process.env.KEYCLOAK_ISSUER!
-      const logoutUrl = `${issuerUrl}/protocol/openid-connect/logout`
-      const params = new URLSearchParams({
-        id_token_hint: token.idToken as string,
-        post_logout_redirect_uri: process.env.NEXTAUTH_URL || 'http://localhost:3000'
-      })
-      try {
-        await fetch(`${logoutUrl}?${params.toString()}`, { method: 'GET' })
-      } catch (error) {
-        console.error('Error during Keycloak logout:', error)
-      }
-    }
-  }
+```json
+"dependencies": {
+  "next": "15.5.4",
+  "next-auth": "^5.0.0-beta.30",
+  "react": "19.1.0",
+  "react-dom": "19.1.0"
+},
+"devDependencies": {
+  "@playwright/test": "^1.56.1",
+  "@tailwindcss/postcss": "^4",
+  "@types/node": "^20",
+  "@types/react": "^19",
+  "@types/react-dom": "^19",
+  "tailwindcss": "^4",
+  "typescript": "^5"
 }
 ```
 
-Auth.js / NextAuth v5 declares the `signOut` event message as a
-**discriminated union** of two object shapes (one per session strategy)
-rather than a single object that always carries `token`. From
-`frontend/node_modules/@auth/core/index.d.ts:362-366`:
+Surrounding configuration that constrains target ranges:
 
-```ts
-signOut?: (message: {
-    session: Awaited<ReturnType<Required<Adapter>["deleteSession"]>>;
-} | {
-    token: Awaited<ReturnType<JWTOptions["decode"]>>;
-}) => Awaited<unknown>;
-```
+- `frontend/next.config.ts` enables Turbopack with `root: "../"` (already on
+  the Next 15 Turbopack path; production `next build --turbopack` is the
+  configured build script).
+- `frontend/tsconfig.json` uses `"target": "ES2017"`, `"strict": true`,
+  `"moduleResolution": "bundler"`, includes a `"plugins": [{ "name": "next" }]`
+  Next plugin entry.
+- `CLAUDE.md` pins the project's Node version at **Node 20** (root project
+  CLAUDE.md, "Java 21, Node 20"). Local Node in this worktree is `v25.9.0`,
+  which satisfies the runtime, but the `@types/node` major must continue to
+  track the project-declared LTS.
+- The frontend uses `next/server`, `next/headers` (implicit via API routes),
+  `next/navigation`, `next/image`, `next/link`, `next/font`, and the App
+  Router across `app/admin/groups/**`, `app/list/**`, `app/document/**`,
+  `app/page.tsx`, `app/layout.tsx`, `app/api/auth/[...nextauth]/route.ts`,
+  and `components/layout/Header.tsx`. NextAuth/Auth.js is consumed only via
+  `frontend/auth.ts` (Keycloak provider, JWT strategy, `events.signOut` with
+  `'token' in message` narrowing already in place from accepted TASK-023).
 
-The two arms are disjoint — the database-session arm has `session` and
-**no** `token` property; the JWT arm has `token` and **no** `session`
-property. TypeScript only allows direct property access on a union when
-the property exists in **every** arm, so `({ token })` destructuring
-asks for a property the database-session arm does not declare, and the
-compiler reports the exact error captured in `TASK-023.DESIGN_NOTES`:
+### Latest stable npm versions (queried via `npm view <pkg> dist-tags`)
 
-```
-frontend/auth.ts:80:21 Property 'token' does not exist on type
-'{ session: void | AdapterSession | null | undefined; } | { token: JWT | null; }'.
-```
+| Package | Current pin | Stable `latest` | Stable target proposal | Tag notes |
+| --- | --- | --- | --- | --- |
+| `next` | `15.5.4` | `16.2.4` | **`16.2.4`** | `latest=16.2.4`, `canary=16.3.0-canary.9`, `beta=16.0.0-beta.0`. Major bump 15 → 16. |
+| `react` | `19.1.0` | `19.2.5` | **`19.2.5`** | Minor bump within React 19. `canary`/`next` are not stable. |
+| `react-dom` | `19.1.0` | `19.2.5` | **`19.2.5`** | Move in lockstep with `react`. |
+| `next-auth` | `^5.0.0-beta.30` | `4.24.14` (legacy v4) | **`5.0.0-beta.31`** (documented prerelease exception) | `latest=4.24.14` is the legacy v4 line; Auth.js v5 still ships only as `beta` (`5.0.0-beta.31`). Project is already on the v5 beta and depends on v5-only APIs (`signIn`, `signOut`, `auth`, `handlers` exports; JWT `events.signOut` discriminated union). Moving to `latest` (v4) would be a regression and re-architect, not an upgrade. Bumping within the v5 beta line is the only forward-compatible option. |
+| `@playwright/test` | `^1.56.1` | `1.59.1` | **`1.59.1`** | Minor bump. `latest=1.59.1`. |
+| `@tailwindcss/postcss` | `^4` | `4.2.4` | **`4.2.4`** | Already on Tailwind v4 line. `next=4.0.0` predates `latest`. |
+| `tailwindcss` | `^4` | `4.2.4` | **`4.2.4`** | Same as above; matched pair. |
+| `@types/node` | `^20` | `25.6.0` (latest tag) | **`^20.19.39`** (stay on Node 20 LTS) | The `latest` dist-tag tracks the newest @types/node major (currently 25.x), but the project pins runtime Node to 20 in `CLAUDE.md`. Bumping types past Node 20 LTS would surface global-typings drift unrelated to this task. Latest 20.x patch from `npm view @types/node@20 version` is `20.19.39`. |
+| `@types/react` | `^19` | `19.2.14` | **`19.2.14`** | Track React 19.2. |
+| `@types/react-dom` | `^19` | `19.2.3` | **`19.2.3`** | Track React 19.2. |
+| `typescript` | `^5` | `6.0.3` | **`5.9.3`** (defer TS 6 as follow-up) — see Q-24-A | `latest=6.0.3` is a brand-new TypeScript major. The directive allows major migrations but tells the developer to "keep the task bounded by preserving existing behavior." TS 6 is a separate, broad migration risk (libcheck/lib.dom changes, stricter narrowing, deprecated flag removals) on top of Next 16 + React 19.2 + Tailwind 4.2 + Playwright 1.59 + NextAuth beta. Default is to upgrade to the newest TS 5.x stable (`5.9.3`) and propose TS 6 as a follow-up TASK. |
 
-The Keycloak provider in this app uses the JWT session strategy (the
-default — there is no `Adapter` configured at `frontend/auth.ts:50-57`),
-so at runtime only the `token` arm is ever delivered. The current
-`token?.idToken` guard already correctly handles the `JWT | null` case;
-the bug is purely at the type level: the destructure does not narrow the
-union before reading `token`.
+Stable-vs-prerelease summary: every entry above is a stable npm `latest`
+release except `next-auth`, where `latest` points to legacy v4. Pre-work
+documents the next-auth beta exception per the directive.
 
-### Proposed change (smallest type-safe repair)
+### Migration risks and required source changes
 
-Mirror the narrowing pattern recommended in `TASK-023.DESIGN_NOTES`:
-accept the `signOut` message as a single value, narrow with the JS `in`
-operator (`'token' in message`), and keep the existing logout body
-unchanged for the JWT arm. Return early without attempting logout for
-the database-session arm. No NextAuth config, provider, or callback
-behavior changes; only the destructure-vs-narrow shape of this one
-event handler.
+Most likely areas of breakage, ranked by impact:
 
-Diff sketch (`frontend/auth.ts`, lines 79-98 region; final wording
-finalized in the implementation turn):
+1. **Next.js 15.5.4 → 16.2.4 (major).** Highest risk. Known Next 16 themes
+   from upstream changelogs (subject to verification during implementation):
+   - `next/font` packaging consolidation; the project uses `next/font` indirectly
+     via App Router conventions. Any direct `@next/font` import (none found in
+     this worktree) would need to move to `next/font`.
+   - Async dynamic APIs — `cookies()`, `headers()`, `params`, `searchParams`
+     are `Promise`-typed in Next 15.x and remain so in 16; project pages such
+     as `frontend/app/list/[id]/page.tsx` and `frontend/app/admin/groups/[id]/page.tsx`
+     already `await params`, so they are forward-compatible.
+   - Turbopack production-build defaults; project already opts in via
+     `"build": "next build --turbopack"` and `next.config.ts` `turbopack`
+     block, so this should be a no-op.
+   - Caching defaults / `fetch` cache behavior — App Router fetches default
+     to `no-store` in Next 15+ already; project does not depend on implicit
+     `force-cache`, so risk is low but worth a build-time scan.
+   - Codemod path: `npx @next/codemod@latest upgrade` is the documented
+     upgrade entrypoint. Default plan is to run it once non-interactively
+     and review the diff; if the codemod proposes large refactors outside
+     `frontend/`, stop and report.
+   - Minimum Node engine for Next 16 is `>=20.9.0` (`npm view next engines`),
+     compatible with the project's Node 20 baseline.
+   - Verification: `cd frontend && npm run build` is the source of truth.
 
-```ts
-events: {
-  async signOut(message) {
-    // The signOut event message is a discriminated union: { session }
-    // for database-session strategies and { token } for JWT. This app
-    // uses the JWT strategy via Keycloak, but narrowing with 'in'
-    // keeps the type checker honest if a future adapter is added.
-    if (!('token' in message) || !message.token?.idToken) {
-      return
-    }
-    const token = message.token
-    const issuerUrl = process.env.KEYCLOAK_ISSUER!
-    const logoutUrl = `${issuerUrl}/protocol/openid-connect/logout`
-    const params = new URLSearchParams({
-      id_token_hint: token.idToken as string,
-      post_logout_redirect_uri: process.env.NEXTAUTH_URL || 'http://localhost:3000'
-    })
+2. **NextAuth/Auth.js `5.0.0-beta.30 → 5.0.0-beta.31` (patch within beta).**
+   Lower risk because the v5 surface used by this app is small and stable
+   between betas: `NextAuth({...providers, callbacks, events})`,
+   `Keycloak` provider, `JWT` type, `events.signOut(message)` with
+   `'token' in message` narrowing (already applied in TASK-023). Risk:
+   incidental type drift on the `signOut` message union or on
+   `JWT`/`Account`. Mitigation: the build is already type-strict; any
+   beta drift will surface in `npm run build` before reaching runtime.
 
-    try {
-      await fetch(`${logoutUrl}?${params.toString()}`, { method: 'GET' })
-    } catch (error) {
-      console.error('Error during Keycloak logout:', error)
-    }
-  }
-}
-```
+3. **TypeScript `^5` → `5.9.3` (minor).** Low risk; project already
+   accepts `^5`. Newest 5.x patch likely compiles unchanged. TS 6 (`6.0.3`)
+   is intentionally deferred — see Q-24-A.
 
-This is the minimal change:
+4. **React 19.1 → 19.2 + matching `@types/react` 19.2.x.** Low risk; React
+   19.2 is a minor with no known breaking semantics. The `@types/react`
+   bump is the place where surface drift typically appears (event-handler
+   typings, ref typings); mitigated by `npm run build` running in strict TS.
 
-- One file (`frontend/auth.ts`).
-- Behavior preserved for the JWT arm: when `token?.idToken` is truthy,
-  the same `id_token_hint` + `post_logout_redirect_uri` GET against
-  `${issuerUrl}/protocol/openid-connect/logout` runs inside the same
-  `try/catch` with the same `console.error` on failure. When no token
-  variant is present, the handler returns without calling Keycloak,
-  matching the prior `if (token?.idToken)` no-op path.
-- The Keycloak realm import, provider clientId/clientSecret/issuer
-  wiring, JWT/session callbacks, `decodeJwtPayload` /
-  `isAdminFromAccessToken` helpers, and `ADMIN_ROLE` constant are not
-  touched. No package, lockfile, or test edit.
-- The existing `as string` cast on `token.idToken` is preserved
-  intentionally because the project's `JWT` typing for `idToken` has
-  not been declared elsewhere; widening that contract is `TASK-023`
-  out-of-scope.
+5. **Tailwind 4.x → 4.2.4 + `@tailwindcss/postcss` 4.2.4.** Low risk;
+   project already on the v4 line via `^4`. PostCSS plugin and core stay in
+   lockstep. No `tailwind.config.*` file in the worktree (`postcss.config.mjs`
+   is the only PostCSS surface), so risk of config-format breakage is small.
 
-Considered alternatives, rejected as larger or weaker:
+6. **Playwright `1.56.1 → 1.59.1`.** Low risk; minor bump. Risk areas:
+   browser-binary mismatch (handled by `npx playwright install`), test
+   timeouts/heuristics. Two tests (`tests/admin-groups.spec.ts`,
+   `tests/frontend.spec.ts`) and a small `playwright.config.ts` are the
+   total surface.
 
-- **Cast the parameter** (`signOut(message: { token: JWT | null })`) —
-  works but lies about the upstream union. The next time someone adds
-  a database adapter, type-checking silently passes while runtime
-  receives a `session` payload.
-- **Destructure with default** (`async signOut({ token } = {})`) —
-  does not satisfy TS narrowing on a discriminated union; the property
-  still must exist on every arm.
-- **`as` cast on the message** (`(message as { token: JWT | null })`) —
-  same objection as the parameter cast plus extra noise.
-- **Switch to `in` narrowing inline at the access site** without
-  extracting a local — would require repeating `message.token` instead
-  of the existing `token` local. The proposed `const token = message.token`
-  after narrowing keeps the rest of the body byte-identical to today.
-- **Loosen NextAuth's `signOut` event signature** (e.g. via module
-  augmentation) — out of scope; widens contract for unrelated future
-  callers.
-- **Drop the Keycloak logout fetch entirely and rely on cookie clear** —
-  out of scope; explicitly forbidden by the task's
-  `ACCEPTANCE_CRITERIA` ("preserve existing Keycloak sign-out
-  behavior").
+7. **`@types/node` stays on `^20.19.x`.** Low risk; explicitly pinned
+   to LTS 20 to match the project's `CLAUDE.md` Node baseline.
 
-### Verification plan
+Source migrations expected (small, mechanical):
 
-For this pre-work turn:
+- `frontend/package.json` and `frontend/package-lock.json` updated together.
+- Any small touchups required by Next 16 codemod output, restricted to
+  the OWNED_PATHS (`frontend/app/`, `frontend/components/`, `frontend/lib/`,
+  `frontend/types/`, `frontend/tests/`, `frontend/package.json`,
+  `frontend/package-lock.json`).
+- No new packages added unless a Next 16 / Auth.js migration explicitly
+  introduces one (e.g. an extracted `@next/...` peer); any such addition
+  is documented in the implementation report.
+- No backend, Gradle, Docker, Keycloak realm, or admin-API change.
+- Preserve `frontend/auth.ts` Keycloak refresh and `events.signOut`
+  narrowing exactly as TASK-023 left them, except for type-only
+  adjustments forced by NextAuth beta.31.
+- Preserve `frontend/app/admin/groups/**` (group-management UI),
+  `frontend/app/document/**` (document CRUD), `frontend/app/list/**`
+  (test routes), and the access-token refresh flow.
 
-- Static review only. No `npm install`, `npm run build`, Gradle, or
-  Docker commands executed.
+### Exact update / verification commands
 
-For the implementation turn (only after the director advances the
-task to `READY_FOR_IMPLEMENTATION` / `PROCEED_TO_IMPLEMENTATION`):
+Implementation turn (only after director advances task to
+`READY_FOR_IMPLEMENTATION` / `PROCEED_TO_IMPLEMENTATION`):
 
 ```sh
-cd frontend && npm install   # only if node_modules is absent or stale
-cd frontend && npm run build
+cd frontend
+# 1. Bump dependencies in one transactional install. Pinned versions match
+#    the table above. `--save-exact` is intentionally NOT used; project
+#    convention is caret ranges where the current package.json uses them.
+npm install \
+  next@16.2.4 \
+  react@19.2.5 \
+  react-dom@19.2.5 \
+  next-auth@5.0.0-beta.31
+
+npm install --save-dev \
+  @playwright/test@1.59.1 \
+  @tailwindcss/postcss@4.2.4 \
+  tailwindcss@4.2.4 \
+  @types/node@20.19.39 \
+  @types/react@19.2.14 \
+  @types/react-dom@19.2.3 \
+  typescript@5.9.3
+
+# 2. Run the official Next.js upgrade codemod once and review its diff.
+#    If it proposes changes outside frontend/ or the OWNED_PATHS, stop and
+#    report rather than apply silently.
+npx --yes @next/codemod@latest upgrade latest
+
+# 3. Verify the install is clean and the lockfile is regenerated correctly.
+cd /Users/duncanscott/orchestrator/jade-tipi/developers/claude-1/frontend
+npm install   # idempotent re-resolve; should be a no-op after step 1
+
+# 4. Production build (the project's primary verification path).
+npm run build
+
+# 5. Narrowest practical frontend test command. If Playwright browser
+#    binaries are missing or stale, the documented setup command is:
+#      npx playwright install chromium
+#    Per CLAUDE.md "Tooling Refresh", missing browser binaries are a setup
+#    issue, not a product blocker; the implementation report names the
+#    setup command and result.
+npm test
 ```
 
-Per the task file: `cd frontend && npm install` is the documented
-setup command and is run before `npm run build` only if the local
-worktree's `node_modules` is missing. If `npm run build` exposes
-**additional unrelated** pre-existing failures elsewhere in the
-frontend, the developer reports the exact file/line/error and stops
-with the smallest next-step recommendation rather than widening
-`TASK-023` without director approval (mirroring how `TASK-022`
-surfaced this very task).
+If `npm run build` exposes pre-existing failures unrelated to dependency
+upgrades, the developer reports the exact file/line/error and stops with
+the smallest next-step recommendation rather than widening TASK-024.
 
-If the build environment itself blocks the check (for example a
-sandbox/Turbopack process-spawn restriction, as encountered during
-`TASK-022` director verification), the developer reports the exact
-command and error and treats it as a tooling/environment issue, not a
-product blocker.
+If the npm registry / network is unreachable, the developer reports the
+exact failing `npm install` command and treats it as a tooling/environment
+issue, not a product blocker.
 
 ### Stay-in-scope check for this pre-work turn
 
@@ -194,42 +224,82 @@ This turn edits exactly:
 
 - `docs/agents/claude-1-next-step.md` — base owned path.
 
-No other paths are modified. The implementation turn (gated on a
-director signal) will edit only `frontend/auth.ts`, which is listed
-in `TASK-023`'s `OWNED_PATHS`. No NextAuth provider, session/JWT
-callback, admin-role derivation, Keycloak realm import, backend,
-package, lockfile, frontend test, or unrelated frontend route is
-touched.
+No other files are touched. The implementation turn (gated on a director
+signal) will edit only paths inside TASK-024 `OWNED_PATHS`:
+`frontend/package.json`, `frontend/package-lock.json`, and any small
+compatibility edits inside `frontend/app/`, `frontend/components/`,
+`frontend/lib/`, `frontend/types/`, `frontend/tests/`, plus the report
+file `docs/agents/claude-1-changes.md`. No backend, Gradle, Docker,
+Keycloak realm, frontend `.env.local`, or workspace orchestrator file
+is touched.
 
 ### Open questions / blockers
 
-Each has a default proposal so the director can accept or redirect
-with one signal change.
+Each has a default proposal so the director can accept or redirect with
+one signal change.
 
-- **Q-23-A — Narrowing operator: `'token' in message` vs explicit
-  cast.** Default: `'token' in message` runtime-`in` narrowing, which
-  is type-safe across both union arms and survives a future database
-  adapter. Backup: parameter-level type assertion, smaller diff but
-  hides the union from the compiler. Default is safer and matches the
-  pattern recommended in `TASK-023.DESIGN_NOTES`.
-- **Q-23-B — Local rebinding (`const token = message.token`) vs
-  inline `message.token` access.** Default: introduce `const token`
-  after narrowing so the rest of the handler body is byte-identical
-  to today and the existing `token.idToken as string` cast is
-  preserved verbatim. Backup: rewrite call sites to read
-  `message.token.idToken` directly — slightly noisier, equivalent
-  type-checking outcome.
-- **Q-23-C — Treatment of additional pre-existing build errors.**
-  Default: if `npm run build` after the patch surfaces unrelated
-  pre-existing TypeScript errors elsewhere in `frontend/`, stop with
-  STATUS: BLOCKED (or HUMAN_REQUIRED) and report the exact file,
-  line, and message rather than widening `TASK-023` to chase them.
-  Backup: roll the next discovery into this same task only if the
-  director explicitly expands scope.
-- **Q-23-D — Frontend test harness scope.** Default: do not add or
-  modify Playwright tests for this build-baseline repair. The fix is
-  type-only and the existing JWT-arm Keycloak logout fetch is
-  preserved. Backup: add a unit-style test of the narrowing only if
-  the director asks for one.
+- **Q-24-A — TypeScript 6 vs stay on TypeScript 5.9.x.** TS `latest` is
+  `6.0.3`. TS 6 is a brand-new major release that lands stricter checks
+  and removes deprecated flags. The TASK-024 directive allows major
+  migrations but instructs the developer to "keep the task bounded by
+  preserving existing behavior" and to split if the migration is too
+  large. **Default proposal:** upgrade `typescript` to `5.9.3` (newest 5.x
+  stable) for this task, leaving TS 6 as a follow-up TASK so the Next 16
+  upgrade is not entangled with broad type-checker churn. **Backup:**
+  upgrade `typescript` to `^6.0.3` and absorb whatever migration the
+  build surfaces, accepting that TASK-024 may grow. Director picks.
+
+- **Q-24-B — `next-auth` stays on the v5 beta line.** Auth.js v5 has not
+  shipped a stable release as of 2026-05-02; `npm view next-auth dist-tags`
+  shows `latest=4.24.14` (legacy v4) and `beta=5.0.0-beta.31`. The
+  project is currently on `5.0.0-beta.30` and uses v5-only exports
+  (`handlers`, `signIn`, `signOut`, `auth`) and v5-only event signatures
+  (the `events.signOut` discriminated union narrowed in TASK-023). Moving
+  to `latest` would mean a v4 rewrite, not an upgrade. **Default
+  proposal:** bump within the v5 beta line to `5.0.0-beta.31` and note
+  the prerelease exception per the directive. **Backup:** hold next-auth
+  at `5.0.0-beta.30` and exclude it from this task. Default is the
+  project-spirit choice; backup is stricter on the "no prereleases" rule.
+
+- **Q-24-C — `@types/node` stays on `^20.x` even though `latest` is 25.x.**
+  Project Node baseline is 20 (`CLAUDE.md`). Bumping `@types/node` to a
+  newer major than the runtime causes type-only drift in `Buffer`, `URL`,
+  `process`, etc. that does not match the deployed Node version. **Default
+  proposal:** pin to the latest 20.x patch (`20.19.39`). **Backup:** if
+  the director also wants to advance the runtime Node baseline, that is
+  a separate concern outside `frontend/package.json` (`CLAUDE.md`,
+  `gradle.properties`, deploy configs) and should be its own TASK.
+
+- **Q-24-D — Run `@next/codemod@latest upgrade` automatically vs hand-edit.**
+  The codemod is the official Next 16 upgrade tool. **Default proposal:**
+  run it once non-interactively, review the diff, and only commit changes
+  that fall inside `frontend/` OWNED_PATHS. If it proposes edits outside
+  the owned scope (e.g. a workspace `package.json`), stop and report.
+  **Backup:** skip the codemod and apply migrations by hand. Codemod
+  default is more reliable for App Router conventions.
+
+- **Q-24-E — Playwright browser-binary install in the verification turn.**
+  `npm test` requires a chromium browser binary; if absent, Playwright
+  errors at test launch. **Default proposal:** in the implementation
+  turn, run `npx playwright install chromium` once before `npm test` if
+  binaries are missing (per CLAUDE.md "Tooling Refresh"). If install
+  fails (sandboxed network, missing GTK on macOS, etc.), the developer
+  reports the exact error and command and treats it as a setup issue,
+  not a product blocker. **Backup:** restrict verification to
+  `npm run build` only, document Playwright as out-of-reach, and stop.
+
+- **Q-24-F — Treatment of additional pre-existing build/test errors
+  unrelated to upgrade churn.** **Default proposal:** if `npm run build`
+  surfaces pre-existing TypeScript or runtime errors that exist on the
+  pre-upgrade tree as well, the developer reports them with file/line
+  and stops with STATUS: BLOCKED rather than widening TASK-024. **Backup:**
+  fold a small fix into TASK-024 only if the director explicitly expands
+  scope, mirroring how TASK-022/023 propagated.
+
+- **Q-24-G — Lockfile regeneration vs targeted edits.** **Default
+  proposal:** let `npm install` rewrite `frontend/package-lock.json`
+  end-to-end as the natural product of the version pins above; do not
+  hand-edit the lockfile. The diff will be large but mechanical.
+  **Backup:** none — lockfile regeneration is npm-canonical.
 
 STOP.
