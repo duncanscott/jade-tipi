@@ -3,7 +3,7 @@
 ID: TASK-029
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-028
@@ -99,3 +99,34 @@ VERIFICATION:
   for Mongo-backed unit tests, `docker compose -f docker/docker-compose.yml up -d`
   for the full Kafka/Mongo stack, and `./gradlew --stop` only when stale Gradle
   daemons are implicated.
+
+DIRECTOR_PREWORK_REVIEW:
+- Reviewed claude-1's pre-work in `docs/agents/claude-1-next-step.md`.
+  The pre-work stayed within the developer's pre-work ownership boundary:
+  only `docs/agents/claude-1-next-step.md` was identified as the developer
+  artifact for this turn.
+- Proceed with the default proposals in the pre-work unless contradicted below:
+  leave `04-create-entity-type.json` unchanged; materialize bare
+  `typ + create` by dropping the `data.kind == "link_type"` support gate;
+  remove now-unused materializer constants if they become dead; rely on the
+  existing link-type materialization test for the preserved path; extend the
+  mixed-message snapshot test in place; defer `typ + update add_property`
+  materialization to a later task; and do not perform ID-abbreviation cleanup.
+- Amend the planned documentation update: the
+  `docs/architecture/kafka-transaction-message-vocabulary.md` materialization
+  sentence is currently stale and should list the full current supported set
+  after this task, including `ent + create` as well as `loc + create`,
+  `typ + create` for both link-type and bare entity-type records,
+  `lnk + create`, and `grp + create`. Keep `typ + update` property-reference
+  changes explicitly unsupported/deferred.
+- If extending `EntityCreateKafkaMaterializeIntegrationSpec.groovy`, update the
+  spec description from `open + ent + commit` to the new
+  `open + typ + ent + commit` flow, add a `typ` collection constant, wait/assert
+  the materialized bare entity-type root, and clean up the generated `typ`
+  document in `cleanup()`.
+- Use the project-documented setup commands if verification is blocked:
+  `docker compose -f docker/docker-compose.yml --profile mongodb up -d` for
+  Mongo-backed unit tests, `docker compose -f docker/docker-compose.yml up -d`
+  for the full Kafka/Mongo stack, and `./gradlew --stop` only when stale Gradle
+  daemons are implicated. Report exact blocked commands/errors rather than
+  treating local setup friction as a product blocker.
