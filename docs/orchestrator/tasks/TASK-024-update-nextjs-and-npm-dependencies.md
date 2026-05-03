@@ -16,6 +16,10 @@ OWNED_PATHS:
   - frontend/lib/
   - frontend/types/
   - frontend/tests/
+  - frontend/tsconfig.json
+  - frontend/next.config.ts
+  - frontend/postcss.config.mjs
+  - frontend/playwright.config.ts
   - docs/orchestrator/tasks/TASK-024-update-nextjs-and-npm-dependencies.md
 REQUIRED_CAPABILITIES:
   - browser-ui
@@ -40,6 +44,9 @@ ACCEPTANCE_CRITERIA:
 - Apply any small source migrations required by the dependency upgrade,
   especially for Next.js, React, NextAuth/Auth.js, Tailwind, or Playwright
   API changes.
+- Allow small frontend configuration-file migrations required or automatically
+  applied by the upgraded toolchain, including TypeScript, Next.js, PostCSS,
+  and Playwright config files listed in `OWNED_PATHS`.
 - Preserve the existing admin group-management workflow, Keycloak login,
   access-token refresh behavior, document CRUD pages, and test routes.
 - Run `cd frontend && npm install`, `cd frontend && npm run build`, and the

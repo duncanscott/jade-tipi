@@ -45,6 +45,34 @@ async function mockBackendList(page: Page, items: unknown[]) {
   });
 }
 
+// SessionProvider initializes from the SSR `auth()` result (null when no
+// Keycloak cookie is present) and skips the on-mount client refetch by
+// design. To exercise authenticated UI behavior against the mocked
+// /api/auth/session route, repeatedly post to NextAuth's "next-auth"
+// BroadcastChannel until SessionProvider re-fetches the mocked session body.
+// The retry loop avoids the race where the broadcast fires before the
+// SessionProvider's "message" listener has attached.
+async function activateClientSession(page: Page) {
+  const sessionResponse = page.waitForResponse((res) => res.url().includes('/api/auth/session'));
+  const stop = { done: false };
+  const pulse = (async () => {
+    while (!stop.done) {
+      await page.evaluate(() => {
+        const bc = new BroadcastChannel('next-auth');
+        bc.postMessage({ event: 'session', data: { trigger: 'playwright-mock' } });
+        bc.close();
+      }).catch(() => {});
+      await page.waitForTimeout(100);
+    }
+  })();
+  try {
+    await sessionResponse;
+  } finally {
+    stop.done = true;
+    await pulse;
+  }
+}
+
 test.describe('Admin groups - unauthenticated', () => {
   test('Groups link is not rendered in header for signed-out users', async ({ page }) => {
     await mockSession(page, null);
@@ -83,6 +111,7 @@ test.describe('Admin groups - authenticated non-admin', () => {
       isAdmin: false,
     });
     await page.goto('/admin/groups');
+    await activateClientSession(page);
 
     await expect(page.getByTestId('admin-groups-forbidden')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Forbidden' })).toBeVisible();
@@ -98,6 +127,7 @@ test.describe('Admin groups - authenticated admin', () => {
     });
     await mockBackendList(page, []);
     await page.goto('/');
+    await activateClientSession(page);
 
     const groupsLink = page.locator('header nav a', { hasText: 'Groups' });
     await expect(groupsLink).toBeVisible();
@@ -125,8 +155,9 @@ test.describe('Admin groups - authenticated admin', () => {
     ]);
 
     await page.goto('/admin/groups');
+    await activateClientSession(page);
     await expect(page.getByTestId('admin-groups-list')).toBeVisible();
-    await expect(page.getByText('Analytics')).toBeVisible();
+    await expect(page.getByText('Analytics', { exact: true })).toBeVisible();
     await expect(page.getByText('jade-tipi-org~dev~test~grp~analytics')).toBeVisible();
   });
 });

@@ -3,6 +3,152 @@
 The developer writes completed work reports here.
 
 STATUS: COMPLETED
+TASK: TASK-024 — Update Next.js and npm dependencies
+DATE: 2026-05-03
+SUMMARY: Bumped every entry in `frontend/package.json` to the stable
+target identified in pre-work, regenerated `frontend/package-lock.json`,
+and patched the admin-groups Playwright tests for two upgrade-induced
+behavior changes. `cd frontend && npm install`, `cd frontend && npm run
+build`, and `cd frontend && npx playwright test --project=chromium`
+all pass; the test suite is stable across three consecutive runs.
+
+Versions applied (matches director-accepted pre-work table):
+
+- `next` 15.5.4 → **16.2.4** (major)
+- `react` 19.1.0 → **19.2.5**
+- `react-dom` 19.1.0 → **19.2.5**
+- `next-auth` `^5.0.0-beta.30` → **`5.0.0-beta.31`** (documented
+  prerelease exception per Q-24-B; `latest` is legacy v4)
+- `@playwright/test` `^1.56.1` → **`^1.59.1`**
+- `@tailwindcss/postcss` `^4` → **`^4.2.4`**
+- `tailwindcss` `^4` → **`^4.2.4`**
+- `@types/node` `^20` → **`^20.19.39`** (pinned to Node 20 LTS line
+  per Q-24-C; `latest` is 25.x)
+- `@types/react` `^19` → **`^19.2.14`**
+- `@types/react-dom` `^19` → **`^19.2.3`**
+- `typescript` `^5` → **`^5.9.3`** (TS 6 deferred per Q-24-A; not
+  taken in this turn)
+
+Files changed (this turn):
+
+- `frontend/package.json` — version bumps as above. Caret ranges retained
+  for devDependencies, exact pins for the 4 production dependencies.
+- `frontend/package-lock.json` — regenerated end-to-end by
+  `npm install`, as planned (Q-24-G).
+- `frontend/tests/admin-groups.spec.ts` — added an
+  `activateClientSession(page)` helper that posts to NextAuth's
+  `"next-auth"` `BroadcastChannel` after `page.goto(...)` to force
+  `SessionProvider` to re-fetch the mocked `/api/auth/session` body.
+  Applied the helper to the three tests that exercise the authenticated
+  UI (forbidden-for-non-admin, admin Groups link, admin list view). Also
+  tightened one assertion to `getByText('Analytics', { exact: true })`
+  to avoid a Playwright-1.59 strict-mode violation against the link's
+  three child `<div>` elements ("Analytics" name, the lowercase
+  "analytics" inside the id, and "Analytics group" description).
+- `frontend/tsconfig.json` — auto-modified by `next build` on Next 16,
+  not by hand. The Next 16 toolchain reports the change as
+  "mandatory": it sets `"jsx": "react-jsx"` (Next 16 requires the
+  React automatic runtime) and adds `.next/dev/types/**/*.ts` to
+  `include`. Re-running the build is now idempotent. **Boundary note:**
+  `frontend/tsconfig.json` is not literally inside the TASK-024
+  `OWNED_PATHS` list, but the change is a forced side-effect of the
+  upgrade itself and reverting it would just be re-applied on every
+  build. I kept the change to keep the working tree consistent with
+  what `next build` produces.
+
+Verification:
+
+- Setup: `frontend/node_modules` was already populated in this worktree;
+  `npm install` was run as the lockfile-regeneration step.
+- `cd frontend && npm install` — 1 added, 6 removed, 34 changed,
+  60 audited. 2 moderate audit advisories surfaced (transitive
+  `postcss <8.5.10` reachable through `next`); npm's only suggested
+  remediation is `npm audit fix --force` which would downgrade `next`
+  to `9.3.3` — not taken. Out of TASK-024 scope.
+- `cd frontend && npx --yes @next/codemod@latest upgrade latest` — the
+  codemod detected we were already on `next@16.2.4` (because `npm
+  install` had already pinned it) and reported "Current Next.js version
+  is already on the target version 'v16.2.4'". No transformations were
+  applied. Followup attempts to list individual codemods were denied as
+  external-execution; build verification passed regardless, and no
+  source changes were needed beyond the test patches above.
+- `cd frontend && npm run build` — Next.js 16.2.4 (Turbopack), compiled
+  successfully (~1.3s cold, ~0.9s warm), TypeScript pass, all 8 static
+  pages generated. The Route table reports the expected 10 entries:
+  `/`, `/_not-found`, `/admin/groups`, `/admin/groups/[id]`,
+  `/admin/groups/new`, `/api/auth/[...nextauth]`, `/document/create`,
+  `/document/edit/[id]`, `/list`, `/list/[id]`.
+- `cd frontend && npx playwright test --project=chromium --timeout=15000`
+  — 12 passed, 0 failed, ~2.7s. Re-ran 3 consecutive times to flake-
+  check; all 3 runs were green. Suite covers `tests/frontend.spec.ts`
+  (homepage, navigation, unauth list/create, NextAuth providers
+  endpoint, env wiring) and `tests/admin-groups.spec.ts` (unauth +
+  authenticated non-admin + authenticated admin flows for
+  `/admin/groups`).
+- The pre-existing non-blocking warning `⚠ turbopack.root should be
+  absolute, using: /Users/duncanscott/orchestrator/jade-tipi/developers/claude-1`
+  still appears at the start of every `next build`. It existed before
+  TASK-024 and is unrelated to this upgrade.
+
+Why the test patch was needed (Next 16 / React 19.2 behavior change):
+
+The mocked `/api/auth/session` route was not being hit on the
+authenticated paths. NextAuth's `react.js` is byte-identical between
+beta.30 and beta.31 (verified by `diff -r` against the published
+beta.30 tarball), and `@auth/core` only changed in unrelated provider
+files. The change in observable behavior is in
+`SessionProvider`+SSR+React-19.2 hydration: when `await auth()` returns
+`null` server-side, `SessionProvider` initializes `_session = null` and
+the on-mount `useEffect` calls `_getSession()` with no event arg, which
+hits the documented bail-out `(!event || _session === null)` and never
+fetches. Posting any message to the `"next-auth"` `BroadcastChannel`
+forces the storage-event branch (`_getSession({ event: "storage" })`),
+which always re-fetches and consumes the mocked response. The helper
+keeps pulsing until the response arrives so it doesn't race the
+listener-attachment in `useEffect`.
+
+The Playwright `getByText('Analytics')` strict-mode hit is a
+Playwright 1.56 → 1.59 strictness change exposing pre-existing
+ambiguity: the same `<a>` contains "Analytics" (name), the id
+substring "analytics", and "Analytics group" (description). Adding
+`{ exact: true }` resolves to only the name `<div>`.
+
+Stay-in-scope check:
+
+- Implementation edits stayed inside TASK-024 `OWNED_PATHS` for three
+  files: `frontend/package.json`, `frontend/package-lock.json`,
+  `frontend/tests/admin-groups.spec.ts`. The report file
+  `docs/agents/claude-1-changes.md` is in the base ownership boundary.
+- `frontend/tsconfig.json` is the one path-boundary exception; it was
+  modified by the Next 16 build itself, not by hand, and reverting it
+  would be re-applied on every build. Flagged here for director
+  acceptance / scope expansion if needed.
+- No backend, Gradle, Docker, Keycloak realm, env, frontend `.env.local`,
+  or workspace orchestrator file was touched. No new packages were added.
+- Preserved: `frontend/auth.ts` Keycloak refresh + `events.signOut`
+  narrowing (TASK-023 fix), admin group-management UI under
+  `frontend/app/admin/groups/**`, document CRUD pages under
+  `frontend/app/document/**`, list pages under `frontend/app/list/**`,
+  NextAuth provider config, and the `useSession()`-driven UX.
+
+Open questions / blockers:
+
+- Decision needed on `frontend/tsconfig.json` boundary acceptance. If
+  the director wants it out of this turn, the Next 16 toolchain will
+  re-apply the same change on the next `npm run build`, so the choice
+  is really whether to keep it committed here or to fold it into a
+  follow-up "tsconfig refresh" task.
+- Decision deferred per Q-24-A: TypeScript 6 (`6.0.3`) is not taken in
+  this turn; current TS line is `^5.9.3`.
+- npm audit reports 2 moderate transitive `postcss` advisories
+  reachable through `next`. Only npm-suggested fix is a destructive
+  downgrade of `next` to 9.3.3, which is out of scope. No action taken.
+- All other pre-work questions were resolved by their default proposals
+  and the director's pre-work review.
+
+---
+
+STATUS: COMPLETED
 TASK: TASK-023 — Fix NextAuth sign-out build error
 DATE: 2026-05-03
 SUMMARY: Applied the director-approved narrow type-safe repair in
