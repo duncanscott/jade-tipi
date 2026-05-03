@@ -4,121 +4,151 @@ The developer writes pre-work plans here before implementation begins.
 
 STATUS: PRESENT
 
-## TASK-030 — Human-readable Kafka entity-type property-reference update path (pre-work, revision 1)
+## TASK-031 — Human-readable Kafka property-definition materialization path (pre-work, revision 1)
 
 ### Directive summary
 
 `DIRECTIVES.md` global signal is `REQUEST_NEXT_STEP`. The active task file
-`docs/orchestrator/tasks/TASK-030-human-readable-kafka-entity-type-property-reference-update.md`
-is `READY_FOR_PREWORK` with `OWNER: claude-1`. TASK-030 is the deferred
-follow-on to accepted TASK-029 (bare entity-type `typ + create`). It scopes
-the smallest Kafka-first increment that lets a human-readable
-`typ + update` `operation: "add_property"` message attach a property
-reference to an existing root-shaped bare entity-type `typ` document.
+`docs/orchestrator/tasks/TASK-031-human-readable-kafka-property-definition-materialization.md`
+is `READY_FOR_PREWORK` with `OWNER: claude-1`. TASK-031 is the deferred
+follow-on to accepted TASK-026 → TASK-030 (the `loc`/`typ`/`lnk`/`ent`/
+`grp`/`typ-update` Kafka-first projection set). It scopes the smallest
+Kafka-first increment that lets a human-readable `ppy + create` message
+with `data.kind == "definition"` materialize a root-shaped property-
+definition document in the `ppy` MongoDB collection. The bounded proof
+covers definition-shaped messages only; `data.kind == "assignment"`
+property-value messages (`07-…`, `08-…`) remain `skippedUnsupported` and
+are a separate future task.
 
-Acceptance criteria (paraphrased from the task file):
+Acceptance criteria (paraphrased from the task file and `DIRECTIVES.md`
+TASK-031 Direction):
 
-- Preserve Kafka as the primary submission route (no HTTP data submission).
-- Inspect `02-…`, `03-…`, `04-…`, `05-…`, the DTO validation, the
-  `CommittedTransactionMaterializer` `typ + update` skip behaviour, and the
-  current Mongo update/duplicate handling around materialized roots before
+- Kafka stays the primary submission route; no HTTP data-submission
+  endpoint is added.
+- Inspect `02-…`, `03-…`, `07-…`, `08-…`, the DTO validation, the
+  `CommittedTransactionMaterializer` `ppy + create` skip behaviour, and
+  the existing duplicate handling around materialized roots before
   planning.
 - The intended human-readable wire shape is already canonicalized in
-  `05-update-entity-type-add-property.json`: top-level `collection: "typ"`,
-  `action: "update"`, `data.id` (target type ID), `data.operation:
-  "add_property"`, `data.property_id` (referenced property-definition ID),
-  optional `data.required` (reference metadata).
-- Preserve existing example IDs (no broad ID-abbreviation cleanup).
-- Decide the smallest materialized root shape for property references on a
-  `typ` document — under root `properties`, root `links`, or another
-  already-documented root field. Reference-only; no embedded property
-  definition.
-- Decide whether `ppy + create` materialization or semantic `property_id`
-  resolution is required for this bounded proof, or whether `typ + update`
-  may record the reference without resolution.
-- Decide materializer behaviour for the missing-target `typ` root, the
-  same property reference added twice (idempotency), and a reference whose
-  metadata (e.g. `required`) conflicts with the existing entry.
-- Add or update example resource JSON only if existing examples do not
-  already show the accepted shape and sequence.
-- Propose focused automated coverage: DTO validation, materialized root
-  update shape, skipped unsupported `typ + update` operations,
-  missing-target behaviour, idempotent repeated property-reference
-  handling, conflicting property-reference handling, and the narrowest
-  practical Kafka/Mongo integration check.
-- Report exact verification commands and any local Docker/Kafka/Mongo/
-  Gradle setup blockers.
+  `02-create-property-definition-text.json` and
+  `03-create-property-definition-numeric.json`: top-level
+  `collection: "ppy"`, `action: "create"`, `data.kind: "definition"`,
+  `data.id` (the property-definition ID), `data.name` (the
+  human-readable property name), and `data.value_schema` (the submitted
+  JSON-object value contract).
+- Preserve the current example ID strings (no broad ID-abbreviation
+  cleanup); a necessary local synthetic ID may live in tests when
+  required.
+- Decide the smallest materialized root shape for property definitions
+  in the `ppy` collection: which facts live under root `properties`,
+  whether `data.kind` remains materialized as a discriminator, and how
+  `value_schema` is copied without validating future assignment values.
+- Decide whether the bounded proof materializes only
+  `data.kind == "definition"` and continues skipping
+  `data.kind == "assignment"`, or whether assignment requires a
+  separate follow-up task.
+- Add or update example resource JSON only if the existing examples do
+  not already show the accepted shape and sequence.
+- Propose focused automated coverage for DTO validation, materialized
+  root shape, skipped-assignment behaviour if assignment remains
+  deferred, missing/blank `data.id`, idempotent duplicate handling,
+  conflicting duplicate handling, and the narrowest practical Kafka/
+  Mongo integration check.
+- Report the exact verification commands and any local Docker, Kafka,
+  Mongo, or Gradle setup blockers.
 
-Out of scope (per task file `OUT_OF_SCOPE` and `DIRECTIVES.md` TASK-030
+Out of scope (per task `OUT_OF_SCOPE` and `DIRECTIVES.md` TASK-031
 Direction):
 
 - No HTTP submission endpoints.
 - No property-value assignment materialization, required-property
-  enforcement, or semantic validation that `data.property_id` resolves.
-- No permission enforcement, object extension pages, endpoint projection
-  maintenance, full Clarity/ESP import, broad ID-abbreviation cleanup, or
-  nested Kafka operation DSL.
+  enforcement, semantic validation that `typ.data.property_id` resolves,
+  semantic validation that assignments reference allowed properties,
+  value-shape validation against `data.value_schema`, permission
+  enforcement, object extension pages, endpoint projection maintenance,
+  full Clarity/ESP import, or a nested Kafka operation DSL.
+- No ID-abbreviation scheme redesign.
 - No changes to contents-link read semantics, entity materialization,
-  location materialization, or group/admin behavior except where pre-work
-  identifies a direct TASK-030 dependency. (None identified — see
-  "Cross-cutting impact" below.)
+  location materialization, type-reference update behavior, or group/
+  admin behavior except where a finding identifies a direct TASK-031
+  dependency. (None identified — see "Cross-cutting impact" below.)
 
 This pre-work turn produces a plan only and edits exactly
 `docs/agents/claude-1-next-step.md` (a base owned path). No source
-change is made until the director advances TASK-030 to
+change is made until the director advances TASK-031 to
 `READY_FOR_IMPLEMENTATION` / `PROCEED_TO_IMPLEMENTATION`.
 
 ### Authoritative product direction (read first)
 
 - `DIRECTION.md` (this branch):
-  - "Objects, Types, And Properties" (lines 17–32): a type defines which
-    properties may be assigned to objects of that type; "a property must
-    be added to the type before clients may assign that property to an
-    object of the type." This is the human-language root motivation for
-    the `typ + update add_property` shape: it adds a property reference to
-    the type definition, not a value assignment to an instance.
+  - "Objects, Types, And Properties" (lines 17–32): a type defines
+    which properties may be assigned to objects of that type; "do not
+    implement required properties or default values yet". Properties
+    are first-class objects. This is the human-language root motivation
+    for `ppy + create kind=definition`: it materializes the property
+    object itself. The brief stays explicit that the materializer
+    "should not invent property values" (line 31–32) — applied to
+    TASK-031, this means the materializer must not fabricate a
+    `value_schema`, `name`, or `kind` value not present on the wire.
   - "Logical Objects And Physical Documents" (lines 58–101): the root
     document holds object identity, `collection`, `type_id`, "small
     `properties` and `links` maps when they fit, and reserved
-    implementation metadata." Property and link maps "should be keyed by
-    the IDs of the property or link objects" (line 83–84). Extension
-    pages exist only as future work; the first iteration uses the
-    root-only case.
+    implementation metadata." Property and link maps are keyed by IDs
+    of the property or link objects — but a property *definition*'s own
+    facts (its `name`, its declared `value_schema`) live as type-fact
+    scalars under root `properties`, not under that ID-keyed sub-map
+    convention. This matches how the bare entity-type `typ + create`
+    today projects `name`/`description` directly under
+    `properties.name`/`properties.description`.
 - `docs/architecture/kafka-transaction-message-vocabulary.md`:
-  - "Types And Properties" (lines 104–121) shows the canonical
-    `typ + update add_property` example exactly as it appears in
-    `05-update-entity-type-add-property.json` and notes: "The materialized
-    type document should eventually include property references, not
-    embedded property definitions." TASK-030 is the increment that takes
-    that "eventually" off the page.
-  - Lines 257–263 currently document the post-commit projection set
-    (`loc + create`, both `typ + create` kinds, `lnk + create`,
-    `ent + create`, `grp + create`) and explicitly state: "Other
-    collections, other actions — including `typ + update`
-    property-reference changes — are intentionally not materialized in
-    this iteration." This sentence is the live pin of today's accepted
-    skip behaviour and **must be edited** in the implementation turn.
-- `docs/architecture/jade-tipi-object-model-design-brief.md`: "A type
-  definition declares the properties that may be assigned to objects of
-  that type. For now, avoid required/optional property complexity and
-  avoid default values. A property may be assigned only after the
-  object's type definition permits that property." (Lines 13–17.) The
-  design brief de-emphasizes `required` semantics; TASK-030 should
-  preserve `required` as opaque reference metadata only, not enforce it.
-- `DIRECTIVES.md` TASK-030 Direction (lines 303–325) explicitly pins the
-  task to the `typ + update add_property` path only and forbids semantic
-  `property_id` resolution, broad ID-abbreviation cleanup, HTTP
-  submission, property-value assignment materialization, required-property
-  enforcement, contents-link read changes, and a nested Kafka operation
-  DSL.
+  - "Property Definitions" (lines 79–102): canonical property-
+    definition shape exactly as 02-…/03-… render it: top-level
+    `collection: "ppy"`, `action: "create"`, with `data.kind:
+    "definition"`, `data.id`, `data.name`, and `data.value_schema`. The
+    paragraph also calls out "Definitions and assignments share
+    `collection: "ppy"` and are distinguished by `data.kind`
+    (`definition` vs. `assignment`)" — this is the directive's hook for
+    the kind-discriminator gate.
+  - "Committed Materialization Of Locations And Links" (lines 257–263):
+    currently lists the supported projection set as
+    `loc + create`, both `typ + create` kinds, `typ + update
+    add_property`, `lnk + create`, `ent + create`, `grp + create` and
+    explicitly states: "Other collections and other actions … are
+    intentionally not materialized in this iteration and are counted as
+    `skippedUnsupported` without raising an error." That sentence is
+    the live pin of today's accepted `ppy + create` skip behaviour and
+    **must be edited** in the implementation turn to surface
+    `ppy + create kind=definition`.
+  - Lines 102 and 158: "All property values are JSON objects … The
+    envelope schema does not yet validate the wrapper shape against the
+    registered `value_schema`; that lookup belongs to the transaction
+    snapshot/read layer." This is the architecture's pin for the
+    TASK-031 `value_schema` decision: copy-verbatim, no validation, no
+    walk into nested keys at materializer time.
+- `docs/architecture/jade-tipi-object-model-design-brief.md` (lines
+  9–17): "A type definition declares the properties that may be
+  assigned to objects of that type. … A property may be assigned only
+  after the object's type definition permits that property." The brief
+  treats property *definitions* as first-class objects; it stays at
+  the logical model level and is agnostic to the physical sub-map
+  placement chosen by TASK-031.
+- `DIRECTIVES.md` TASK-031 Direction (lines 364–374) explicitly pins
+  the task to the `data.kind == "definition"` path only and forbids
+  HTTP submission, property-value assignment materialization,
+  required-property enforcement, semantic `property_id` resolution,
+  semantic assignment/type validation, value-shape validation against
+  `data.value_schema`, permission enforcement, contents-link read
+  changes, and a nested Kafka operation DSL.
 - TASK-013/TASK-014 (root-shaped contract), TASK-015 (root-shaped
   contents read), TASK-019 (Clarity/ESP container prototype),
   TASK-020 (root-shaped `grp`), TASK-026 (human-readable `loc`),
   TASK-027 (human-readable contents-link), TASK-028 (human-readable
-  `ent`), and TASK-029 (bare entity-type `typ + create`) are all
-  accepted. They define the materializer entry point, the wire
-  conventions, and the `_head.provenance` reserved root metadata that
-  this task must reuse.
+  `ent`), TASK-029 (bare entity-type `typ + create`), and
+  TASK-030 (`typ + update add_property`) are all accepted. They define
+  the materializer entry point, the wire conventions, the inline-
+  properties fallback used when `data.properties` is absent, the
+  duplicate-handling semantics, and the `_head.provenance` reserved
+  root metadata that this task must reuse.
 
 ### Current example resource state (read of source on `claude-1`)
 
@@ -126,723 +156,848 @@ change is made until the director advances TASK-030 to
 
 - `01-open-transaction.json` — `txn + open` with shared
   `txn.uuid = 018fd849-2a40-7abc-8a45-111111111111`. Sequence anchor.
-- `02-create-property-definition-text.json` — `ppy + create`
-  (`data.kind = "definition"`,
-  `data.id = "jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~pp~barcode"`,
-  `data.name = "barcode"`,
-  `data.value_schema = {type: object, required: [text], properties:
-   {text: {type: string}}}`). Note the 2-char `~pp~` ID segment, not
-  `~ppy~`. The `ppy` collection is **not currently materialized** by
-  `CommittedTransactionMaterializer`; this remains out of scope per the
-  TASK-030 directive (no semantic `property_id` resolution).
-- `03-create-property-definition-numeric.json` — `ppy + create` for the
-  `volume` property; same 2-char `~pp~` segment. Same
-  not-currently-materialized status as `02-…`.
-- `04-create-entity-type.json` — `typ + create` (bare entity-type) with
-  `data.id = "…~ty~plate_96"`, `data.name = "plate_96"`,
-  `data.description = "96-well sample plate"`. No `data.kind`. No
-  `data.links`. Now accepted as TASK-029.
-- `05-update-entity-type-add-property.json` — `typ + update` with
-  `data.id = "jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~ty~plate_96"`
-  (matches `04-…`'s `data.id` verbatim),
-  `data.operation = "add_property"`,
-  `data.property_id = "jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~pp~barcode"`
-  (matches `02-…`'s `data.id` verbatim),
-  `data.required = true`. **This is exactly the directive's accepted
-  human-readable wire shape.** No file edit is required.
-- `06-create-entity.json` — `ent + create`. Already accepted (TASK-028).
-- `07-…`, `08-…` — `ppy + create` property-assignment examples
-  (not the same as a `ppy` definition). Skipped today as unsupported
-  collection. Out of scope for TASK-030.
+- `02-create-property-definition-text.json` — `ppy + create` with
+  `data.kind == "definition"`,
+  `data.id == "jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~pp~barcode"`,
+  `data.name == "barcode"`,
+  `data.value_schema == { type: "object", required: ["text"],
+   properties: { text: { type: "string" } } }`. Note the 2-char `~pp~`
+  ID segment, not `~ppy~`. **This is exactly the directive's accepted
+  human-readable property-definition wire shape.** No file edit is
+  required.
+- `03-create-property-definition-numeric.json` — `ppy + create` with
+  `data.kind == "definition"`,
+  `data.id == "jade-tipi-org~dev~018fd849-2a42-7222-8b02-bbbbbbbbbbbb~pp~volume"`,
+  `data.name == "volume"`,
+  `data.value_schema == { type: "object", required: ["number",
+   "unit_id"], properties: { number: { type: "number" }, unit_id:
+   { type: "string" } } }`. Same 2-char `~pp~` segment. Exercises the
+  multi-key required-array variant of `value_schema`. No file edit
+  required.
+- `04-create-entity-type.json` — accepted (TASK-029).
+- `05-update-entity-type-add-property.json` — accepted (TASK-030).
+  References `02-…`'s `data.id` verbatim via
+  `data.property_id == "…~pp~barcode"`.
+- `06-create-entity.json` — accepted (TASK-028).
+- `07-assign-property-value-text.json` — `ppy + create` with
+  `data.kind == "assignment"`,
+  `data.id == "…~en~plate_a~…~pp~barcode"` (composite of entity ID and
+  property-definition ID),
+  `data.entity_id == "…~en~plate_a"` (matches `06-…`'s `data.id`),
+  `data.property_id == "…~pp~barcode"` (matches `02-…`'s `data.id`),
+  `data.value == { text: "barcode-1" }`. **Out of scope** for TASK-031
+  (assignment materialization is a separate future task). The wire
+  shape is already canonical and `MessageSpec` already round-trips/
+  schema-validates it.
+- `08-assign-property-value-number.json` — `ppy + create` with
+  `data.kind == "assignment"`,
+  `data.value == { number: 10, unit_id: "…~liter~milli~ml~SI" }`,
+  paralleling `07-…`. Same out-of-scope status.
 - `09-commit-transaction.json` — `txn + commit` on the same txn uuid.
-- `10-…`, `11-…`, `12-…`, `13-…` — `loc`, contents-type `typ`
-  (`data.kind == "link_type"`), `lnk`, `grp`. All accepted post
-  TASK-026/27/20.
+- `10-…`, `11-…`, `12-…`, `13-…` — accepted (TASK-026/27/27/20).
 
-**Conclusion:** the existing `05-update-entity-type-add-property.json`
-already shows the accepted human-readable wire shape (top-level
-`collection: "typ"` + `action: "update"`, with the four `data` fields
-listed in the directive). **No example file edit is required** to satisfy
-the directive's "human-readable shape" criterion. The cross-message
-references (`05-….data.id == 04-….data.id`,
-`05-….data.property_id == 02-….data.id`) are already correct verbatim
-and will be exercised by the new DTO co-presence test (see Plan §4
-below).
+**Conclusion:** the existing `02-…` and `03-…` already show the
+accepted human-readable wire shape (top-level `collection: "ppy"` +
+`action: "create"`, with `data.kind: "definition"`, `data.id`,
+`data.name`, `data.value_schema`). **No example file edit is
+required** to satisfy the directive's "human-readable shape"
+criterion. The cross-message reference (`05-….data.property_id ==
+02-….data.id`) is already correct verbatim and is exercised by the
+existing TASK-030 DTO co-presence test (`MessageSpec`
+`'entity-type-with-property example sequence …'`, lines 568–608).
+The cross-message references for assignment (`07-….data.entity_id ==
+06-….data.id`, `07-….data.property_id == 02-….data.id`,
+`08-….data.property_id == 03-….data.id`) are also correct verbatim
+but are not yet exercised by a focused DTO test (Plan §5 may add a
+narrow shape-only assignment-example feature without making
+assignments executable).
 
 ### Current materializer behaviour (read of source on `claude-1`)
 
 `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`
-on this branch (post-TASK-029):
+on this branch (post-TASK-030):
 
-- `isSupported()` (lines 212–233) — accepts only `loc`, `lnk`, `grp`,
-  `ent`, and `typ` paired with `action == ACTION_CREATE` (line 216:
-  `if (message.action != ACTION_CREATE) return false`). **Every `update`
-  action — including `typ + update add_property` — falls through the
-  early return and is counted as `skippedUnsupported` without raising an
-  error.**
+- `isSupported()` (lines 346–372) accepts `loc`, `lnk`, `grp`, `ent`,
+  and `typ` paired with `action == ACTION_CREATE`, plus `typ` paired
+  with `action == ACTION_UPDATE` when `data.operation ==
+  "add_property"`. **`COLLECTION_PPY` is not declared** as a constant
+  and `ppy` is not in the `isSupported` switch. Every `ppy + create`
+  message — both `data.kind == "definition"` and `data.kind ==
+  "assignment"` — falls through `isSupported` and is counted as
+  `skippedUnsupported` at the top of `processMessage` (line 174). No
+  Mongo work is attempted.
 - The unit spec
   `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`
   pins this behaviour today:
-  - `updateEntityTypeMessage()` helper (lines 125–139) builds the exact
-    wire shape from `05-…`: `collection: 'typ'`, `action: 'update'`,
-    `data: [id: ENT_TYPE_ID, operation: 'add_property',
-     property_id: '…~ppy~barcode', required: true]`. (Helper uses
-    `~ppy~` 3-char; `05-…` JSON uses `~pp~` 2-char. Both are accepted
-    today — neither is materialized — but the spec helper and the JSON
-    example currently disagree on segment length. **This is a small
-    inconsistency, not a blocker; flagged in Open question #6 below.**
-    The helper continues to work because nothing in production resolves
-    the ID semantically.)
-  - `'skips a typ + update message even after dropping the kind guard'`
-    (lines 561–570) currently asserts `materialized == 0`,
-    `skippedUnsupported == 1`, `0 * mongoTemplate.insert(_, _)` for
-    that helper. **This feature flips into a positive materialize
-    feature** in the implementation turn (or is replaced with several
-    new positive-and-negative features; see Plan §3).
-  - `updateLocationMessage()` helper (lines 217–226) and feature
-    `'skips update and delete actions on supported collections'` (line
-    1090) preserve `loc + update` skip behavior. TASK-030 must keep
-    that behavior unchanged for `loc + update`, `lnk + update`,
-    `grp + update`, `ent + update`, every `*+ delete`, and any
-    `typ + update` whose `data.operation` is not `add_property`.
-- The materializer has **no `update`-action code path for any
-  collection today**. Every supported message goes through `insert(doc,
-  collection)` (line 170). The duplicate-key handler (lines 182–210)
-  uses `mongoTemplate.findById` plus `isSamePayload()` after a Mongo
-  `DuplicateKeyException` — that flow is for `insert` retries, not for
-  partial document updates.
-- Other Mongo update precedent in the project:
-  - `TransactionMessagePersistenceService` line 192:
-    `mongoTemplate.updateFirst(query, update, COLLECTION_NAME)` with
-    `org.springframework.data.mongodb.core.query.Update#set(...)`.
-  - `GroupAdminService` line 234: `mongoTemplate.findAndModify(query,
-    mongoUpdate, Map.class, COLLECTION_GRP)` with `.set(FIELD_PROPERTIES,
-    properties)` plus `.set(FIELD_HEAD + '.' + HEAD_PROVENANCE,
-    provenance)` etc.
-  Both patterns are well-precedented and use Spring Data's `Update.set`
-  for partial sets (including dotted-path sets into sub-documents). The
-  smallest TASK-030 implementation can reuse the same idioms.
-- `MaterializeResult` (separate file `MaterializeResult.groovy`) carries
-  the existing counters: `materialized`, `duplicateMatching`,
-  `conflictingDuplicate`, `skippedUnsupported`, `skippedInvalid`. **No
-  counter exists today for "supported message whose target root does not
-  yet exist."** See Open question #2 for whether to add a new counter or
-  reuse one of the existing two skip counters.
+  - `propertyCreateMessage()` helper (lines 164–177) builds a
+    `collection == "ppy"`, `action == "create"`,
+    `data == [kind: 'definition', id:
+    'jade-tipi-org~dev~018fd849-2a41-7111-8a01-cccccccccccc~ppy~barcode',
+    name: 'barcode']` message. It uses the 3-char `~ppy~` segment
+    (Open question #5 below).
+  - `'skips a ppy create message'` (lines 1209–1218) currently asserts
+    `materialized == 0`, `skippedUnsupported == 1`,
+    `0 * mongoTemplate.insert(_, _)` for that helper. **This feature
+    flips into a positive materialize feature** in the implementation
+    turn (or is replaced with a positive feature plus a focused
+    assignment-skip feature; see Plan §4).
+  - The mixed-snapshot feature at line 1625 (`'mixed-message snapshot
+    inserts in snapshot order with correct counts'`) places the
+    `propertyCreateMessage()` definition message between `loc` and the
+    two `typ` creates, and pins `materialized == 5,
+    skippedUnsupported == 1`. **Counts and the `insertOrder` array
+    must change** to `materialized == 6, skippedUnsupported == 0`,
+    with `'ppy'` inserted between `'loc'` and the two `'typ'` slots.
+- The materializer's create path (`processMessage` lines 187–207 plus
+  `buildDocument` lines 386–412) routes every supported create
+  through `extractDocId(data)` → `buildDocument(docId, snapshot,
+  message)` → `mongoTemplate.insert(doc, message.collection)` →
+  `handleInsertError` for duplicate-key handling. The same plumbing
+  works for `ppy + create kind=definition` with no special-case code
+  beyond the `isSupported` switch and a kind discriminator gate;
+  `buildDocument`'s "explicit `data.properties`" vs "inline-properties
+  fallback" branch (lines 397–408) automatically copies
+  `kind`/`name`/`value_schema` into root `properties` when
+  `data.properties` is absent — matching the canonical 02-…/03-… wire
+  shape verbatim.
+- Inline-properties fallback (lines 414–422) excludes
+  `id`/`type_id`/`links`. For 02-… the data keys are `kind`, `id`,
+  `name`, `value_schema` — `id` is excluded, the other three become
+  `properties.kind == "definition"`, `properties.name == "barcode"`,
+  `properties.value_schema == { … the entire JSON-object schema … }`.
+  **`value_schema` lands under root `properties` as a copied Map.**
+  `copyProperties` (lines 424–429) does a shallow copy — nested maps
+  are still shared by reference, but the materializer is the sole
+  writer of the materialized doc per snapshot, so shared inner
+  references are safe.
+- The duplicate-key handler (`handleInsertError` lines 316–344) reuses
+  `mongoTemplate.findById` plus `isSamePayload` after a Mongo
+  `DuplicateKeyException`. `isSamePayload` strips
+  `_head.provenance.materialized_at` only, so `ppy + create
+  kind=definition` resends with identical wire payloads will count as
+  `duplicateMatching` (idempotent), and resends with a different
+  `value_schema` or `name` will count as `conflictingDuplicate` and
+  not overwrite.
+- `MaterializeResult` (separate file `MaterializeResult.groovy`)
+  carries the existing counters: `materialized`, `duplicateMatching`,
+  `conflictingDuplicate`, `skippedUnsupported`, `skippedInvalid`,
+  `skippedMissingTarget`. **No new counter is required for TASK-031**
+  because the bounded `ppy + create kind=definition` proof needs only
+  the existing five counters: `materialized` for the success path,
+  `duplicateMatching` for idempotent re-apply, `conflictingDuplicate`
+  for differing payloads, `skippedUnsupported` for `kind ==
+  "assignment"` / missing `kind` / unsupported `kind`, and
+  `skippedInvalid` for missing/blank `data.id`.
 
 ### Current automated coverage (read of source on `claude-1`)
 
 DTO library (`MessageSpec.groovy`):
 
 - `EXAMPLE_PATHS` (lines 24–38) round-trips and schema-validates every
-  example resource, including `05-…`. `05-…` already passes today.
-- There is **no focused feature** yet that asserts `05-…`'s wire shape
-  beyond the round-trip / schema-validate loop. The contents-type
-  (lines 330–352), bare entity-type (460–483), entity (485–507), and
-  group (354–376) examples each have an analogous focused feature; the
-  type-update-add-property example does not.
-- The "entity transaction example sequence" feature (lines 509–540)
-  proves the `01 → 04 → 06 → 09` chain. There is **no analogous
-  feature** today proving the `01 → 02 → 04 → 05 → 09` chain (or a
-  focused subset proving `04 → 05` cross-references on `data.id` and
-  `05 → 02` cross-references on `data.property_id`).
+  example resource, including `02-…`, `03-…`, `07-…`, and `08-…`. All
+  four already pass today.
+- `'newInstance constructs a Message with the given collection and
+  action'` (line 46) already constructs a `Collection.PROPERTY +
+  Action.CREATE + [kind: 'definition']` message and asserts the
+  envelope shape.
+- `'schema rejects collection=ppy paired with a transaction-control
+  action'` (line 192) already proves the envelope-level allow-list
+  rejects e.g. `ppy + open`.
+- `'entity-type-with-property example sequence shares one txn id and
+  the type-update references the property-definition by id'` (line
+  568) already reads `02-…` and asserts `02-…` is `Collection.PROPERTY
+  + Action.CREATE` plus the cross-reference
+  `05-….data.property_id == 02-….data.id`. **The `data.kind`,
+  `data.name`, and `data.value_schema` content of `02-…`/`03-…` is
+  not yet asserted by a focused feature**, and there is no focused
+  feature at all for `07-…`/`08-…` shape (just the round-trip /
+  schema-validate loop).
 
 Backend unit (`CommittedTransactionMaterializerSpec.groovy`):
 
-- `updateEntityTypeMessage()` helper (lines 125–139) — already wires
-  the exact `data.operation == 'add_property'` shape. Reusable for the
-  new positive features.
-- `entityTypeMessage()` helper (lines 105–123) — already builds the
-  bare entity-type root that the property reference will land on.
-  Reusable as the "preceding root" fixture for missing-target /
-  idempotent / conflicting features.
-- `'skips a typ + update message even after dropping the kind guard'`
-  (line 561) — flipped or replaced in implementation turn.
-- `'skips update and delete actions on supported collections'`
-  (line 1090) — kept as-is; covers `loc + update`. TASK-030 must add
-  parallel coverage proving non-`add_property` `typ + update`
-  operations and `typ + delete` still skip.
-- The mixed-snapshot feature (line 1131 area, with insert order
-  `['loc', 'typ', 'typ', 'ent', 'lnk']` and counts `materialized == 5`,
-  `skippedUnsupported == 1` after TASK-029 extension) currently does
-  **not** include any `typ + update`. TASK-030 may extend it again to
-  prove order/count preservation when both `typ + create` (bare and
-  link-type) and `typ + update add_property` co-occur in one snapshot.
+- `propertyCreateMessage()` helper (lines 164–177) — already wires a
+  `kind: 'definition'` shape. Reusable for the new positive
+  definition-materializes feature; **must be renamed** (Plan §4) to
+  `propertyDefinitionCreateMessage()` and given a parallel
+  `propertyAssignmentCreateMessage()` helper that builds the
+  `kind: 'assignment'` skip-shape for the new
+  assignment-still-skipped feature.
+- `'skips a ppy create message'` (lines 1209–1218) — flipped or
+  replaced in implementation turn.
+- The mixed-snapshot feature (lines 1625–1665) — **must be updated**
+  to expect the definition message materializes (and optionally
+  extended to demonstrate that an assignment message in the same
+  snapshot is still `skippedUnsupported`).
+- No existing unit test covers `value_schema` round-trip under root
+  `properties`; the new positive feature (Plan §4) adds it.
+- No existing unit test covers idempotent duplicate / conflicting
+  duplicate for `ppy`; the new features (Plan §4) add them.
 
 Backend integration (opt-in):
 
 - `EntityCreateKafkaMaterializeIntegrationSpec` publishes
-  `open + 04-typ + 06-ent + commit` and asserts both materialized
-  roots. **It does not currently exercise `typ + update`.**
-  TASK-030 either extends it (default proposal, smallest delta) or adds
-  a dedicated spec.
+  `open + 04-typ + 05-typ-update + 06-ent + commit` and asserts the
+  materialized typ + ent roots. **It does not publish
+  `02-ppy-definition`.** Plan §6 adds a dedicated
+  `PropertyDefinitionCreateKafkaMaterializeIntegrationSpec` rather
+  than overloading the entity spec.
 - `TransactionMessageKafkaIngestIntegrationSpec` is generic and
-  unaffected.
+  unaffected by TASK-031.
 
 ### Schema status (`message.schema.json`)
 
-For `collection != "grp"`, `data` follows `SnakeCaseObject`. The `05-…`
-example already validates today (covered by the EXAMPLE_PATHS loop).
-The directive's accepted wire shape is already permitted (no schema
-edit needed):
+For `collection != "grp"`, `data` follows `SnakeCaseObject`. The
+`02-…`, `03-…`, `07-…`, and `08-…` examples already validate today
+(covered by the EXAMPLE_PATHS loop). The directive's accepted wire
+shape is already permitted (no schema edit needed):
 
-- `data.operation` is a snake_case-keyed string value ("add_property") —
+- `data.kind` is a snake_case-keyed string ("definition" /
+  "assignment") — permitted by `SnakeCaseObject` + `SnakeCaseValue`.
+- `data.id`, `data.name`, `data.entity_id`, `data.property_id` are
+  snake_case-keyed string IDs — permitted.
+- `data.value_schema` is a snake_case-keyed object whose nested keys
+  (`type`, `required`, `properties`, `text`, `number`, `unit_id`) are
+  all snake_case-compatible. The recursive `SnakeCaseObject` rule
+  applies but does not reject any 02-…/03-… nested key.
+- `data.value` (assignment-only) is a snake_case-keyed object —
   permitted.
-- `data.property_id` is a snake_case-keyed string ID — permitted.
-- `data.required` is a boolean — permitted by `SnakeCaseValue`.
-- `data.id` is the existing target ID — permitted.
 
-Tightening the schema to require `typ.data.operation` for `update`
-actions, or to enumerate the allowed `data.operation` values, would be
-a real semantic schema change. Per TASK-030's `OUT_OF_SCOPE` (no
-semantic reference validation, no required-property enforcement) **no
-schema-file change is required or in-scope** for this task.
+Tightening the schema to require `ppy.data.kind` for `create`
+actions, to enumerate the allowed `data.kind` values
+(`"definition"` / `"assignment"`), or to assert that
+`kind == "definition"` requires `data.value_schema` would be a real
+semantic schema change. Per TASK-031's `OUT_OF_SCOPE` (no semantic
+reference validation, no value-shape validation against
+`data.value_schema`) **no schema-file change is required or in-scope**
+for this task. The focused DTO tests (Plan §5) are the right place to
+pin the wire-shape expectations rather than the schema file.
 
 ### Decisions required by the directive
 
-#### 1. Smallest materialized root shape for property references (the central design choice)
+#### 1. Smallest materialized root shape for property definitions (the central design choice)
 
-The directive lists three placement options: under root `properties`,
-root `links`, or another already-documented root field.
+The directive asks for the smallest materialized root shape, including
+which facts live under root `properties`, whether `data.kind` remains
+materialized as a discriminator, and how `value_schema` is copied.
 
-**Recommendation: place property references under root
-`properties.property_refs` as an ID-keyed sub-map.** Concretely, after
-`05-…` materializes against the `04-…` root, the `typ` document looks
-like:
+**Recommendation: project `02-…` (and `03-…`) through the existing
+inline-properties fallback so the materialized `ppy` document is:**
 
 ```json
 {
-  "_id":  "jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~ty~plate_96",
-  "id":   "jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~ty~plate_96",
-  "collection": "typ",
+  "_id":  "jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~pp~barcode",
+  "id":   "jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~pp~barcode",
+  "collection": "ppy",
   "type_id": null,
   "properties": {
-    "name": "plate_96",
-    "description": "96-well sample plate",
-    "property_refs": {
-      "jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~pp~barcode": {
-        "required": true
-      }
+    "kind": "definition",
+    "name": "barcode",
+    "value_schema": {
+      "type": "object",
+      "required": ["text"],
+      "properties": { "text": { "type": "string" } }
     }
   },
   "links": {},
-  "_head": { ...preserved from create, with provenance.action == "create"... }
+  "_head": {
+    "schema_version": 1,
+    "document_kind": "root",
+    "root_id":  "…~pp~barcode",
+    "provenance": {
+      "txn_id": "…",
+      "commit_id": "…",
+      "msg_uuid": "018fd849-2a41-7111-8a01-aaaaaaaaaaaa",
+      "collection": "ppy",
+      "action": "create",
+      "committed_at": "…",
+      "materialized_at": "…"
+    }
+  }
 }
 ```
 
 Why this shape:
 
-- `properties` already carries the type's own facts (`name`,
-  `description`, and for link-type `typ` records `kind`,
-  `allowed_left_collections`, etc.). "Which property definitions apply
-  to instances of this type" is also a fact of the type, so it fits
-  conceptually under `properties` rather than under `links` (which the
-  vocabulary doc and `loc`/`lnk` materialization treat as
-  inter-object-instance relationships).
-- A dedicated `properties.property_refs` sub-map keeps type-fact scalars
-  (`name`, `description`) cleanly separated from ID-keyed reference
-  entries. This avoids commingling snake_case scalar keys with
-  `~`-separated world-unique IDs in the same map.
-- ID-keyed: matches `DIRECTION.md` line 83–84 ("Property and link maps
-  should be keyed by the IDs of the property or link objects").
-- Reference-only: the value is a tiny object carrying just the
-  reference metadata listed in the directive — `required`. No copy of
-  the property-definition `value_schema` or `name` is embedded; that
-  satisfies "Keep the shape reference-only; do not embed property
-  definitions."
-- Additive on update: `add_property` is a `$set` of one dotted-path
-  sub-key (`properties.property_refs.<property_id>`), atomic in Mongo,
-  doesn't touch `name`/`description`/`type_id`/`links`/`_head` other
-  than the head-provenance touch (Open question #4).
-- Survives later iterations: when `remove_property`,
-  `update_property_required`, or richer property-reference metadata
-  arrive, they are single-key `$set` / `$unset` operations on the same
-  sub-map. No global rewrite required.
+- **Reuses every accepted root-shape invariant from TASK-013/14/26/29.**
+  Top-level `_id`, `id`, `collection`, `type_id` (null because the wire
+  has no `data.type_id`), explicit `properties`, denormalized `links:
+  {}` (canonical relationships go through `lnk`, not nested under the
+  property definition itself), and reserved `_head.provenance`. No new
+  reserved root field, no new sub-shape, no new schema convention.
+- **`data.kind` lives under root `properties.kind` as a materialized
+  discriminator.** This mirrors how `typ + create` link-type records
+  carry `properties.kind == "link_type"` and bare entity-type `typ`
+  records carry no `kind`. For `ppy`, the discriminator is meaningful
+  because it lets a future reader filter the `ppy` collection by
+  `properties.kind == "definition"` without re-reading the original
+  wire envelope. The materializer does not invent the value; it copies
+  exactly what the wire said.
+- **`data.value_schema` is copied verbatim into
+  `properties.value_schema` as an opaque JSON object.** No walking
+  into nested keys at materializer time, no validation that nested
+  keys are snake_case (the schema layer already does that for
+  ingestion), and no enforcement that the schema is valid JSON Schema
+  Draft 2020-12. Future readers and the future assignment-validator
+  layer interpret it; the materializer treats it as opaque metadata.
+  This matches the kafka-vocabulary doc's "the envelope schema does
+  not yet validate the wrapper shape against the registered
+  `value_schema`" pin (line 102).
+- **`type_id: null`** because the wire example does not declare a
+  property *type* (the property-definition is itself a kind of type;
+  there is no parent-type relationship to record). Matches how the
+  bare entity-type `typ + create` materialized doc carries
+  `type_id == null` today (per
+  `EntityCreateKafkaMaterializeIntegrationSpec` line 274) and how the
+  `grp + create` materialized doc carries `type_id == null`.
+- **Achieved with zero new code** in `buildDocument`: the existing
+  inline-properties fallback already copies all `data` keys other than
+  `id`/`type_id`/`links` into root `properties`. For 02-… that is
+  exactly `kind`, `name`, `value_schema`. The implementation only
+  needs the new `COLLECTION_PPY` constant, the kind-discriminator gate
+  in `isSupported`, and a doc edit. No new branch in `buildDocument`.
+- **Survives later iterations**: when `ppy + update` definition edits,
+  `ppy + create` assignment materialization, or richer
+  property-definition metadata (e.g. `description`, `unit`) arrive,
+  they are additive and do not require a re-shape of the root.
 
 **Alternatives** (flagged for director ruling):
 
-- **Alternative A — under root `links`** (`links.<property_id>:
-  {required: bool}`). The vocabulary doc currently treats `links` as
-  the denormalized inverse-link projection slot for inter-object
-  relationships (e.g., the `loc → contents → ent` direction).
-  Putting type-to-property-definition references under `links`
-  conflates reference semantics with denormalized inverse-link
-  projection semantics. Smallest delta to `buildDocument` (no new
-  sub-map structure), but semantically muddies `links`.
-- **Alternative B — new top-level root field** `property_refs:
-  {<id>: {required: bool}}`. Clearest separation of concerns but
-  introduces a new reserved root field; the directive's wording
-  ("another already-documented root field") nudges against this. No
-  doc precedent for `property_refs` at the root yet.
-- **Alternative C — under `properties.<property_id>`** (no
-  intervening sub-map). Mixes scalar facts (`name`, `description`)
-  with `~`-keyed references in one map. Smallest delta to existing
-  shape but ugliest read.
+- **Alternative A — drop `data.kind` from root `properties` (don't
+  materialize the discriminator).** Slightly smaller materialized
+  document; the wire still carries `kind`, and a reader could go back
+  to the `txn` log to recover it. But this loses the cheap
+  `properties.kind == "definition"` MongoDB filter on the long-term
+  `ppy` collection and forces every consumer to either re-read the
+  source message or know-out-of-band that a `ppy` doc is necessarily
+  a definition. **Default proposal rejects this**; the directive
+  explicitly asks "whether `data.kind` remains materialized as a
+  discriminator", and the cheap-filter argument is the load-bearing
+  reason to keep it.
+- **Alternative B — promote `data.kind` to a top-level reserved root
+  field next to `_id`/`id`/`collection`/`type_id`.** Cleaner separation
+  from user-facing `properties` scalars, but it introduces a new
+  reserved root field that no current reader expects. Diverges from
+  how `typ + create` link-type discrimination is materialized today
+  (under root `properties.kind`). Rejected as inconsistent with the
+  established `typ` precedent.
+- **Alternative C — promote `data.value_schema` to a top-level
+  reserved root field** (e.g., `value_schema:` next to
+  `_id`/`id`/...). Would let downstream readers index it without
+  walking into `properties.*`, but again diverges from the established
+  pattern that domain-fact JSON lives under root `properties`. The
+  property-definition's `value_schema` is a domain fact (a contract
+  for assigned values), not a materializer-implementation detail.
+  Rejected.
+- **Alternative D — explicit `data.properties` block on the wire.**
+  Would make the canonical 02-…/03-… messages match the
+  `loc`/`ent`/`lnk` convention (`data: { id, type_id?, properties:
+  {...}, links: {} }` envelope) more strictly. But the directive
+  explicitly says "Add or update example resource JSON only if the
+  existing examples do not already show the accepted human-readable
+  shape and transaction sequence" — and the existing flat shape
+  matches the bare entity-type `typ + create` precedent (TASK-029
+  lines 460–483 of `MessageSpec` accept exactly the flat
+  `data.id/name/description` shape on `04-…` with no `data.properties`
+  block). The inline-properties fallback was added for exactly this
+  case. **Default proposal preserves the flat wire shape** verbatim;
+  no `02-…`/`03-…` edit.
 
-**If the director prefers an Alternative**, only the `Update.set(...)`
-dotted path in the materializer changes:
+#### 2. Whether `data.kind == "assignment"` is materialized in this iteration
 
-- Recommendation: `properties.property_refs.<property_id>` (or, as a
-  whole-map replace, `properties.property_refs`).
-- Alternative A: `links.<property_id>`.
-- Alternative B: `property_refs.<property_id>`.
-- Alternative C: `properties.<property_id>`.
-
-Tests assert against the chosen path; everything else is path-agnostic.
-
-#### 2. Whether `ppy + create` materialization or semantic `property_id` validation is required for this bounded proof
-
-**Recommendation: NO.**
+**Recommendation: NO. Defer to a separate follow-up task.**
 
 Rationale:
 
-1. The materializer currently does not resolve any cross-document
-   reference: not `ent.type_id → typ`, not `lnk.type_id → typ`, not
-   `lnk.left/right → loc/ent`, not `typ.allowed_*_collections`. Adding
-   resolution for `typ + update add_property → ppy` here would be the
-   first such resolver and would create a load-bearing precedent for
-   "the materializer enforces references", which the established
-   architecture explicitly defers to a future read-time validator
-   (`vdn`-collection scope). Out of scope per the directive.
-2. The directive forbids it: "Do not add … semantic validation that
-   `data.property_id` resolves." (TASK-030 OUT_OF_SCOPE.)
-3. Materializing `ppy + create` is also out of scope for the same
-   no-broadening reason. `02-…` and `03-…` continue to be ingested
-   into the `txn` write-ahead log, validated by the schema, and stored
-   as committed messages — they just don't produce a long-term `ppy`
-   collection document yet.
-4. The `add_property` reference can therefore be recorded
-   verbatim from `data.property_id` without confirming that a
-   committed `ppy` definition with that ID exists. This matches the
-   directive's "record the reference without semantic validation that
-   `data.property_id` resolves" option.
+1. **The directive explicitly asks**: "Decide whether this bounded
+   proof should materialize only `data.kind == "definition"` and
+   continue skipping `data.kind == "assignment"` property-value
+   examples, or whether a separate follow-up task is required for
+   assignments." The bounded-proof framing nudges toward only one
+   sub-shape per task, mirroring the TASK-027 → 28 → 29 → 30 rhythm
+   (one human-readable wire shape per task).
+2. **Different wire shape**: assignment carries `entity_id`,
+   `property_id`, and `value` instead of `kind == "definition"`'s
+   `name` and `value_schema`. Materializing both in one task would
+   require either two `processMessage`-level branches (one for each
+   `kind`) or a single branch with kind-specific buildDocument logic.
+   Either is a broader change than the bounded-proof framing.
+3. **Different semantic ownership**: an assignment is a property *value*
+   for a specific entity. Open product questions (not for TASK-031 to
+   resolve): should the assignment materialize as a separate `ppy`
+   document, as a sub-document on the entity's `ent` root, or both?
+   How do later assignment edits and deletes interact? How do
+   permission scopes attach? These belong in a dedicated task.
+4. **Out-of-scope guardrails**: TASK-031 OUT_OF_SCOPE explicitly
+   forbids "value-shape validation against `data.value_schema`" — that
+   forbid is consistent with the assumption that assignments are not
+   yet materialized (otherwise the materializer would have to choose
+   whether or not to validate the value shape on every assignment).
+5. **Implementation cost**: skipping the assignment kind keeps the
+   `isSupported` change to one switch case plus one nested condition
+   (`data.kind == "definition"`); the assignment shape continues to
+   fall through `isSupported` and is counted as `skippedUnsupported`.
+   Zero code, zero risk for the assignment path.
 
-**Implication:** the materializer's new `processTypUpdate(...)` helper
-may not query the `ppy` collection. It only writes (or no-ops) on the
-`typ` collection.
+**Implication:** the materializer's new `ppy + create` branch is gated
+on `data.kind == "definition"`. Anything else — `kind == "assignment"`,
+missing `kind`, unknown `kind` value — falls through to
+`skippedUnsupported`. The existing `'skips a ppy create message'` unit
+test is replaced by **two** features: positive `definition`
+materializes, and negative `assignment`/missing/other still skips.
 
-#### 3. Materializer behaviour for missing target, idempotent repeat, and conflicting metadata
+#### 3. How `value_schema` is copied without validating future assignment values
 
-**Missing target** (`typ + update add_property` arrives committed but
-no `typ` document with `data.id` exists in the long-term `typ`
-collection):
+**Recommendation: copy verbatim as an opaque JSON object** under root
+`properties.value_schema`.
 
-- **Recommendation:** count it as a skip without raising. Use either a
-  new `skippedMissingTarget` counter (preferred for clarity) or reuse
-  the existing `skippedUnsupported` counter with a specific log line
-  ("missing target typ root").
-- **Default proposal:** add a new `int skippedMissingTarget = 0` field
-  to `MaterializeResult` (purely additive; no breaking API change to
-  existing callers/tests). The new counter mirrors the existing
-  `skippedInvalid` counter style and is purpose-specific.
-- Why not raise: every other materializer non-fatal outcome (matching
-  duplicate, conflicting duplicate, missing `data.id`) is a counted
-  skip rather than an exception. Raising on missing-target would break
-  the read-after-commit projection invariant that "non-fatal product
-  state outcomes do not poison the projection run."
-- Why not "create the target on the fly": the directive forbids
-  inventing IDs (preserves the existing `extractDocId` invariant) and
-  forbids broadening scope. A missing target indicates the producer
-  ordered messages incorrectly, or the target was deleted, or the
-  target lives in a different transaction snapshot. The materializer's
-  single-snapshot-at-a-time contract means the right behaviour is to
-  skip the message and surface it via the counter and log line; a
-  follow-on producer can reorder.
-- See Open question #2 for the counter shape.
+Rationale:
 
-**Idempotent repeat** (the same `add_property` message — same target,
-same `property_id`, same `required` value — arrives committed twice;
-or the existing `properties.property_refs.<property_id>` sub-document
-already equals the incoming reference metadata):
+1. The directive forbids "value-shape validation against
+   `data.value_schema`" (TASK-031 OUT_OF_SCOPE). That forbid applies to
+   future assignment-value validation; the materializer is not the
+   place for that.
+2. The wire `value_schema` is conceptually a JSON Schema for assigned
+   values. Treating it as opaque keeps the materializer free of any
+   JSON-Schema interpretation library or version pin, which would be a
+   substantial cross-cutting addition.
+3. The existing `copyProperties` helper does a shallow `LinkedHashMap`
+   copy. Nested maps inside `value_schema` (e.g. the `properties`
+   sub-map and each property's `{ type: "string" }` sub-map) remain
+   shared by reference with the source `data.value_schema`. This is
+   safe because (a) the materializer is the sole writer of the
+   materialized doc per snapshot, and (b) the source `data` map comes
+   from a per-message Jackson parse that is not retained beyond the
+   `processMessage` reactive chain.
+4. Mongo's BSON encoding accepts the nested object structure verbatim;
+   no schema-file change, no codec registration, no JSON-Schema
+   metaschema pinning required.
+5. The existing `isSamePayload` already deep-equals the entire
+   materialized doc (minus `_head.provenance.materialized_at`), so the
+   nested `value_schema` participates in idempotent-vs-conflicting
+   duplicate detection out of the box.
 
-- **Recommendation:** count as `duplicateMatching++` (reuse existing
-  counter) and skip the `$set` so the document's `_head.provenance` is
-  not perturbed. This mirrors the existing
-  `loc + create` / `ent + create` / `typ + create` /
-  `grp + create` / `lnk + create` "duplicate matching is idempotent"
-  semantic, with the same counter.
-- Implementation: the new `processTypUpdate` helper does
-  `mongoTemplate.findById(targetId, Map.class, "typ")`, projects out
-  the existing `properties.property_refs.<property_id>` value, and
-  compares to the incoming reference metadata using the same
-  null-safe `Objects.equals` style as `isSamePayload`. If equal, no
-  `$set`, just `result.duplicateMatching++`.
-- Why preserve `_head.provenance` on a no-op: a duplicate-matching
-  re-application carries no new information; the existing provenance
-  already reflects the prior `add_property` apply (or the original
-  `create` if `add_property` has never run). Re-touching provenance
-  on a no-op would invent change history.
+**Implication:** future readers (or a future assignment-validator
+layer) walk into `properties.value_schema` to interpret it. The
+materializer does nothing with it. No special-case code in
+`buildDocument` is required.
 
-**Conflicting metadata** (an `add_property` arrives with
-`required: false` while the existing
-`properties.property_refs.<property_id>.required` is `true`, or vice
-versa; or with any other field-level mismatch):
+#### 4. Materializer behaviour for missing/blank `data.id`, idempotent duplicate, conflicting duplicate
 
-- **Recommendation:** count as `conflictingDuplicate++` (reuse
-  existing counter) and **do not overwrite**. Mirrors the existing
-  `*+create` "differing-payload duplicate" semantic.
-- Implementation: same `findById` + diff path as idempotent above. If
-  unequal, no `$set`; `result.conflictingDuplicate++`. Log line
-  identifies `collection`, `id`, `property_id`, `txnId`, `commitId`,
-  `msgUuid` so an operator can manually reconcile.
-- Rationale: "last write wins" silently mutates a load-bearing type
-  fact. The architecture's read-after-commit projection invariants
-  prefer to expose the conflict (counter + log + manual review) rather
-  than silently mutate. Same posture as
-  `isSamePayload`/`conflictingDuplicate` for create paths.
+The directive asks for focused coverage on these cases.
+
+- **Missing/blank `data.id`** — `extractDocId` already returns `null`
+  for missing or whitespace-only `data.id`. `processMessage` then
+  counts `result.skippedInvalid++` and returns without touching Mongo
+  (existing behaviour, lines 188–195). New code path: none. New
+  feature: `'skips a ppy + create kind=definition with missing or
+  blank data.id as skippedInvalid'` (Plan §4).
+- **Idempotent duplicate** (same wire payload, same `data.id`,
+  arrives committed twice; or the existing materialized `ppy` doc
+  already carries the identical payload) — `mongoTemplate.insert`
+  raises `DuplicateKeyException`; `handleInsertError` calls
+  `mongoTemplate.findById(docId, Map.class, "ppy")`,
+  `isSamePayload(existing, incoming)` deep-equals (minus
+  `materialized_at`), result is `duplicateMatching++`. No
+  `_head.provenance` perturbation, no overwrite, idempotent. New
+  feature: `'idempotent ppy + create kind=definition with matching
+  payload is duplicateMatching and does not overwrite'` (Plan §4).
+- **Conflicting duplicate** (same `data.id` but different `name`, or
+  different `value_schema`) — same `findById` + `isSamePayload` path;
+  result is `conflictingDuplicate++`, log line, no overwrite. New
+  feature: `'conflicting ppy + create kind=definition with differing
+  payload is conflictingDuplicate and does not overwrite'` (Plan §4).
+- **Cross-collection ID confusion**: `02-…`'s `data.id` is
+  `"…~pp~barcode"`. If a future producer accidentally publishes a
+  `loc + create` with `data.id == "…~pp~barcode"`, those documents
+  land in the `loc` collection, not `ppy`, so the duplicate-key index
+  on `ppy._id` is unaffected. No new code or test required.
+
+All three cases reuse the existing duplicate-handling and skip-counting
+plumbing. **No new `MaterializeResult` field is required** for
+TASK-031.
 
 ### Smallest implementation plan
 
-Goal: smallest set of changes that (1) lets the existing
-`05-update-entity-type-add-property.json` materialize against an
-existing `typ` root by setting one dotted-path sub-key, and (2)
-preserves every other materializer skip semantic — including
-non-`add_property` `typ + update` operations and every other
-collection's `update`/`delete`.
+Goal: smallest set of changes that (1) lets the existing `02-…` and
+`03-…` materialize as root-shaped `ppy` documents through the existing
+insert pipeline, (2) preserves the existing `skippedUnsupported`
+behaviour for `ppy + create kind=assignment` and every other
+collection/action skip, and (3) keeps the existing duplicate-handling,
+provenance, and read-service contracts intact.
 
 #### File changes
 
 1. **No example resource edits** in
    `libraries/jade-tipi-dto/src/main/resources/example/message/`.
-   - `05-update-entity-type-add-property.json` already shows the
-     accepted human-readable wire shape verbatim. The cross-references
-     (`05-….data.id == 04-….data.id`, `05-….data.property_id ==
-     02-….data.id`) are already correct and are exercised in the new
-     DTO test (Plan §4). The directive forbids broad ID-abbreviation
-     cleanup, so the `~ty~`/`~pp~` 2-char segments are preserved
+   - `02-create-property-definition-text.json` and
+     `03-create-property-definition-numeric.json` already show the
+     accepted human-readable wire shape verbatim (top-level
+     `collection: "ppy"` + `action: "create"`, with `data.kind ==
+     "definition"`, `data.id`, `data.name`, `data.value_schema`). The
+     cross-references (`05-….data.property_id == 02-….data.id`,
+     `07-….data.property_id == 02-….data.id`,
+     `08-….data.property_id == 03-….data.id`) are already correct
      verbatim.
+   - `07-…` and `08-…` continue to declare the canonical assignment
+     shape (`kind: "assignment"`, `entity_id`, `property_id`, `value`).
+     They remain `skippedUnsupported` — no edit required.
+   - The directive forbids broad ID-abbreviation cleanup, so the
+     `~pp~` 2-char segments are preserved verbatim.
 
 2. **Materializer code changes** in
    `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`:
-   - Extend `isSupported(...)` to accept
-     `collection == COLLECTION_TYP` paired with
-     `action == "update"` paired with
-     `data.get("operation") == "add_property"`. Every other
-     `action != ACTION_CREATE` continues to fall through to
-     `skippedUnsupported` exactly as today; this preserves
-     `loc + update`, `lnk + update`, `grp + update`, `ent + update`,
-     `typ + update` with a different `operation`, and every
-     `*+ delete` skip behaviour. Concretely:
+   - Add new constants near the existing collection / action / field
+     constants:
      ```groovy
-     private static boolean isSupported(CommittedTransactionMessage message) {
-         if (message == null) return false
-         if (message.action == ACTION_CREATE) {
-             switch (message.collection) {
-                 case COLLECTION_LOC: return true
-                 case COLLECTION_LNK: return true
-                 case COLLECTION_GRP: return true
-                 case COLLECTION_ENT: return true
-                 case COLLECTION_TYP: return true
-                 default: return false
-             }
-         }
-         if (message.action == 'update'
-                 && message.collection == COLLECTION_TYP
-                 && 'add_property' == message.data?.get('operation')) {
-             return true
-         }
-         return false
-     }
+     static final String COLLECTION_PPY = 'ppy'
+     static final String FIELD_KIND     = 'kind'
+     static final String KIND_DEFINITION = 'definition'
      ```
-     Add `static final String ACTION_UPDATE = 'update'` and
-     `static final String OPERATION_ADD_PROPERTY = 'add_property'`
-     plus `static final String FIELD_OPERATION = 'operation'`,
-     `static final String FIELD_PROPERTY_ID = 'property_id'`,
-     `static final String FIELD_REQUIRED = 'required'`,
-     `static final String FIELD_PROPERTY_REFS = 'property_refs'` near
-     the existing `ACTION_CREATE` declaration.
-   - Split `processMessage(...)` into a thin dispatcher that routes
-     create paths to the existing insert flow and routes
-     `typ + update add_property` to a new
-     `processTypUpdateAddProperty(snapshot, message, result)` helper.
-     The existing `extractDocId` / `buildDocument` / `insert`
-     pipeline is unchanged for create paths.
-   - The new `processTypUpdateAddProperty` helper:
-     - Read `targetId` from `data.id` via `extractDocId`. Missing/
-       blank id → `result.skippedInvalid++`, log error, return
-       `Mono.empty()`.
-     - Read `propertyId` from `data.property_id`. Missing/blank →
-       `result.skippedInvalid++`, log error, return. (Treats this
-       symmetrically with `data.id` because both are required for the
-       message to be actionable.)
-     - Build `Map<String, Object> referenceEntry` containing exactly
-       the reference metadata fields the wire shape carries other
-       than `id`/`operation`/`property_id`. For TASK-030 that is the
-       single field `required` if present; if `data.required` is
-       absent, the entry is an empty map (not `{required: false}`,
-       to avoid inventing a value). See Open question #3.
-     - `mongoTemplate.findById(targetId, Map.class, COLLECTION_TYP)`:
-       - If empty → `result.skippedMissingTarget++` (Open question
-         #2 may rename this), log warning, return.
-       - Else → read existing
-         `properties.property_refs.<propertyId>` sub-map. If absent
-         → execute
-         `mongoTemplate.updateFirst(Query.query(Criteria.where("_id").is(targetId)),
-         new Update().set("properties.property_refs." + propertyId,
-         referenceEntry)
-         .set("_head.provenance.materialized_at", Instant.now()),
-         COLLECTION_TYP)` and
-         `result.materialized++`. Provenance handling: see Open
-         question #4.
-       - If present and equal to `referenceEntry` →
-         `result.duplicateMatching++`, no `$set`.
-       - If present and unequal →
-         `result.conflictingDuplicate++`, no `$set`, log error.
-   - Update the class Javadoc (lines 26–70) to add the supported
-     `typ + update add_property` bullet next to the existing
-     `typ + create` description, and to amend the "every other
-     collection/action combination — including update, delete, and
-     txn-control actions — is counted as `skippedUnsupported`"
-     sentence to read "every other update/delete and every
-     unsupported `typ + update` operation."
+   - Extend `isSupported(...)` (lines 346–372) to accept
+     `collection == COLLECTION_PPY` paired with `action ==
+     ACTION_CREATE` paired with `data.kind == KIND_DEFINITION`. Every
+     other `ppy` action and every other `data.kind` value (including
+     `KIND_ASSIGNMENT == 'assignment'`, missing `kind`, and any other
+     value) continues to fall through to `skippedUnsupported`.
+     Concretely:
+     ```groovy
+     if (message.action == ACTION_CREATE) {
+         switch (message.collection) {
+             case COLLECTION_LOC: return true
+             case COLLECTION_LNK: return true
+             case COLLECTION_GRP: return true
+             case COLLECTION_ENT: return true
+             case COLLECTION_TYP: return true
+             case COLLECTION_PPY:
+                 return KIND_DEFINITION == message.data?.get(FIELD_KIND)
+             default: return false
+         }
+     }
+     // (existing typ + update add_property branch unchanged)
+     ```
+     The `KIND_DEFINITION` constant declaration above intentionally
+     omits a `KIND_ASSIGNMENT` constant — TASK-031 does not need to
+     name `'assignment'` in code because the gate is "definition or
+     skip" and the skip path is the default.
+   - **No change to `processMessage`, `buildDocument`,
+     `buildInlineProperties`, `copyProperties`, `buildHead`,
+     `handleInsertError`, `isSamePayload`, `extractDocId`, or
+     `MaterializeResult`.** The new `ppy + create kind=definition`
+     branch flows through the same pipeline as `loc + create` /
+     `ent + create` / `grp + create`. Because the canonical wire shape
+     for 02-…/03-… does not include a `data.properties` block, the
+     `buildDocument` "inline-properties fallback" branch (lines
+     402–408) handles the projection automatically: `kind`, `name`,
+     `value_schema` all land under root `properties` after `id` is
+     excluded.
+   - Update the class Javadoc (lines 29–84) to add a `ppy + create`
+     bullet next to the existing `typ + create` description, to call
+     out the kind-discriminator gate, and to amend the "Every other
+     collection/action combination" sentence to read "Every other
+     collection/action combination — including delete and txn-control
+     actions, every `typ + update` whose `data.operation` is not
+     `"add_property"`, and every `ppy + create` whose `data.kind` is
+     not `"definition"` — is counted as `skippedUnsupported` without
+     raising an error."
 
-3. **`MaterializeResult` change** in
-   `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/MaterializeResult.groovy`:
-   - **Default proposal:** add one purely-additive field
-     `int skippedMissingTarget = 0` with a one-line javadoc:
-     "Supported messages whose target root document does not yet
-     exist in the long-term collection." Existing fields and existing
-     callers/tests are unaffected.
-   - **Alternative:** reuse `skippedUnsupported` for the
-     missing-target case (no API change). Less precise but smaller
-     diff. See Open question #2.
+3. **`MaterializeResult` change**: **none.** All five existing
+   counters cover the new code paths: `materialized` (success),
+   `duplicateMatching` (idempotent), `conflictingDuplicate` (differing
+   payload), `skippedUnsupported` (kind != definition), `skippedInvalid`
+   (missing/blank `data.id`).
 
 4. **Backend unit tests** in
    `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`:
-   - **Replace** the existing
-     `'skips a typ + update message even after dropping the kind
-       guard'` feature (lines 561–570) with a positive feature
-     `'materializes a typ + update add_property as a $set onto
-       root.properties.property_refs.<property_id>'`:
-     - Mock `mongoTemplate.findById(ENT_TYPE_ID, Map.class, 'typ')`
-       to return an existing `typ` root that mirrors the post-create
-       shape (`_id`, `id`, `collection: 'typ'`, `type_id: null`,
-       `properties: {name: 'plate_96', description: '96-well sample
-       plate'}`, `links: {}`, `_head` with provenance.action ==
-       'create').
-     - Capture `mongoTemplate.updateFirst` arguments (query, update,
-       collection).
-     - Snapshot `[updateEntityTypeMessage()]`.
+   - **Rename** the existing `propertyCreateMessage()` helper (lines
+     164–177) to `propertyDefinitionCreateMessage()` and add a wire
+     shape that carries the canonical `data.value_schema` (mirroring
+     `02-…`'s `{ type: "object", required: ["text"], properties:
+     { text: { type: "string" } } }`), so the new positive feature can
+     assert the materialized `properties.value_schema` round-trips.
+     Keep the helper's synthetic ID — see Open question #5 for the
+     `~pp~` vs `~ppy~` segment choice.
+   - **Add** a new `propertyAssignmentCreateMessage()` helper (or
+     overload the renamed helper with a `kind = 'assignment'` flag)
+     that builds the canonical `kind: "assignment"` shape:
+     `[id: SOME_ASSIGNMENT_ID, kind: 'assignment', entity_id: ENT_ID,
+     property_id: PPY_ID, value: [text: 'barcode-1']]`. Used only by
+     the new "assignment is still skippedUnsupported" feature.
+   - **Replace** the existing `'skips a ppy create message'` feature
+     (lines 1209–1218) with positive feature `'materializes a ppy +
+     create kind=definition as a root document with kind, name, and
+     value_schema in root properties'`:
+     - Mock `mongoTemplate.insert(_ as Map, 'ppy')` to capture the
+       inserted document.
+     - Snapshot `[propertyDefinitionCreateMessage()]`.
      - Assert `result.materialized == 1`,
        `result.duplicateMatching == 0`,
        `result.conflictingDuplicate == 0`,
-       `result.skippedMissingTarget == 0`,
        `result.skippedUnsupported == 0`,
-       `result.skippedInvalid == 0`.
-     - Assert the captured update has a `$set` whose key is
-       `properties.property_refs.<the helper's property_id>` and
-       whose value is `[required: true]`. Asserts the captured
-       collection is `'typ'` and the captured query targets
-       `_id == ENT_TYPE_ID`.
-     - Assert `0 * mongoTemplate.insert(_, _)` to prove the
-       `add_property` path no longer goes through the create-only
-       `insert` flow.
-   - **Add** `'skips a typ + update with operation other than
-       add_property as skippedUnsupported'`:
-     - Build a message identical to `updateEntityTypeMessage()` but
-       with `data.operation = 'remove_property'` (or
-       `'update_required'`, or absent).
+       `result.skippedInvalid == 0`,
+       `result.skippedMissingTarget == 0`.
+     - Assert captured root: `_id == PPY_ID`, `id == PPY_ID`,
+       `collection == 'ppy'`, `type_id == null`,
+       `properties.kind == 'definition'`,
+       `properties.name == 'barcode'`,
+       `properties.value_schema == [type: 'object',
+        required: ['text'], properties: [text: [type: 'string']]]`,
+       `links == [:]`.
+     - Assert `_head` carries `schema_version == 1`,
+       `document_kind == 'root'`, `root_id == PPY_ID`, and
+       `provenance.txn_id`/`commit_id`/`msg_uuid`/`collection`/
+       `action`/`committed_at`/`materialized_at` set correctly.
+     - Assert `!captured.containsKey('_jt_provenance')` (no legacy
+       sub-doc leak).
+   - **Add** `'skips a ppy + create kind=assignment as
+     skippedUnsupported'`:
+     - Snapshot `[propertyAssignmentCreateMessage()]`.
+     - Assert `result.materialized == 0`,
+       `result.skippedUnsupported == 1`,
+       `0 * mongoTemplate.insert(_, _)`,
+       `0 * mongoTemplate.findById(_, _, _)`.
+   - **Add** `'skips a ppy + create with missing or other data.kind as
+     skippedUnsupported'` (where-block over
+     `[null, '', '   ', 'unknown', 'something_else']`):
+     - Build a `propertyDefinitionCreateMessage()` variant with the
+       chosen kind value.
      - Assert `result.skippedUnsupported == 1`,
        `result.materialized == 0`,
-       `0 * mongoTemplate.insert(_, _)`,
-       `0 * mongoTemplate.updateFirst(_, _, _)`,
-       `0 * mongoTemplate.findById(_, _, _)`.
-     - Where: `where: operation << ['remove_property',
-       'update_required', '', null]`.
-   - **Add** `'skips a typ + update add_property whose target typ root
-       does not exist as skippedMissingTarget'`:
-     - Mock `mongoTemplate.findById(ENT_TYPE_ID, Map.class, 'typ')`
-       to return `Mono.empty()`.
-     - Snapshot `[updateEntityTypeMessage()]`.
-     - Assert `result.skippedMissingTarget == 1`,
-       `result.materialized == 0`, `result.skippedInvalid == 0`,
-       `result.skippedUnsupported == 0`,
-       `0 * mongoTemplate.updateFirst(_, _, _)`,
        `0 * mongoTemplate.insert(_, _)`.
-     - **If** the director rules to reuse `skippedUnsupported`
-       (Open question #2), substitute that counter; everything else
-       is identical.
-   - **Add** `'idempotent typ + update add_property with matching
-       reference metadata is duplicate-matching and does not
-       re-write'`:
-     - Mock `findById` to return an existing root whose
-       `properties.property_refs.<the helper's property_id>` already
-       equals `[required: true]`.
-     - Snapshot `[updateEntityTypeMessage()]`.
-     - Assert `result.duplicateMatching == 1`,
-       `result.materialized == 0`,
-       `result.conflictingDuplicate == 0`,
-       `result.skippedUnsupported == 0`,
-       `result.skippedMissingTarget == 0`,
-       `0 * mongoTemplate.updateFirst(_, _, _)`.
-   - **Add** `'conflicting typ + update add_property is
-       conflicting-duplicate and not overwritten'`:
-     - Mock `findById` to return an existing root whose
-       `properties.property_refs.<the helper's property_id>` exists
-       but equals `[required: false]` (disagrees with the incoming
-       `[required: true]`).
-     - Snapshot `[updateEntityTypeMessage()]`.
-     - Assert `result.conflictingDuplicate == 1`,
-       `result.materialized == 0`, `result.duplicateMatching == 0`,
-       `result.skippedUnsupported == 0`,
-       `result.skippedMissingTarget == 0`,
-       `0 * mongoTemplate.updateFirst(_, _, _)`.
-   - **Add** `'skips a typ + update add_property with missing
-       data.property_id as skippedInvalid'`:
-     - Build `updateEntityTypeMessage()` with `property_id: null`
-       (or the key removed).
+   - **Add** `'skips a ppy + create kind=definition with missing or
+     blank data.id as skippedInvalid'` (where-block over `[null, '',
+     '   ']`):
+     - Build a `propertyDefinitionCreateMessage()` variant with
+       `id: input`.
      - Assert `result.skippedInvalid == 1`,
        `result.materialized == 0`,
-       `0 * mongoTemplate.findById(_, _, _)`,
-       `0 * mongoTemplate.updateFirst(_, _, _)`.
-   - **Optionally extend** the mixed-snapshot feature (current
-     `[loc + create, ppy + create (skip), typ + create (link-type),
-       typ + create (bare entity-type), ent + create, lnk + create]`
-     after TASK-029) to add `updateEntityTypeMessage()` immediately
-     after the bare-entity-type create. Counts move to
-     `materialized == 6`, `skippedUnsupported == 1`. This is optional
-     polish; the dedicated features above already cover the new
-     code paths. Default proposal: skip the mixed-snapshot extension
-     unless the director asks for it.
+       `0 * mongoTemplate.insert(_, _)`.
+   - **Add** `'idempotent ppy + create kind=definition with matching
+     payload is duplicateMatching and does not overwrite'`:
+     - Mock `mongoTemplate.insert(_ as Map, 'ppy')` to throw
+       `DuplicateKeyException`.
+     - Mock `mongoTemplate.findById(PPY_ID, Map.class, 'ppy')` to
+       return the same materialized doc the materializer would have
+       written (computed via the same `propertyDefinitionCreateMessage()`).
+     - Snapshot `[propertyDefinitionCreateMessage()]`.
+     - Assert `result.duplicateMatching == 1`,
+       `result.materialized == 0`,
+       `result.conflictingDuplicate == 0`.
+     - Mirrors the existing `loc`/`ent`/`grp` matching-duplicate
+       features.
+   - **Add** `'conflicting ppy + create kind=definition with differing
+     payload is conflictingDuplicate and does not overwrite'`:
+     - Mock `mongoTemplate.insert(_ as Map, 'ppy')` to throw
+       `DuplicateKeyException`.
+     - Mock `mongoTemplate.findById(PPY_ID, Map.class, 'ppy')` to
+       return a materialized doc whose
+       `properties.value_schema.required` differs from the incoming
+       (e.g., `['name']` vs `['text']`).
+     - Snapshot `[propertyDefinitionCreateMessage()]`.
+     - Assert `result.conflictingDuplicate == 1`,
+       `result.materialized == 0`,
+       `result.duplicateMatching == 0`.
+     - Mirrors the existing `loc`/`ent`/`grp` conflicting-duplicate
+       features.
+   - **Update** the mixed-snapshot feature (lines 1625–1665):
+     - Use `propertyDefinitionCreateMessage()` (via the renamed
+       helper) instead of `propertyCreateMessage()`.
+     - Add `mongoTemplate.insert(_ as Map, 'ppy') >>` block that
+       captures `'ppy'` into `insertOrder`.
+     - Change the when-block label to `'snapshot has loc, ppy
+       definition, typ link-type, typ bare entity-type, ent, lnk in
+       that order'`.
+     - Change the then-block expectations to
+       `insertOrder == ['loc', 'ppy', 'typ', 'typ', 'ent', 'lnk']`,
+       `result.materialized == 6`,
+       `result.skippedUnsupported == 0`,
+       `result.duplicateMatching == 0`,
+       `result.conflictingDuplicate == 0`,
+       `result.skippedInvalid == 0`.
+   - **Optionally add** a sibling mixed-snapshot feature
+     `'mixed snapshot with both ppy definition and ppy assignment
+     materializes only the definition'` that pushes both messages and
+     asserts `materialized == 6` (or 7 if other messages are also
+     present), `skippedUnsupported == 1` (the assignment). Default
+     proposal: skip this addition; the dedicated assignment-skip
+     feature plus the definition-only mixed-snapshot already cover the
+     codepaths.
 
 5. **DTO library tests** in
    `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`:
-   - **Add** `'typ + update add_property example uses the human-readable
-       data.id, data.operation, data.property_id, and optional
-       data.required shape'`:
-     - Reads `05-update-entity-type-add-property.json`.
-     - Asserts `message.collection() == Collection.TYPE`,
-       `message.action() == Action.UPDATE`,
-       `data.id == 'jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~ty~plate_96'`,
-       `data.operation == 'add_property'`,
-       `data.property_id == 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~pp~barcode'`,
-       `data.required == true`,
-       `data.keySet() == ['id', 'operation', 'property_id',
-         'required'] as Set`.
-   - **Add** `'entity-type-with-property example sequence shares one txn
-       id and the type-update references the property-definition by
-       id'`:
-     - Reads `01-…`, `02-…`, `04-…`, `05-…`, `09-…`.
-     - Asserts all five share the same `txn.uuid`.
-     - Asserts `02-…` is `Collection.PROPERTY` + `Action.CREATE`,
-       `04-…` is `Collection.TYPE` + `Action.CREATE`,
-       `05-…` is `Collection.TYPE` + `Action.UPDATE`.
-     - Asserts the cross-references hold verbatim:
-       `05-….data.id == 04-….data.id` (the type-update targets the
-       freshly-created bare entity-type) and
-       `05-….data.property_id == 02-….data.id` (the type-update
-       references the freshly-created text property definition).
-   - The existing
-     `'entity transaction example sequence shares one txn id and the
-       entity references the entity-type by id'` feature (lines
-     509–540) already covers `01 + 04 + 06 + 09` and is unchanged.
+   - **Add** `'ppy + create definition example uses the human-readable
+     kind, id, name, and value_schema shape'`:
+     - Reads `02-create-property-definition-text.json`.
+     - Asserts `message.collection() == Collection.PROPERTY`,
+       `message.action() == Action.CREATE`,
+       `data.kind == 'definition'`,
+       `data.id == 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~pp~barcode'`,
+       `data.name == 'barcode'`,
+       `data.value_schema.type == 'object'`,
+       `data.value_schema.required == ['text']`,
+       `data.value_schema.properties.text.type == 'string'`,
+       `data.keySet() == ['kind', 'id', 'name', 'value_schema'] as Set`.
+   - **Add** `'ppy + create numeric definition example uses
+     kind=definition with a multi-key value_schema'`:
+     - Reads `03-create-property-definition-numeric.json`.
+     - Asserts `data.kind == 'definition'`,
+       `data.id.endsWith('~pp~volume')`, `data.name == 'volume'`,
+       `data.value_schema.required == ['number', 'unit_id']`,
+       `data.value_schema.properties.number.type == 'number'`,
+       `data.value_schema.properties.unit_id.type == 'string'`.
+   - **Add** `'ppy + create assignment example uses the human-readable
+     kind, id, entity_id, property_id, and value shape'`:
+     - Reads `07-assign-property-value-text.json`.
+     - Asserts `message.collection() == Collection.PROPERTY`,
+       `message.action() == Action.CREATE`,
+       `data.kind == 'assignment'`,
+       `data.entity_id.endsWith('~en~plate_a')`,
+       `data.property_id.endsWith('~pp~barcode')`,
+       `data.value == [text: 'barcode-1']`,
+       `data.keySet() == ['kind', 'id', 'entity_id', 'property_id',
+        'value'] as Set`.
+     - Documents the canonical assignment shape so a future
+       assignment-materialization task does not have to rediscover it.
+   - **Add** `'property-definition transaction example sequence shares
+     one txn id and the assignment example references the
+     property-definition and entity by id'`:
+     - Reads `01-…`, `02-…`, `04-…`, `06-…`, `07-…`, `09-…`.
+     - Asserts all six share the same `txn.uuid`.
+     - Asserts the assignment cross-references hold verbatim:
+       `07-….data.entity_id == 06-….data.id` and
+       `07-….data.property_id == 02-….data.id`.
+     - Documents the full author flow even though `07-…` is not yet
+       materialized.
+   - The existing `'entity-type-with-property example sequence …'`
+     feature (lines 568–608) already covers `01 + 02 + 04 + 05 + 09`
+     and remains unchanged.
 
 6. **Backend integration test** in
    `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/`:
-   - **Default proposal:** extend the existing
-     `EntityCreateKafkaMaterializeIntegrationSpec.groovy` to publish
-     `open + 04-typ + 05-typ-update-add-property + 06-ent + commit`
-     instead of `open + 04-typ + 06-ent + commit`. Add one new
-     `awaitMongo` block proving the materialized `typ` root now
-     carries `properties.property_refs.<the test's property_id> ==
-     [required: true]`, with everything else (`name`, `description`,
-     empty `links`, `_head.provenance.collection == 'typ'`,
-     `_head.provenance.action == 'create'` — the create-time
-     provenance, not the update-time one — see Open question #4 for
-     whether `add_property` touches `materialized_at`) preserved.
-   - The spec stays opt-in (`JADETIPI_IT_KAFKA=1` + Kafka reachable).
-   - **Alternative:** add a dedicated
-     `EntityTypeUpdateAddPropertyKafkaMaterializeIntegrationSpec.groovy`
-     (~150 lines of boilerplate). Cleaner per-feature spec but
-     duplicates Kafka topic / producer / Mongo cleanup setup. Default
-     is to extend the existing spec.
+   - **Default proposal:** add a new dedicated spec
+     `PropertyDefinitionCreateKafkaMaterializeIntegrationSpec.groovy`,
+     modeled after `EntityCreateKafkaMaterializeIntegrationSpec` but
+     publishing exactly `open + 02-ppy-definition + commit` (three
+     messages) and asserting:
+     - The committed `txn` header reaches `state == 'committed'` and
+       carries a `commit_id`.
+     - The materialized `ppy` document at `_id == propertyDefinitionId`
+       carries `collection == 'ppy'`, `type_id == null`,
+       `properties.kind == 'definition'`,
+       `properties.name == 'barcode'`,
+       `properties.value_schema == [type: 'object', required: ['text'],
+        properties: [text: [type: 'string']]]`, and the expected
+       `_head.provenance.collection == 'ppy'` /
+       `_head.provenance.action == 'create'` / etc.
+     - **Optionally** also publishes `07-ppy-assignment` and asserts
+       no `ppy` document exists at the assignment ID, proving the
+       skip-still-skips behaviour end-to-end.
+   - The new spec keeps the same opt-in gate as the existing kafka
+     specs (`JADETIPI_IT_KAFKA=1` + Kafka reachable). ~150 lines of
+     mostly-boilerplate (producer / consumer / topic setup), ~50 lines
+     of the actual feature.
+   - **Alternative:** extend the existing
+     `EntityCreateKafkaMaterializeIntegrationSpec` to publish
+     `open + 02-ppy + 04-typ + 05-typ-update + 06-ent + commit` and
+     add the `ppy` assertion block. Smaller diff; more crowded
+     existing spec. **Default rejected** because the entity spec is
+     already large after TASK-030's add_property block, and a
+     dedicated property-definition spec gives the future
+     property-assignment task a clear extension point.
    - **If** the director prefers no integration change, the
-     `processTypUpdateAddProperty` materializer behaviour is fully
-     covered by the unit features above. The end-to-end Kafka → Mongo
-     proof for `add_property` would then be deferred. See Open
-     question #5.
+     materializer behaviour is fully covered by the unit features
+     above. The end-to-end Kafka → Mongo proof for property
+     definitions would then be deferred. See Open question #4.
 
 7. **Documentation updates:**
    - `docs/architecture/kafka-transaction-message-vocabulary.md`:
-     - Lines 104–121 ("Types And Properties"): replace "The
-       materialized type document should eventually include property
-       references, not embedded property definitions." with a
-       concrete description of the materialized
-       `properties.property_refs.<property_id>` sub-map shape (or
-       Alternative A/B/C if the director rules differently). Note
-       that the reference value carries only the wire-shape
-       `required` metadata and that the materializer does not
-       resolve `data.property_id` against the `ppy` collection.
+     - Lines 79–102 ("Property Definitions"): append a paragraph
+       describing the materialized root shape: `_id == data.id`,
+       `collection: "ppy"`, `type_id: null`, root `properties.kind ==
+       "definition"`, `properties.name`, `properties.value_schema`
+       (verbatim opaque copy), `links: {}`, `_head.provenance.collection
+       == "ppy"`. Note the materializer does not validate
+       `value_schema` against future assignment values; that lookup
+       still belongs to a future read-time validator.
      - Lines 257–263 ("Committed Materialization Of Locations And
-       Links"): expand the supported set from
-       "(both link-type and bare entity-type) for `typ + create`" to
-       also include "`typ + update add_property`". Replace the
-       sentence that currently says `typ + update` is not
-       materialized with the narrower scope: every other
-       collection/action and every `typ + update` whose
-       `data.operation` is not `add_property` remains
-       `skippedUnsupported`.
-     - One sentence on missing-target / idempotent / conflicting
-       behaviour, mirroring the existing `*+create` paragraph.
-   - `docs/OVERVIEW.md`: a single sentence in the materializer-scope
-     section noting that `typ + update add_property` is now
-     materialized as a property reference on the materialized type
-     root. (Anticipated 1–3 line edit; no structural change.)
+       Links"): expand the supported set to add `ppy + create` whose
+       `data.kind == "definition"`, and update the
+       `skippedUnsupported` sentence to call out `ppy + create` whose
+       `data.kind != "definition"` (including `"assignment"`) as
+       still skipped.
+     - Lines 138–158 ("Property Value Assignment"): add a one-sentence
+       note that assignment materialization remains a separate future
+       task; the canonical assignment wire shape is preserved
+       verbatim.
+   - `docs/OVERVIEW.md`: lines 323–328 — add `ppy + create
+     kind=definition` to the materialization next-steps bullet next
+     to the existing `loc + create` / `typ + create` /
+     `typ + update add_property` mention. Anticipated 1–2 line edit;
+     no structural change.
    - `docs/architecture/jade-tipi-object-model-design-brief.md`: no
      change anticipated; the brief stays at the logical model level
      and is agnostic to the physical sub-map placement.
-   - `DIRECTION.md`: no change anticipated; lines 24–32 already
-     describe the type-defines-permitted-properties direction at the
+   - `DIRECTION.md`: no change anticipated; the document already
+     describes property definitions as first-class objects at the
      human-language level.
 
 #### Expected total surface (with default proposals selected)
 
 - **0 example resource edits.**
-- ~25–40 lines of materializer source change in
-  `CommittedTransactionMaterializer.groovy` (new constants, `isSupported`
-  branch, `processTypUpdateAddProperty` helper, doc edits). No
-  refactoring of existing create/insert paths.
-- 1 new line in `MaterializeResult.groovy` (additive
-  `skippedMissingTarget` field).
-- ~150–220 lines of new/changed Spock features in the materializer spec
-  (1 feature flipped, 5–6 new features, optional 1 mixed-snapshot
-  extension).
-- ~50–80 lines of two new features in `MessageSpec` (DTO co-presence
-  + 5-message txn chain).
-- ~40–60 lines of new publish/wait/assert block in
-  `EntityCreateKafkaMaterializeIntegrationSpec.groovy`.
-- ~10–20 lines of doc edit across
+- ~15–25 lines of materializer source change in
+  `CommittedTransactionMaterializer.groovy` (3 new constants, one
+  switch case branch, one nested `data.kind` check, doc edits). No
+  refactoring of existing create / insert / duplicate-handling paths.
+- 0 lines in `MaterializeResult.groovy` (no new counter required).
+- ~150–220 lines of new/changed Spock features in the materializer
+  spec (1 feature flipped, 5–6 new features, 1 mixed-snapshot
+  update, helper rename, optional sibling mixed-snapshot).
+- ~80–120 lines of three new features in `MessageSpec` (text
+  definition, numeric definition, assignment shape, optional 6-message
+  txn chain).
+- ~150–220 lines of new
+  `PropertyDefinitionCreateKafkaMaterializeIntegrationSpec.groovy`
+  (mostly boilerplate; the actual feature is ~50 lines).
+- ~20–30 lines of doc edit across
   `kafka-transaction-message-vocabulary.md` + `docs/OVERVIEW.md`.
 
 #### Cross-cutting impact (read of source on `claude-1`)
 
-- `ContentsLinkReadService` queries `typ` for documents with
-  `properties.kind == "link_type"` and `properties.name == "contents"`.
-  Adding `properties.property_refs` to bare entity-type roots does not
-  affect those criteria (link-type roots do not currently carry
-  `property_refs`, and the dotted-path match is unaffected by other
-  sibling keys). No read-service change required.
+- `ContentsLinkReadService` queries `typ` for `properties.kind ==
+  "link_type"` and `properties.name == "contents"`. Materializing
+  `ppy` documents with `properties.kind == "definition"` does not
+  affect those criteria (different collection, and `kind` value is
+  scoped to the `typ` filter). No read-service change required.
 - `GroupAdminService` writes only `grp` documents. Unaffected.
-- `TransactionService` / `CommittedTransactionReadService` / persistence
-  paths treat message `data` as opaque. Unaffected.
-- `kli` CLI and frontend already accept `--collection typ --action
-  update` and pass `data` through unchanged. No CLI / UI surface
+- `TransactionService` / `CommittedTransactionReadService` /
+  persistence paths treat message `data` as opaque. Unaffected.
+- `kli` CLI and frontend already accept `--collection ppy --action
+  create` and pass `data` through unchanged. No CLI / UI surface
   change is needed for human submitters.
-- `06-create-entity.json` references the type by `data.type_id`; that
-  reference does not depend on whether the type carries property refs.
-  No `ent` materialization change required.
+- TASK-030's `typ + update add_property` branch records
+  `properties.property_refs.<property_id>` *references* on the type
+  root by ID. TASK-031 produces the actual `ppy` documents that those
+  IDs would resolve to, but the materializer still does not perform
+  semantic resolution between the two collections — the directive
+  forbids it (TASK-031 OUT_OF_SCOPE: "no semantic validation that
+  `typ.data.property_id` resolves").
+- `06-create-entity.json`'s `ent` materialization is unaffected; it
+  references the type by `data.type_id`, not the property definition.
+- `07-…` and `08-…` continue to be ingested into the `txn` write-
+  ahead log, validated by the schema, and stored as committed
+  messages — they just don't produce a long-term `ppy` collection
+  document yet.
 
 #### Out-of-scope guardrails (will **not** edit unless director ruling expands scope)
 
 - `clients/kafka-kli/**` — no CLI change is needed.
-- `frontend/**` — no UI surface for raw type-update submission.
+- `frontend/**` — no UI surface for raw property-definition submission.
 - `message.schema.json` — see Schema status above.
 - `frontend/.env.local` — generated; never hand-edited.
-- `02-…` and `03-…` — `ppy + create` materialization remains out of
-  scope (no semantic resolution of `data.property_id`).
-- `07-…`, `08-…` — `ppy + create` property-assignment materialization
-  remains out of scope.
-- `04-create-entity-type.json` and `06-create-entity.json` — TASK-029
-  and TASK-028 already landed the accepted shapes; do not edit.
+- `02-…`, `03-…`, `07-…`, `08-…` — wire shapes are already canonical
+  and are exercised by the existing schema/round-trip loop. Plan §5
+  adds focused asserts without editing the JSON files.
+- `04-…`, `05-…`, `06-…` — TASK-028 / TASK-029 / TASK-030 already
+  landed the accepted shapes; do not edit.
 - Authentication, Keycloak, admin group-management, permission
   enforcement — out of scope per active focus.
 
@@ -853,29 +1008,30 @@ Per task `VERIFICATION` section. Run inside the developer worktree
 
 ```sh
 # 1. DTO library tests — round-trips and schema validation for the
-#    type-update example plus the new focused MessageSpec features.
+#    property-definition examples plus the new focused MessageSpec
+#    features.
 ./gradlew :libraries:jade-tipi-dto:test
 
 # 2. Backend unit tests — CommittedTransactionMaterializerSpec covers
-#    the new typ + update add_property root-update shape, the
-#    missing-target skip, the idempotent duplicate, the conflicting
-#    duplicate, the missing-property_id skipped-invalid case, and the
-#    other-operation skipped-unsupported case. Other unit tests
-#    (group, contents read, transaction service, etc.) are unaffected
-#    and rerun for regression confirmation.
+#    the new ppy + create kind=definition root materialization, the
+#    kind=assignment / missing-kind / unknown-kind skip paths, the
+#    missing-id skipped-invalid case, and the duplicate-matching /
+#    conflicting-duplicate paths. Other unit tests (group, contents
+#    read, transaction service, etc.) are unaffected and rerun for
+#    regression confirmation.
 ./gradlew :jade-tipi:test
 
 # 3. Narrowest practical Kafka/Mongo integration test (only if local
-#    Docker is running). The extended
-#    EntityCreateKafkaMaterializeIntegrationSpec drives an end-to-end
-#    open + 04-typ + 05-typ-update-add-property + 06-ent + commit ->
-#    materialized typ (with properties.property_refs) + ent roots
-#    proof.
+#    Docker is running). The new dedicated
+#    PropertyDefinitionCreateKafkaMaterializeIntegrationSpec drives an
+#    end-to-end open + 02-ppy + commit -> materialized ppy proof.
 docker compose -f docker/docker-compose.yml up -d
 JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest \
-    --tests '*EntityCreateKafkaMaterializeIntegrationSpec*'
+    --tests '*PropertyDefinitionCreateKafkaMaterializeIntegrationSpec*'
 
 # Optional regression checks (rerun if local stack is healthy):
+JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest \
+    --tests '*EntityCreateKafkaMaterializeIntegrationSpec*'
 JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest \
     --tests '*TransactionMessageKafkaIngestIntegrationSpec*'
 JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest \
@@ -896,9 +1052,9 @@ missing they are reported, not treated as product blockers):
   invocation bootstraps it; that is normal first-run behaviour, not
   a blocker.
 - If a stale Gradle daemon is implicated, run `./gradlew --stop`
-  before retrying (per `DIRECTIVES.md` TASK-026/27/28/29 review notes
-  that consistently recommend `./gradlew --stop` when the wrapper
-  cache lock fails with "Operation not permitted").
+  before retrying (per `DIRECTIVES.md` TASK-026/27/28/29/30 review
+  notes that consistently recommend `./gradlew --stop` when the
+  wrapper cache lock fails with "Operation not permitted").
 - If integration tests cannot run because Docker is not available
   in the sandbox, report the exact `docker compose ... up` command
   and stop rather than treating it as a product blocker.
@@ -912,129 +1068,78 @@ advance the task. If the director prefers I stop with `STATUS:
 HUMAN_REQUIRED` on any of these instead of proposing a default, please
 redirect.
 
-1. **Where to place property references on the materialized `typ` root
-   document.** This is the central design choice the directive asks for.
-   - **Default proposal:** root
-     `properties.property_refs.<property_id>: {required: bool}` —
-     ID-keyed sub-map under `properties`, separated from the type's
-     scalar facts (`name`, `description`).
-   - **Alternative A:** root `links.<property_id>: {required: bool}`.
-     Smallest delta to existing `links: {}` initialization, but
-     conflates type-to-property-definition references with the
-     denormalized inverse-link projection semantics that `lnk` /
-     `loc` materialization use today.
-   - **Alternative B:** new top-level field
-     `property_refs: {<property_id>: {required: bool}}`. Clearest
-     separation of concerns but introduces a new reserved root field;
-     the directive's "another already-documented root field" wording
-     reads as a soft preference against a brand-new field.
-   - **Alternative C:** `properties.<property_id>: {required: bool}`
-     (no intervening sub-map). Mixes scalar facts with `~`-keyed
-     references in one map. Smallest schema delta, ugliest read.
-
-2. **`MaterializeResult` field for the missing-target case.**
-   - **Default proposal:** add a new `int skippedMissingTarget = 0`
-     field. Purely additive; existing callers/tests untouched.
-     Clear, purpose-specific.
-   - **Alternative:** reuse the existing `int skippedUnsupported`
-     counter with a specific log line. Smaller diff (no
-     `MaterializeResult.groovy` edit) but conflates "unsupported by
-     this materializer" with "supported but the target root does not
-     yet exist."
-
-3. **Default value for `required` when `data.required` is absent on
-   the wire.**
-   - **Default proposal:** **omit** `required` from the materialized
-     reference entry. The materialized sub-map then carries
-     `{<property_id>: {}}` (an empty reference object). The
-     materializer does not invent a value, mirroring the
-     `DIRECTION.md` "the materializer should not invent property
-     values" directive.
-   - **Alternative:** default to `false`. Simpler downstream reads
-     (always present, always bool) but invents a value the producer
-     did not state.
-
-4. **Whether `add_property` touches `_head.provenance` on the target
-   root.**
-   - **Default proposal:** on a successful `$set`, also `$set`
-     `_head.provenance.materialized_at` to `Instant.now()` so future
-     readers can tell the root was last touched after the
-     `add_property` apply. Leave `_head.provenance.txn_id`,
-     `commit_id`, `msg_uuid`, `collection`, `action`, and
-     `committed_at` **unchanged** — those still describe the
-     create-time provenance. Document this as a deliberate single-
-     field touch, not a full provenance rewrite.
-   - **Alternative A:** rewrite `_head.provenance` in full on
-     `add_property` apply (txn_id/commit_id/msg_uuid/action all
-     point at the `update` message). Cleaner "last writer wins"
-     provenance but loses the create-time history visible at the
-     root level.
-   - **Alternative B:** maintain a small `_head.provenance.history`
-     array carrying one entry per applied message
-     (`txn_id`/`commit_id`/`msg_uuid`/`action`/`materialized_at`).
-     Richest history but introduces a new sub-shape that no current
-     reader uses; out of scope for the bounded TASK-030 proof.
-   - **Alternative C:** do not touch `_head` on `add_property`
-     apply. Smallest diff; no field invention. But future readers
-     have no signal that the root was updated post-create.
-   - I'm proposing the Default; flagging because none of the
-     accepted prior tasks have written a partial-update path and
-     this is a precedent decision.
-
-5. **Integration spec scope.**
-   - **Default proposal:** extend `EntityCreateKafkaMaterializeIntegrationSpec`
-     in place to publish 4 → 5 → 6 → commit and assert the
-     materialized type carries the `add_property` reference.
-     Smallest delta; reuses the existing producer/consumer/cleanup.
-   - **Alternative A:** add a dedicated
-     `EntityTypeUpdateAddPropertyKafkaMaterializeIntegrationSpec`.
-     Cleaner per-feature spec; ~150 lines of duplicated boilerplate.
-   - **Alternative B:** rely on materializer unit tests; do not
-     change integration coverage. Cheapest diff; loses the end-to-end
-     Kafka → Mongo `add_property` proof.
-
-6. **`updateEntityTypeMessage()` helper's `~ppy~` segment vs.
-   `05-…` JSON's `~pp~` segment.** The Spock helper at
-   `CommittedTransactionMaterializerSpec.groovy:133` uses
-   `'…~ppy~barcode'` while `05-update-entity-type-add-property.json`
-   uses `'…~pp~barcode'`. Both are accepted today because nothing
-   resolves the property ID semantically. The helper's value is
-   internal to the spec; the JSON example's value is the canonical
-   wire shape. **No action is required of the director here** — I
-   am not proposing to "fix" either side per the directive's
-   "Preserve the current example ID strings" guidance, and per the
-   `OUT_OF_SCOPE` "Do not redesign the ID abbreviation scheme."
-   Flagged here only for director visibility / future ID-cleanup
-   follow-up.
-
-7. **Should the bounded proof also exercise `add_property` against a
-   link-type `typ` root** (the `11-create-contents-type.json` shape
-   with `data.kind == "link_type"`)?
-   - **Default proposal:** no. The directive's wire example
-     `05-…` targets the bare-entity-type root from `04-…`. Adding
-     link-type coverage broadens the bounded proof. The materializer
-     code path is uniform across both `typ` kinds (they both use the
-     same root shape), so unit-level coverage of the bare-entity-type
-     case is sufficient for the bounded proof.
-   - **Alternative:** add one Spock feature confirming `add_property`
-     also lands on a link-type `typ` root. Tiny addition; acceptable
-     if the director wants it.
-
-8. **Follow-up task creation.** TASK-030 covers `typ + update
-   add_property` only. Likely follow-on units (separate tasks):
-   - `typ + update remove_property` (mirror `add_property`).
-   - `typ + update update_required` or richer reference metadata
-     edits.
-   - `ppy + create` materialization (the property-definition itself).
-   - Semantic resolution of `data.property_id → ppy` at materializer
-     time, or at a separate `vdn` validator pass.
-   - Property-value-assignment materialization (`07-…`, `08-…`).
+1. **Whether to materialize `data.kind` as `properties.kind ==
+   "definition"` on the `ppy` root.** Default proposal: YES (mirrors
+   `typ` link-type discrimination via `properties.kind == "link_type"`;
+   gives downstream readers a cheap MongoDB filter). Alternative: drop
+   `kind` from the materialized `properties` map. See Decision §1.
+2. **Whether to materialize `ppy + create kind=assignment` in this
+   iteration.** Default proposal: NO; defer to a separate follow-up
+   task. The bounded proof covers only definition. See Decision §2.
+3. **`value_schema` placement and treatment.** Default proposal: copy
+   verbatim under root `properties.value_schema` as an opaque JSON
+   object; no validation, no walk into nested keys at materializer
+   time. Alternatives: promote to a top-level reserved field, or
+   normalize/parse it at materializer time. See Decision §3.
+4. **Integration spec scope.** Default proposal: add a dedicated
+   `PropertyDefinitionCreateKafkaMaterializeIntegrationSpec` (~150
+   lines mostly boilerplate). Alternatives: extend
+   `EntityCreateKafkaMaterializeIntegrationSpec` in place; or rely on
+   unit tests only and defer integration coverage. See Plan §6.
+5. **`propertyCreateMessage()` Spock helper's `~ppy~` segment vs.
+   `02-…` JSON's `~pp~` segment.** The Spock helper at
+   `CommittedTransactionMaterializerSpec.groovy:171` uses
+   `'…~018fd849-2a41-7111-8a01-cccccccccccc~ppy~barcode'` while
+   `02-create-property-definition-text.json` uses
+   `'…~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~pp~barcode'`. Both are
+   accepted today because the materializer treats `data.id` as opaque
+   and nothing resolves the property ID semantically. The helper's
+   value is internal to the spec; the JSON example's value is the
+   canonical wire shape. This pre-existing discrepancy was previously
+   flagged by TASK-030 pre-work (Open question #6) and remains
+   unaddressed. **Default proposal:** preserve both verbatim — do not
+   "fix" either side per the directive's "Preserve the current example
+   ID strings" guidance and the `OUT_OF_SCOPE` "Do not redesign the
+   ID abbreviation scheme." The renamed
+   `propertyDefinitionCreateMessage()` helper inherits whatever ID the
+   director rules. Flagged here for visibility / future ID-cleanup
+   follow-up; an option here is to rename the helper's synthetic ID
+   from `~ppy~` to `~pp~` *only* in the helper-rename diff so the new
+   tests align with the canonical wire shape, without touching any
+   non-test source.
+6. **Mixed-snapshot polish.** Default proposal: update the existing
+   mixed-snapshot feature to expect the definition message
+   materializes (counts move from `5,1` to `6,0`). Optional addition:
+   a sibling mixed-snapshot feature also pushing an assignment
+   message and asserting it is the only `skippedUnsupported`. Default:
+   skip the addition unless the director asks for it; the dedicated
+   assignment-skip feature plus the updated mixed-snapshot already
+   cover the codepaths.
+7. **Whether to add a 6-message DTO chain test (`01 + 02 + 04 + 06 +
+   07 + 09`)** documenting the canonical author flow even though
+   `07-…` is not yet materialized. Default proposal: YES (Plan §5);
+   the test asserts cross-reference IDs only, never invokes the
+   materializer, and gives the future assignment-materialization task
+   a starting point. Alternative: defer the assignment chain test to
+   that future task.
+8. **Follow-up task creation.** TASK-031 covers `ppy + create
+   kind=definition` only. Likely follow-on units (separate tasks):
+   - `ppy + create kind=assignment` — property-value materialization,
+     including whether assignments project as separate `ppy` docs,
+     into the entity's `ent` root, or both.
+   - `ppy + update` — definition edits (renaming, value_schema
+     evolution, deprecation).
+   - Semantic resolution of `typ.data.property_id → ppy` and
+     `ent.data.type_id → typ` at materializer or `vdn` validator
+     time.
+   - Value-shape validation against the registered
+     `value_schema` (a `vdn`-collection scope).
    - **Default proposal:** create no follow-on task in this pre-work
-     turn; let the director sequence those after TASK-030 acceptance,
+     turn; let the director sequence those after TASK-031 acceptance,
      mirroring the TASK-026 → TASK-027 → TASK-028 → TASK-029 →
-     TASK-030 rhythm.
+     TASK-030 → TASK-031 rhythm.
 
-If the director rules on items 1–5 (and optionally 7) in the next
+If the director rules on items 1–4 (and optionally 5–7) in the next
 direction update, I can proceed with the implementation turn directly.
 If any are unclear or need more time, please advance with a "use the
 default proposals" signal and I will follow them.
@@ -1055,6 +1160,6 @@ It does **not** touch:
 - `DIRECTIVES.md`, `ORCHESTRATOR.md`, `AGENTS.md`, or `claude-1.md`.
 
 Per the orchestrator protocol, I stop here and wait for the director
-to set TASK-030 to `READY_FOR_IMPLEMENTATION` (or change the global
+to set TASK-031 to `READY_FOR_IMPLEMENTATION` (or change the global
 signal to `PROCEED_TO_IMPLEMENTATION`) before making any of the
 implementation-turn changes listed in the plan above.
