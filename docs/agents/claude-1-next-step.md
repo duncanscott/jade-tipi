@@ -4,278 +4,366 @@ The developer writes pre-work plans here before implementation begins.
 
 STATUS: PRESENT
 
-## TASK-026 — Human-readable Kafka loc submission path (pre-work, revision 1)
+## TASK-027 — Human-readable Kafka contents link submission path (pre-work, revision 1)
 
 ### Directive summary
 
 `DIRECTIVES.md` global signal is `REQUEST_NEXT_STEP`. The active task file
-`docs/orchestrator/tasks/TASK-026-human-readable-kafka-loc-submission.md`
-is `READY_FOR_PREWORK` with `OWNER: claude-1`. The director scoped TASK-026
+`docs/orchestrator/tasks/TASK-027-human-readable-kafka-contents-link-submission.md`
+is `READY_FOR_PREWORK` with `OWNER: claude-1`. The director scoped TASK-027
 to prove that a human-readable Kafka transaction can create a root-shaped
-`loc` document in MongoDB through the existing `txn` ingest, commit, and
-materialization path. The bounded outcome is:
+`contents` `lnk` document and that the existing contents read path can
+consume that materialized link shape. The bounded outcome is:
 
-- Document and, if necessary, adjust the accepted `loc + create` message
+- Document and, if necessary, adjust the accepted human-readable `lnk + create`
   shape so it is easy to hand-author:
-  - top-level `collection: "loc"` and `action: "create"`,
-  - `data.id` is the materialized object ID,
-  - `data.type_id` is optional,
-  - `data.properties` is a plain JSON object,
-  - `data.links` is optional or empty on create.
-- Add or update example resource JSON showing one complete transaction
-  (open → create one `loc` → commit) under
-  `libraries/jade-tipi-dto/src/main/resources/example/message/`.
-- Ensure the materialized Mongo document remains root-shaped with `_id`,
-  `id`, `collection: "loc"`, `_head`, `properties`, and `links`.
+  - top-level `collection: "lnk"` and `action: "create"`,
+  - `data.id` is the materialized link object ID,
+  - `data.type_id` references a `typ` link-type record,
+  - `data.left` and `data.right` are raw endpoint IDs,
+  - `data.properties` is a plain JSON object for instance facts such as
+    plate-well position.
+- Add or update example resource JSON only if the existing examples do not
+  already show a complete open, contents-type/link create, and commit flow.
+- Ensure the materialized Mongo `lnk` document remains root-shaped with
+  `_id`, `id`, `collection: "lnk"`, top-level `type_id`, `left`, `right`,
+  `_head`, `properties`, and `links`.
 - Add focused automated coverage proving the example/message shape
-  round-trips through DTO validation and materializes a `loc` root with
-  the expected JSON shape.
+  round-trips through DTO validation, materializes a `lnk` root with the
+  expected JSON shape, and remains readable by the existing contents read
+  service where that can be covered without adding new product behavior.
 
-Out of scope (per task file): no new HTTP submission endpoints, no full
-property-definition / type-validation system, no `ent` materialization,
-no permission enforcement, no canonical `parent_location_id` on `loc`,
-no nested-operation Kafka DSL.
+Out of scope (per task file and directive): no HTTP submission endpoints,
+no `ent` materialization, no property-assignment materialization, no
+permission enforcement, no object extension pages, no endpoint projection
+maintenance, no full Clarity/ESP import, no semantic resolution of
+`data.type_id` / `data.left` / `data.right`, no `parent_location_id` on
+`loc`, no nested-operation Kafka DSL.
 
 This pre-work turn produces a plan only and edits exactly
 `docs/agents/claude-1-next-step.md` (a base owned path). No source change
-is made until the director advances TASK-026 to
+is made until the director advances TASK-027 to
 `READY_FOR_IMPLEMENTATION` / `PROCEED_TO_IMPLEMENTATION`.
 
 ### Authoritative product direction (read first)
 
-- `DIRECTION.md` "Human-Readable Kafka Submission" (lines 103–137)
-  prescribes the new shape, including `data.type_id` optional,
-  `data.properties` plain JSON object keyed by property name, and
-  `data.links` normally empty on create.
+- `DIRECTION.md` "Link-Centric Relationships" (lines 139–156),
+  "Contents Link Type" (lines 158–175), "Plates And Wells" (lines 177–209),
+  and "Query Direction" (lines 211–222) prescribe the canonical
+  contents-link shape: `type_id`, `left`, `right`, instance `properties`
+  (e.g. `position`), with link-type semantics living in `typ`. Concrete
+  links should not repeat the labels.
 - `docs/architecture/kafka-transaction-message-vocabulary.md`
-  "Human-Readable Authoring Rule" (lines 28–68) repeats the shape in the
-  vocabulary doc and explicitly notes that "the early materializer may
-  also tolerate older examples that put `name` and `description`
-  directly under `data`, but new examples should prefer the explicit
-  `data.properties` object." Back-compat is therefore a stated tolerance,
-  not a long-term contract.
-- `docs/architecture/kafka-transaction-message-vocabulary.md` lines
-  257–263 ("Committed Materialization Of Locations And Links") confirms
-  the materialized root-document contract: top-level `_id`, `id`,
-  `collection`, `type_id`, explicit `properties`, denormalized `links`,
-  and `_head.provenance`. The new shape must preserve those fields
-  unchanged.
-- TASK-013 (root-shaped contract), TASK-014 (root-shaped materializer),
-  and TASK-019 (Clarity/ESP container prototype) are all accepted; they
-  define the root-document shape and the existing materializer entry
-  point that this task must reuse rather than replace.
+  "Link Types And Concrete Links" (lines 161–209) repeats the human-readable
+  shape and is explicit that semantic checks (resolution of `type_id`,
+  `left`, `right`, and `allowed_*_collections`) are not enforced by
+  `message.schema.json` and remain a follow-up reader/materializer
+  concern.
+- `docs/architecture/kafka-transaction-message-vocabulary.md`
+  "Committed Materialization Of Locations And Links" (lines 257–263) and
+  "Reading `contents` Links" (lines 266–281) document the existing
+  materializer and `ContentsLinkReadService` contract that this task must
+  exercise rather than replace. The reader resolves the canonical
+  `contents` type by querying root-shaped `typ` for
+  `properties.kind == "link_type"` AND `properties.name == "contents"`,
+  then filters `lnk.type_id` with `$in` against every matching declaration.
+- TASK-008 (link-type vocabulary), TASK-015 (contents read over root
+  shape), TASK-019 (Clarity/ESP container prototype), and TASK-026
+  (human-readable `loc + create` path) are all accepted; they define
+  the materializer entry point and the human-readable wire conventions
+  that this task must reuse.
+
+### Current example resource state (read of source on `claude-1`)
+
+`libraries/jade-tipi-dto/src/main/resources/example/message/`:
+
+- `01-open-transaction.json` — `txn + open` with
+  `txn.uuid = 018fd849-2a40-7abc-8a45-111111111111`. Sequence anchor.
+- `09-commit-transaction.json` — `txn + commit` on the same txn uuid.
+- `11-create-contents-type.json` — `typ + create` with `data.kind:
+  "link_type"`, `data.name: "contents"`, `data.left_role: "container"`,
+  `data.right_role: "content"`, `data.left_to_right_label: "contains"`,
+  `data.right_to_left_label: "contained_by"`,
+  `data.allowed_left_collections: ["loc"]`,
+  `data.allowed_right_collections: ["loc", "ent"]`. Six declarative
+  facts at the flat `data` root, no nested `properties` map. This is
+  the intended shape for link-type declarations (typ link-types do not
+  carry instance-style properties; their facts are the type definition).
+- `12-create-contents-link-plate-sample.json` — `lnk + create` with
+  `data.id = …~lnk~plate_b1_sample_x1`,
+  `data.type_id = …~typ~contents`,
+  `data.left = …~loc~plate_b1`,
+  `data.right = …~ent~sample_x1`,
+  `data.properties.position = { kind: 'plate_well', label: 'A1', row:
+  'A', column: 1 }`. Matches the canonical contents-link shape from
+  the architecture doc verbatim.
+
+The shared `txn.uuid` across `01`, `11`, `12`, and `09` already chains
+them as one transaction. `12` references endpoint IDs (`loc~plate_b1`,
+`ent~sample_x1`) that are not created by earlier examples; per the task
+scope ("Do not add semantic validation that `data.type_id`, `data.left`,
+or `data.right` resolve to committed records"), this is intentional and
+out of scope to "fix". `10-create-location.json` creates `loc~freezer_a`,
+which is a separate location example and not the plate referenced by 12.
+
+Conclusion: **the existing example resources already express the
+human-readable contents-type/contents-link shape** prescribed by
+`DIRECTION.md` and the vocabulary doc. No example file rewrite is
+required. The "complete open, contents-type/link create, and commit
+flow" is expressible as `01 → 11 → 12 → 09`, all sharing the same
+`txn.uuid`.
 
 ### Current materializer behaviour (read of source on `claude-1`)
 
 `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`:
 
-- `isSupported()` (lines 206–226) accepts `loc + create` unconditionally.
-- `buildDocument()` (lines 240–262) for non-`lnk` collections (so for
-  `loc`, `grp`, `typ` link-type) calls `buildInlineProperties(data)`,
-  which copies every `data` entry except `id` and `type_id` directly into
-  root `properties`. There is no recognition of `data.properties` or
-  `data.links` sub-objects for `loc`.
-- For `lnk` only, the materializer already does the right thing: it
-  reads `data.properties` and copies it via `copyProperties()` into root
-  `properties`. The existing `lnk` path is the model the `loc` path
-  should match.
-- Root `links` is hard-coded to an empty `LinkedHashMap` for every
-  supported collection; submitted `data.links` is currently ignored.
+- `isSupported()` (lines 206–226) accepts:
+  - `lnk + create` unconditionally,
+  - `typ + create` only when `data.kind == "link_type"` (entity-type
+    `typ` records are skipped as `skippedUnsupported`).
+- `buildDocument()` (lines 240–266) for `lnk` (lines 251–255) reads
+  `data.left`, `data.right`, copies `data.properties` verbatim into
+  root `properties` (or `[:]` when missing/non-Map), and forces root
+  `links = [:]`. Top-level `_id`, `id`, `collection: "lnk"`, and
+  `type_id` are populated from the message. Result root shape:
+  `_id, id, collection, type_id, left, right, properties, links: {},
+  _head{ schema_version, document_kind, root_id, provenance{...} }`.
+- For `typ + create` link-type, `buildDocument()` falls into the
+  non-`lnk`/`lnk`-vs-`loc-grp` branch. After TASK-026 the branch
+  prefers `data.properties` when it is a Map; if absent it falls back
+  to `buildInlineProperties(data)` which copies every `data` entry
+  except `id` and `type_id` into root `properties`. The current
+  link-type example carries flat `kind`, `name`, `left_role`,
+  `right_role`, etc. with no nested `properties`, so the legacy
+  inline-properties branch runs and produces root `properties.kind ==
+  'link_type'`, `properties.name == 'contents'`, plus the role and
+  label facts. That shape exactly matches the dotted-path criteria
+  used by `ContentsLinkReadService.resolveContentsTypeIds()` (lines
+  134–142 of `ContentsLinkReadService.groovy`):
+  `properties.kind == "link_type"` AND `properties.name == "contents"`.
 
-Implication: the proposed human-readable shape
+**Implication: the materializer already produces the documented
+root-shaped `lnk` and `typ` documents from the existing examples.**
+No materializer code change is required for this task. The acceptance
+criteria for "materialized Mongo `lnk` document remains root-shaped
+with `_id`, `id`, `collection: 'lnk'`, top-level `type_id`, `left`,
+`right`, `_head`, `properties`, and `links`" is already met by
+`CommittedTransactionMaterializer.buildDocument()`.
 
-```json
-{
-  "collection": "loc",
-  "action": "create",
-  "data": {
-    "id": "...",
-    "type_id": "...",
-    "properties": { "name": "Freezer 01", "description": "..." },
-    "links": {}
-  }
-}
-```
+### Current automated coverage (read of source on `claude-1`)
 
-does **not** materialize correctly today. The current code would write
-root `properties = { "properties": { "name": "...", ... }, "links": {} }`
-— a doubly-nested `properties` map and `links` mistakenly stored inside
-`properties`. The schema accepts the payload (snake-case keys), the
-ingest persists it, and the commit projection runs, but the projected
-shape violates the root-document contract and breaks
-`ContentsLinkReadService` / contents read service consumers that expect
-the documented root shape.
+DTO library:
+
+- `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`:
+  - `EXAMPLE_PATHS` (lines 24–38) loops every example resource through
+    `JsonMapper` round-trip (lines 86–109) and `Message.validate()`
+    schema validation (lines 111–125). `11-create-contents-type.json`
+    and `12-create-contents-link-plate-sample.json` are both covered.
+  - "contents typ example declares the canonical link-type facts"
+    (lines 330–352) reads `11-…` and asserts `data.kind`, `data.id`,
+    `data.name`, `data.left_role`, `data.right_role`,
+    `data.left_to_right_label`, `data.right_to_left_label`,
+    `data.allowed_left_collections`, `data.allowed_right_collections`.
+  - "contents lnk example references the contents type and carries a
+    position property" (lines 434–458) reads `12-…` and asserts
+    `data.id`, `data.type_id`, `data.left`, `data.right`, and
+    `data.properties.position`.
+
+Backend unit:
+
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`:
+  - "materializes a link-type typ create root with all six declarative
+    facts under properties" (lines 407–448) asserts `_id`, `id`,
+    `collection == 'typ'`, `type_id == null`, the six declarative facts
+    + `allowed_*_collections` under `properties`, `links == [:]`, and
+    `_head.provenance` with `collection == 'typ'`, `action == 'create'`.
+  - "skips a typ create whose data.kind is not link_type" (lines
+    450–458) confirms entity-type `typ` records remain skipped.
+  - "materializes a lnk create as a root with top-level type_id, left,
+    right, and properties.position" (lines 460–497) asserts the full
+    `lnk` root shape — `_id`, `id`, `collection == 'lnk'`, top-level
+    `type_id`, `left`, `right`, `properties.position` verbatim,
+    `links == [:]`, `_head.provenance.collection == 'lnk'`,
+    `_head.provenance.msg_uuid` populated, no `_jt_provenance`.
+  - "lnk create without payload properties defaults root properties to
+    an empty map" (lines 499–517) covers the missing-properties branch.
+  - "mixed-message snapshot inserts in snapshot order with correct
+    counts" (lines 888–920) covers an end-to-end snapshot with
+    `loc + ppy(skip) + typ link-type + ent(skip) + lnk` and asserts
+    insert order `['loc', 'typ', 'lnk']` and counts.
+
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/ContentsLinkReadServiceSpec.groovy`
+  builds root-shaped `typ` and `lnk` docs (lines 58–125) that exactly
+  mirror what the materializer writes, then asserts the reader's
+  Mongo criteria: `typ` filter on `properties.kind == 'link_type'` AND
+  `properties.name == 'contents'` (lines 207–212), `lnk` filter on
+  `type_id $in <resolved>` and `left == containerId` (lines 214–223)
+  or `right == objectId` (lines 304–330), with deterministic `_id ASC`
+  sort. Provenance is read from `_head.provenance` with legacy
+  `_jt_provenance` fallback.
+
+Backend integration (opt-in, gated on `JADETIPI_IT_KAFKA=1` + Kafka +
+Keycloak reachable):
+
+- `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/contents/ContentsHttpReadIntegrationSpec.groovy`
+  publishes `open + loc + typ link-type + lnk + commit` to a per-spec
+  Kafka topic, waits for the committed `txn` header and the root-shaped
+  materialized `typ` and `lnk` rows, then exercises both
+  `GET /api/contents/by-container/{id}` and
+  `GET /api/contents/by-content/{id}` and asserts the same flat JSON
+  record. This is the end-to-end Kafka → Mongo → HTTP proof of the
+  human-readable contents-link path. The wire shape it publishes is
+  exactly the `12-…` example shape (lines 302–315) with a
+  per-feature `containerId/typeId/linkId/contentId`.
+
+**Conclusion: existing coverage already proves the wire-shape DTO
+round-trip, the materialized root shape, the reader's Mongo criteria,
+and the Kafka end-to-end integration.** The remaining gap is a unit-level
+proof that the materializer's outputs (taken straight from a
+`typ + create` link-type and `lnk + create` snapshot) satisfy the
+exact criteria `ContentsLinkReadService` uses — i.e. that the materialized
+`typ.properties.kind`, `typ.properties.name`, and `lnk.type_id` line up
+without an integration test. That proof currently exists piecewise in
+two specs but not as one focused round-trip assertion.
 
 ### Schema status (`message.schema.json`)
 
 `libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json`:
 
-- For `collection != "grp"`, `data` follows `SnakeCaseObject`
-  (lines 189–199), which permits any snake_case-keyed object (recursive).
-  `data.properties` and `data.links` (both snake-case) are valid keys
-  and may carry nested snake-case objects. Property values such as
-  `"Freezer 01"` and `"Minus 80 freezer in room 214"` are allowed string
-  `SnakeCaseValue`s; the snake_case rule applies to keys, not to string
-  values.
-- The schema does **not** enforce the new shape (it would also accept
-  the old flat shape, plus arbitrary extra snake_case keys at the `data`
-  root). Documenting the new shape is product/example-driven; tightening
-  the schema to require `data.properties` is intentionally **out of
-  scope** for this task because the back-compat tolerance is explicitly
-  stated by the architecture doc.
-
-Conclusion: no schema-file change is required to accept the new
-human-readable shape. A future task may layer in a stricter
-`LocationData` definition once the rest of the contract stabilizes; this
-task should not pre-empt that decision.
-
-### Example resource status
-
-`libraries/jade-tipi-dto/src/main/resources/example/message/10-create-location.json`
-currently uses the **old flat shape** with `name` and `description`
-directly under `data` and no `properties`/`links`/`type_id`. This file
-is exercised by `MessageSpec` (lines 24–38) for round-trip and
-`message.schema.json` validation but does not currently exercise the
-new shape.
-
-The transaction envelope examples already cover open and commit:
-
-- `01-open-transaction.json` (txn + open, txn uuid `018fd849-2a40-7abc-8a45-111111111111`)
-- `09-commit-transaction.json` (txn + commit on the same txn uuid)
-
-So a "complete transaction that opens, creates one simple `loc`, and
-commits" can be expressed as the trio `01-…` → `10-…` (rewritten) →
-`09-…`, all sharing `txn.uuid = 018fd849-2a40-7abc-8a45-111111111111`.
-That mapping is consistent with how the existing examples already chain.
+- For `collection != "grp"`, `data` follows `SnakeCaseObject`, which
+  permits any snake_case-keyed object recursively. Both `11-…` and
+  `12-…` validate today (covered by the loop in `MessageSpec`); the
+  schema does not enforce a `LinkData` or `LinkTypeData` shape.
+- Tightening the schema to require `lnk.data.type_id`, `lnk.data.left`,
+  `lnk.data.right`, or `typ.data.kind == "link_type"` would be a
+  semantic-validation change. Per the task's `OUT_OF_SCOPE` (no semantic
+  reference validation) and per the architecture doc's explicit "schema
+  accepts this envelope today on the strength of `lnk + create` and the
+  snake_case property-name rule. Semantic checks … are not enforced by
+  `message.schema.json` and remain a follow-up reader/materializer
+  concern", **no schema-file change is required or in-scope** for this
+  task.
 
 ### Smallest implementation plan
 
-Goal: smallest set of changes that makes the new human-readable
-`loc + create` shape ingest, commit, and materialize into a root-shaped
-Mongo `loc` document, with focused automated coverage and updated
-examples. Back-compat for the legacy flat shape is preserved per the
-architecture doc's stated tolerance.
+Goal: smallest set of changes that proves the existing human-readable
+contents-type/contents-link examples round-trip end-to-end into the
+documented root-shaped `typ` and `lnk` documents and remain consumable
+by the existing contents read service, without adding new product
+behavior.
 
 #### File changes
 
-1. `libraries/jade-tipi-dto/src/main/resources/example/message/10-create-location.json`
-   — rewrite to the new human-readable shape:
+1. **No example resource change required.**
+   `11-create-contents-type.json` and
+   `12-create-contents-link-plate-sample.json` already express the
+   canonical human-readable shape per `DIRECTION.md` and the vocabulary
+   doc. The `01 → 11 → 12 → 09` transaction sequence (shared
+   `txn.uuid = 018fd849-2a40-7abc-8a45-111111111111`) is already
+   complete. **Default proposal:** leave example files untouched.
 
-   - Top-level: `txn` (reuse `018fd849-2a40-7abc-8a45-111111111111`),
-     `uuid`, `collection: "loc"`, `action: "create"`.
-   - `data.id` = the existing `jade-tipi-org~dev~…~loc~freezer_a` ID
-     (same value already used today, to keep `MessageSpec` deterministic).
-   - `data.type_id` = `null` or omitted (the directive marks it optional;
-     `null` makes the optionality explicit in the round-trip example).
-     **Default proposal:** omit the key entirely so the example shows the
-     minimum payload; the materializer already treats a missing
-     `type_id` as `null` (see `data.get(FIELD_TYPE_ID)` in the
-     materializer).
-   - `data.properties = { "name": "freezer_a", "description": "minus-80
-     freezer in room 110" }` — keep the same human values that exist in
-     the current flat example so the change is purely structural.
-   - `data.links = {}` — present as an explicit empty map so the example
-     documents the canonical "no links on create" convention.
+2. **No materializer code change required.**
+   `CommittedTransactionMaterializer.buildDocument()` already produces
+   the documented root shape for both `typ + create` link-type
+   (`properties.kind == 'link_type'`, `properties.name == 'contents'`,
+   plus role and label facts) and `lnk + create` (top-level `type_id`,
+   `left`, `right`, verbatim `properties`, `links: {}`, `_head.provenance`).
+   **Default proposal:** leave the materializer untouched.
 
-2. `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`
-   — extend `buildDocument()` / `buildInlineProperties()` so that for
-   non-`lnk` supported collections (`loc`, `grp`, `typ` link-type), the
-   materializer chooses one of two branches based on payload shape:
+3. **No schema or DTO type change required** (see Schema status above).
 
-   - **Explicit shape (preferred):** if `data` contains a `properties`
-     key whose value is a `Map`, use that map directly (via the existing
-     `copyProperties()` helper) for root `properties`. If `data` also
-     contains a `links` key whose value is a `Map`, copy that map into
-     root `links` (via a parallel `copyLinks()` helper). Otherwise
-     default `links` to `[:]` as today.
-   - **Legacy flat shape (back-compat):** if `data.properties` is
-     missing or not a `Map`, fall back to the current behaviour: copy
-     every `data` entry except `id` and `type_id` directly into root
-     `properties`, and leave root `links` as `[:]`.
+4. **Add focused automated coverage proving the round-trip.**
+   `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`
+   — add one Spock feature, `'materialized typ link-type and lnk roots
+   satisfy ContentsLinkReadService resolution criteria'`, that:
+   - Builds a snapshot with the `linkTypeMessage()` and `linkMessage()`
+     helpers (already present in the spec file).
+   - Captures the `Map` documents passed to `mongoTemplate.insert(_, 'typ')`
+     and `mongoTemplate.insert(_, 'lnk')`.
+   - Asserts on the captured `typ` doc: `properties.kind == 'link_type'`
+     AND `properties.name == 'contents'` (the exact dotted-path criteria
+     the reader uses), plus `_id`, `id`, `collection == 'typ'`, and the
+     remaining role and label facts under `properties`.
+   - Asserts on the captured `lnk` doc: `_id`, `id`,
+     `collection == 'lnk'`, `type_id` equal to the captured `typ` doc's
+     `_id` (proving the materialized cross-document reference), `left`,
+     `right`, `properties.position` verbatim, `links == [:]`, and
+     `_head.provenance.collection == 'lnk'`.
+   - Asserts the materialize counts: `materialized == 2`,
+     `skippedUnsupported == 0`, `skippedInvalid == 0`,
+     `duplicateMatching == 0`, `conflictingDuplicate == 0`.
 
-   Detection rule chosen so that the legacy shape (which currently
-   carries `name` and `description` at `data` root and no `properties`
-   key) keeps working unchanged. The explicit shape is preferred when
-   `data.properties` is present and Map-typed.
+   This narrow co-presence test is the missing link: it proves the
+   materializer's outputs satisfy the reader's Mongo criteria without
+   requiring a Mongo, Kafka, or HTTP roundtrip. ~40 lines.
 
-   Implementation notes:
-   - Add a small helper `copyLinks(Object linksValue)` mirroring
-     `copyProperties()`.
-   - Keep `lnk`-specific branch unchanged (it already reads
-     `data.properties` correctly).
-   - Do **not** touch `_head.provenance`, `_id`, `id`, `collection`, or
-     `type_id` handling. The contract from TASK-013 / TASK-014 stays.
-   - Keep the duplicate-key idempotency / conflicting-payload paths
-     unchanged. `isSamePayload()` already strips
-     `_head.provenance.materialized_at` only.
+5. **Optionally add a DTO-level round-trip assertion across the
+   contents-flow examples.**
+   `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`
+   — add one Spock feature, `'contents transaction example trio shares
+   one txn id and pairs typ link-type with a referencing lnk create'`,
+   that:
+   - Reads `01-open-transaction.json`, `11-create-contents-type.json`,
+     `12-create-contents-link-plate-sample.json`, and
+     `09-commit-transaction.json`.
+   - Asserts all four share the same `txn.uuid`.
+   - Asserts `11-…` declares `data.id` matching `12-…`'s `data.type_id`
+     (the in-resource cross-reference), and that `12-…` declares a
+     `loc` `data.left` and an `ent` `data.right` per the
+     `allowed_*_collections` declared on `11-…`.
+   - This is a wire-shape co-presence assertion only; it does not call
+     into any materializer or reader. ~25 lines.
 
-3. `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`
-   — add focused Spock cases (Mock-driven, matches the existing style):
+   **Default proposal:** include this DTO-level co-presence test
+   because the task acceptance criteria explicitly call out
+   "round-trips through DTO validation", and this is the cheapest way
+   to nail down the example trio's authored cross-references at the
+   DTO layer. If director review prefers an even narrower delta, this
+   step can be dropped without affecting the materializer round-trip
+   proof in step 4.
 
-   - "materializes a loc create with explicit data.properties /
-     data.links into the root shape" — submits the new human-readable
-     shape and asserts:
-     - `captured._id == LOC_ID`, `captured.id == LOC_ID`,
-       `captured.collection == 'loc'`, `captured.type_id == null`.
-     - `captured.properties == [name: 'freezer_a', description:
-       'minus-80 freezer in room 110']` (no doubly-nested
-       `properties.properties`).
-     - `captured.links == [:]` (or the submitted `data.links` value if
-       non-empty).
-     - `_head.schema_version`, `_head.document_kind`, `_head.root_id`,
-       and `_head.provenance.{txn_id, commit_id, msg_uuid, collection,
-       action, committed_at, materialized_at}` all populated as today.
-   - "materializes a loc create with explicit data.type_id and
-     data.properties" — confirms `type_id` is set at root and excluded
-     from `properties`.
-   - "preserves legacy flat loc create back-compat" — keeps the existing
-     "materializes a loc create as a root document with inline
-     properties" assertions intact (the current first test already
-     covers this path; the assertion is that it remains green).
+6. **No documentation-only change required.**
+   `docs/architecture/kafka-transaction-message-vocabulary.md` and
+   `DIRECTION.md` already prescribe the human-readable contents-link
+   shape. `docs/OVERVIEW.md` and
+   `docs/architecture/jade-tipi-object-model-design-brief.md` (both in
+   OWNED_PATHS) already reference the `contents` link-type and
+   well-position pattern. **Default proposal:** no doc edits. If
+   director review wants an explicit "see `01 → 11 → 12 → 09` for the
+   canonical contents-link transaction" sentence under "Reference
+   Examples" (vocabulary doc, lines 283–301), I can add a single
+   sentence; flagging here so that decision is explicit.
 
-4. `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`
-   — the existing example loop at lines 24–38 already round-trips and
-   schema-validates `10-create-location.json`. After the example file is
-   rewritten, the same loop validates the new shape against
-   `message.schema.json` for free. Add one focused case that asserts:
-
-   - `Message` parsed from `10-create-location.json` exposes
-     `collection() == LOCATION`, `action() == CREATE`,
-     `data().properties` is a `Map` with the expected entries, and
-     `data().links` is an empty `Map`.
-
-5. `docs/architecture/kafka-transaction-message-vocabulary.md` —
-   confirm the human-readable example block (lines 50–64) still matches
-   the rewritten resource and that the back-compat sentence on lines
-   65–68 stays accurate after the example file flips. **Default
-   proposal:** no edit needed; the doc already prescribes the new
-   shape and notes legacy tolerance. Confirm during implementation; if
-   a wording clarification is needed (e.g. "see
-   `10-create-location.json` for the canonical shape"), add a single
-   sentence under "Reference Examples" on line 285.
-
-6. `docs/OVERVIEW.md` — within OWNED_PATHS but not load-bearing for
-   this change. **Default proposal:** no edit. If the OVERVIEW currently
-   describes the legacy `loc` shape, update one sentence; otherwise
-   leave it untouched.
-
-Expected total surface: 1 example resource rewritten, ~30 lines of
-materializer logic added (one helper + branching), ~50–80 lines of
-Spock test added across two specs. No public API change, no schema
-change, no DTO type change, no Kafka topic change.
+Expected total surface: ~40–65 lines of Spock test added across one
+backend spec (required) and one DTO spec (optional). No example
+resource rewrite, no materializer source change, no schema change, no
+DTO type change, no Kafka topic change, no integration test
+modification.
 
 #### Out-of-scope guardrails (will **not** edit)
 
-- `clients/kafka-kli/**` — kli already accepts `--collection loc` and
-  passes `data` through unchanged; no CLI change is needed to publish
-  the new shape.
-- `frontend/**` — no UI surface for `loc` create yet.
-- `src/main/groovy/.../service/TransactionService.groovy`,
+- `clients/kafka-kli/**` — kli already accepts `--collection lnk` and
+  `--collection typ` and passes `data` through unchanged; no CLI
+  change is needed to publish the canonical contents-flow messages.
+- `frontend/**` — no UI surface for contents links.
+- `jade-tipi/src/main/groovy/.../service/CommittedTransactionMaterializer.groovy`
+  — out-of-the-box behavior already correct (see "Current materializer
+  behaviour"). Touching it would expand scope beyond the bounded
+  proof.
+- `jade-tipi/src/main/groovy/.../service/ContentsLinkReadService.groovy`
+  — its query criteria already match the materializer's outputs.
+- `jade-tipi/src/main/groovy/.../service/TransactionService.groovy`,
   `CommittedTransactionReadService.groovy`,
-  `TransactionMessagePersistenceService.groovy` — they treat `data` as
-  an opaque map; the new shape is preserved verbatim through ingest,
-  commit, and snapshot read.
+  `TransactionMessagePersistenceService.groovy` — they treat `data`
+  as opaque; the contents-flow shape is preserved verbatim through
+  ingest, commit, and snapshot read.
 - `message.schema.json` — see Schema status above.
+- `jade-tipi/src/integrationTest/groovy/.../ContentsHttpReadIntegrationSpec.groovy`
+  — already exercises the full Kafka → Mongo → HTTP path with the
+  contents-flow shape; the bounded turn does not need to change it.
+- `jade-tipi/src/integrationTest/groovy/.../TransactionMessageKafkaIngestIntegrationSpec.groovy`
+  — already exercises Kafka ingest persistence; out of scope to
+  expand.
 - `frontend/.env.local` — generated; never hand-edited (per CLAUDE.md).
 
 ### Verification plan (implementation turn)
@@ -285,144 +373,78 @@ Per task `VERIFICATION` section. Run inside the developer worktree
 
 ```sh
 # 1. DTO library tests — round-trips and schema validation for the
-#    rewritten 10-create-location.json example.
+#    contents-flow example trio plus the optional new DTO co-presence
+#    feature.
 ./gradlew :libraries:jade-tipi-dto:test
 
 # 2. Backend unit tests — CommittedTransactionMaterializerSpec covers
-#    the new + legacy loc shapes and the round-shape assertions.
+#    the new round-trip co-presence feature plus the existing typ/lnk
+#    root-shape and skip cases.
 ./gradlew :jade-tipi:test
 
 # 3. Narrowest practical Kafka/Mongo integration test (only if local
 #    Docker is running and the project documents an opt-in flag).
-#    The existing TransactionMessageKafkaIngestIntegrationSpec is
-#    gated on KAFKA_BOOTSTRAP_SERVERS / docker-compose. If running:
-docker compose -f docker/docker-compose.yml up -d mongo kafka zookeeper keycloak
-./gradlew :jade-tipi:integrationTest \
-  --tests org.jadetipi.jadetipi.kafka.TransactionMessageKafkaIngestIntegrationSpec
+#    The existing ContentsHttpReadIntegrationSpec exercises the full
+#    contents-flow path end-to-end.
+docker compose -f docker/docker-compose.yml up -d
+JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest \
+    --tests '*ContentsHttpReadIntegrationSpec*'
+
+# Optional: also rerun the existing ingest spec to confirm no
+# regression in the broader Kafka path.
+JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest \
+    --tests '*TransactionMessageKafkaIngestIntegrationSpec*'
 ```
 
 Setup commands (per CLAUDE.md "Tooling Refresh"; if local tooling is
 missing they are reported, not treated as product blockers):
 
-- Docker-compose stack required for `:jade-tipi:test` because
-  `JadetipiApplicationTests.contextLoads` opens a Mongo connection per
-  the project CLAUDE.md. Run
+- Docker stack required for `:jade-tipi:test` because
+  `JadetipiApplicationTests.contextLoads` opens a Mongo connection
+  per project CLAUDE.md. Run
   `docker compose -f docker/docker-compose.yml up -d` first.
-- If the Gradle wrapper cache is missing, the first `./gradlew` invocation
-  bootstraps it; that is normal first-run behaviour, not a blocker.
-- If integration tests cannot run because Docker is not available in the
-  sandbox, report the exact `docker compose ... up` command and stop
-  rather than treating it as a product blocker.
+- If the Gradle wrapper cache is missing, the first `./gradlew`
+  invocation bootstraps it; that is normal first-run behaviour, not
+  a blocker.
+- If a stale Gradle daemon is implicated, run `./gradlew --stop`
+  before retrying (per `DIRECTIVES.md` TASK-026 review note).
+- If integration tests cannot run because Docker is not available in
+  the sandbox, report the exact `docker compose ... up` command and
+  stop rather than treating it as a product blocker.
+
+### Open questions / blockers
+
+None at pre-work time. One soft decision for director review:
+
+- **Step 5 (DTO co-presence test) — keep or drop?** The acceptance
+  criterion "round-trips through DTO validation" is already met
+  piecewise by the existing `MessageSpec` example loop and the focused
+  typ/lnk feature specs (`MessageSpec` lines 330–352, 434–458). The
+  proposed step 5 adds an explicit cross-reference assertion (typ
+  `data.id` == lnk `data.type_id` within the example trio) which is
+  not currently asserted anywhere. I'll include step 5 by default; if
+  director review prefers strict minimalism, I'll drop it and rely on
+  the existing per-example specs.
 
 ### Stay-in-scope check (this pre-work turn)
 
 This turn edits exactly:
 
-- `docs/agents/claude-1-next-step.md` — base owned path.
+- `docs/agents/claude-1-next-step.md` (a base owned path, this file).
 
-No other files are touched. The implementation turn (gated on a director
-signal) will edit only paths inside TASK-026 `OWNED_PATHS`:
+It does **not** touch:
 
-- `libraries/jade-tipi-dto/src/main/resources/example/message/10-create-location.json`
-- `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/`
-  (`MessageSpec.groovy` extension)
-- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`
-- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`
-- `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/`
-  (only if a narrow integration test is added and Docker is available)
-- `docs/architecture/kafka-transaction-message-vocabulary.md` —
-  clarification only, if needed
-- `docs/orchestrator/tasks/TASK-026-human-readable-kafka-loc-submission.md`
-  — if status update is required
-- `docs/agents/claude-1-changes.md` — the implementation report
+- the active task file or any other task file.
+- `docs/agents/claude-1-changes.md` (reserved for the implementation
+  report after the director advances the task).
+- any source under `jade-tipi/`, `libraries/`, `clients/`,
+  `frontend/`, `docker/`, or `docs/` other than this file.
+- `DIRECTIVES.md`, `ORCHESTRATOR.md`, `AGENTS.md`, or
+  `claude-1.md`.
 
-`DIRECTION.md` and `docs/architecture/jade-tipi-object-model-design-brief.md`
-are within TASK-026 `OWNED_PATHS` but the **Default proposal** is to
-leave them untouched. Both already describe the new direction; no edit
-is needed unless the implementation surfaces a wording mismatch.
+Per the orchestrator protocol, I stop here and wait for the director
+to set TASK-027 to `READY_FOR_IMPLEMENTATION` (or change the global
+signal to `PROCEED_TO_IMPLEMENTATION`) before making any of the
+implementation-turn changes listed in the plan above.
 
-### Open questions / blockers
-
-Each has a default proposal so the director can accept or redirect with
-one signal change.
-
-- **Q-26-A — Detection rule for the new vs legacy loc shape.**
-  **Default proposal:** treat a payload as "explicit shape" only when
-  `data.properties instanceof Map`. Otherwise fall back to the existing
-  flat-flatten behaviour. This keeps the existing
-  `10-create-location.json`-style payload working on stale clients
-  without flag-day coordination, matches the architecture-doc tolerance
-  sentence, and avoids brittle "is this object empty" heuristics. **Backup:**
-  drop legacy back-compat and require `data.properties` always — only if
-  the director wants to harden the contract earlier than the architecture
-  doc currently states.
-
-- **Q-26-B — Treatment of submitted `data.links` on a `loc + create`.**
-  The directive says `data.links` is "optional or empty on create".
-  **Default proposal:** if `data.links` is a `Map`, copy it verbatim
-  into root `links` (mirrors how `lnk` already handles
-  `data.properties`). If absent or non-Map, default to `[:]`. This keeps
-  endpoint-projection maintenance out of scope and matches the architecture
-  doc's "links is empty or absent on create" wording. **Backup:** ignore
-  any submitted `data.links` and always write `[:]`, deferring the
-  contract decision; rejected because it would silently drop submitted
-  data for callers that follow the human-readable example literally.
-
-- **Q-26-C — Schema tightening (`LocationData`).** Mirroring the existing
-  `GroupData` pattern, the schema could declare a `LocationData`
-  definition that pins `properties: object` and `links: object`. **Default
-  proposal:** **defer** — this task documents and materializes the new
-  shape, but the architecture doc explicitly tolerates the legacy shape.
-  A schema tightening would force a flag-day across any client still
-  emitting the flat shape (today, including the bundled example before
-  the rewrite). **Backup:** accept a schema-only follow-up task once the
-  ecosystem is on the new shape.
-
-- **Q-26-D — `data.type_id` representation in the new example.** The
-  directive marks `type_id` as optional. **Default proposal:** omit the
-  `type_id` key entirely from `10-create-location.json` to keep the
-  minimal-payload example honest; the materializer already reads
-  `data.get(FIELD_TYPE_ID)` and stores `null` when absent (covered by
-  the existing test "materializes a loc create … type_id == null").
-  **Backup:** include `type_id: null` so the canonical example shows the
-  field name; rejected because that conflates "absent" with "explicitly
-  null", and the architecture doc shows the field omitted.
-
-- **Q-26-E — Integration test coverage.** The directive lists "the
-  narrowest practical Kafka/Mongo integration test if local Docker is
-  running and the project has a documented opt-in flag for it" as a
-  verification-time expectation. **Default proposal:** the
-  implementation turn adds focused unit-level Spock coverage in
-  `CommittedTransactionMaterializerSpec` and reuses the existing
-  `TransactionMessageKafkaIngestIntegrationSpec` for the ingest path;
-  it does **not** add a new full end-to-end ingest→commit→materialize
-  Kafka spec unless the director explicitly requests one, because the
-  matrix coverage is already provided by unit tests for the
-  materializer and an existing integration spec for the ingest path.
-  **Backup:** add a new
-  `LocCreateMaterializationIntegrationSpec` in
-  `jade-tipi/src/integrationTest/...` that publishes the rewritten
-  example via `kli`-equivalent producer, awaits commit, and asserts the
-  resulting Mongo `loc` root document; only if Docker is available in
-  the sandbox and the director expands scope.
-
-- **Q-26-F — Architecture doc wording update.** **Default proposal:**
-  no edit to `kafka-transaction-message-vocabulary.md`; the document
-  already prescribes the new shape and notes legacy tolerance. The
-  rewritten example file will be the canonical exemplar referenced from
-  the doc's "Reference Examples" section. **Backup:** add one sentence
-  to the "Reference Examples" block explicitly calling out
-  `10-create-location.json` as the canonical human-readable shape.
-
-- **Q-26-G — Pre-existing setup blockers.** `:jade-tipi:test` requires
-  Docker-compose services to be running because
-  `JadetipiApplicationTests.contextLoads` opens a Mongo connection. If
-  Docker is unavailable in the implementation sandbox, **default
-  proposal:** report the exact `docker compose -f
-  docker/docker-compose.yml up -d` setup command and the resulting
-  Gradle test failure, then stop with `STATUS: BLOCKED`. **Backup:**
-  none; spinning up Docker, mutating ports, or reconfiguring
-  Mongo/Kafka is outside TASK-026 OWNED_PATHS and CLAUDE.md
-  "Tooling Refresh" guidance.
-
-STOP.
+STATUS: AWAITING_DIRECTOR_REVIEW
