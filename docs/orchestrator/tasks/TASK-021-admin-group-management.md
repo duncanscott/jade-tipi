@@ -3,7 +3,7 @@
 ID: TASK-021
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-020
@@ -130,3 +130,39 @@ VERIFICATION:
 - If local Docker, Keycloak, MongoDB, Gradle, Node, or browser tooling blocks
   verification, report the exact command/error and the documented setup command
   rather than treating local setup as a product blocker.
+
+PREWORK_REVIEW:
+- 2026-05-03 director review advances this task to
+  `READY_FOR_IMPLEMENTATION`. claude-1's latest pre-work commit stayed inside
+  the base pre-work ownership boundary: it changed only
+  `docs/agents/claude-1-next-step.md`.
+- Proceed with the revised plan's defaults: use a `jade-tipi-admin` realm role
+  from `realm_access.roles`, protect only `/api/admin/**`, implement direct
+  MongoDB writes for this narrow admin `grp` workflow, keep `testuser`
+  non-admin, use full-replacement `PUT`, and store admin direct-write
+  provenance with an `admin~<uuid>` sentinel.
+- During implementation, wire the JWT role mapping with the Spring WebFlux
+  resource-server API shape that actually compiles. A converter that reads
+  `realm_access.roles` and emits `ROLE_jade-tipi-admin` is accepted, but the
+  implementation must adapt it through `JwtAuthenticationConverter` /
+  `ReactiveJwtAuthenticationConverterAdapter` or an equivalent
+  `Converter<Jwt, Mono<AbstractAuthenticationToken>>`; do not pass a
+  `Converter<Jwt, Collection<GrantedAuthority>>` directly where WebFlux
+  expects an authentication-token converter.
+- Use a clearly documented dev-only local password for `dnscott`; the literal
+  password `dnscott` is acceptable for this local realm import if documented
+  as development-only. Do not add ORCID/federated login or production account
+  lifecycle behavior.
+- Keep frontend changes inside the task-owned paths. `frontend/lib/api.ts`
+  may export the existing token helper or `frontend/lib/admin-groups.ts` may
+  keep a local equivalent. Do not add a new frontend dependency or edit
+  `frontend/package.json` unless the task is explicitly expanded; if decoding
+  the access token needs a helper, use code already available to the project
+  or a small local decode in `frontend/auth.ts`.
+- Verification for this review was static only. `git diff --check
+  origin/director..HEAD` passed. No Gradle, Docker, MongoDB, Keycloak, Node, or
+  browser command was required for the pre-work review. For implementation
+  verification, use the commands listed above and the project-documented setup
+  path: `docker compose -f docker/docker-compose.yml up -d`,
+  `./gradlew generateFrontendEnv` when regenerating frontend env is needed,
+  and `cd frontend && npm install` before frontend build/test commands.

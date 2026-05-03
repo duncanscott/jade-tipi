@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
@@ -47,11 +47,10 @@ admin role in the user's JWT, not from the Keycloak `master` realm admin user.
 
 ## Active Task
 
-- `TASK-021 - Add admin group management` is ready for pre-work and assigned
-  to `claude-1`. The task should first plan a local Keycloak `dnscott`
-  application-admin user, JWT role mapping, admin-only group CRUD endpoints,
-  and a minimal Next.js group-management UI. Do not implement until the
-  director accepts the pre-work and advances the task.
+- `TASK-021 - Add admin group management` is ready for implementation and
+  assigned to `claude-1`. Implement the accepted pre-work defaults for a local
+  Keycloak `dnscott` application-admin user, JWT role mapping, admin-only
+  group CRUD endpoints, and a minimal Next.js group-management UI.
 - `TASK-020 - Define and materialize group records` is accepted. Do not add
   general permission enforcement, membership synchronization, object-level
   overrides, or property-value-level overrides beyond the narrow admin endpoint
@@ -71,9 +70,40 @@ admin role in the user's JWT, not from the Keycloak `master` realm admin user.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
-Active pre-work is `TASK-021`. The task is intentionally narrow: local
+Active implementation is `TASK-021`. The task is intentionally narrow: local
 development admin group management using standard Keycloak login. Broader
 permission evaluation and enforcement semantics remain future product work.
+
+## TASK-021 Director Pre-work Review
+
+- Director review on 2026-05-03 advances `TASK-021` to
+  `READY_FOR_IMPLEMENTATION` with `SIGNAL: PROCEED_TO_IMPLEMENTATION`.
+  claude-1's latest developer commit stayed inside the base pre-work ownership
+  boundary: it changed only `docs/agents/claude-1-next-step.md`.
+- Proceed with the pre-work defaults: `jade-tipi-admin` is a realm role read
+  from `realm_access.roles`; only `/api/admin/**` is role-protected; the admin
+  group workflow writes root-shaped `grp` documents directly to MongoDB for
+  this narrow local-development path; `testuser` remains non-admin; `PUT`
+  fully replaces editable group fields; admin provenance uses an
+  `admin~<uuid>` sentinel.
+- Implement the Spring WebFlux JWT converter with the API shape that compiles:
+  adapt the realm-role authorities through `JwtAuthenticationConverter` /
+  `ReactiveJwtAuthenticationConverterAdapter` or an equivalent
+  `Converter<Jwt, Mono<AbstractAuthenticationToken>>`. Do not wire a
+  `Converter<Jwt, Collection<GrantedAuthority>>` directly where WebFlux
+  expects an authentication-token converter.
+- Use a clearly documented dev-only local password for `dnscott`; the literal
+  password `dnscott` is acceptable for this local realm import if documented as
+  development-only. Do not add ORCID/federated login, Keycloak admin-user
+  authorization, Keycloak group synchronization, general permission
+  enforcement, or production account lifecycle behavior.
+- Keep frontend implementation inside the task-owned paths. Do not edit
+  `frontend/package.json` or add a new frontend test harness unless the task is
+  explicitly expanded. Use existing project tooling and the documented setup
+  path if verification is blocked by local services or stale tooling:
+  `docker compose -f docker/docker-compose.yml up -d`,
+  `./gradlew generateFrontendEnv` when frontend env regeneration is needed,
+  and `cd frontend && npm install` before frontend build/test commands.
 
 ## TASK-020 Director Acceptance Review
 
