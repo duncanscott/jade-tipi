@@ -3,6 +3,140 @@
 The developer writes completed work reports here.
 
 STATUS: COMPLETED
+TASK: TASK-026 — Human-readable Kafka loc submission path (implementation)
+DATE: 2026-05-03
+SUMMARY: Made the human-readable `loc + create` Kafka shape materialize
+correctly into a root-shaped Mongo document. Rewrote
+`libraries/jade-tipi-dto/src/main/resources/example/message/10-create-location.json`
+to the explicit `data.properties` / `data.links: {}` form (with `data.id` and
+`type_id` omitted as the optional minimum). Extended
+`CommittedTransactionMaterializer.buildDocument` so non-`lnk` collections
+prefer `data.properties` (Map) and copy `data.links` (Map) verbatim into the
+root, while keeping the legacy flat-flatten fallback for messages that put
+`name`/`description` directly under `data` (the architecture-doc tolerance).
+The `lnk` path is unchanged. Root contract (`_id`, `id`, `collection`,
+`type_id`, `properties`, `links`, `_head.{schema_version, document_kind,
+root_id, provenance}`) is preserved. Added focused DTO and Spock coverage
+proving the new wire shape round-trips, schema-validates, and materializes
+into the expected root JSON; existing legacy-shape tests remain green.
+
+Files changed (this turn):
+
+- `libraries/jade-tipi-dto/src/main/resources/example/message/10-create-location.json`
+  — rewritten from the legacy flat shape (`data.{id, name, description}`) to
+  the human-readable shape: top-level `collection: "loc"` /
+  `action: "create"`, `data.id` (unchanged value to keep IDs stable across
+  the existing `01-…` open / `09-…` commit pair), `data.properties.{name,
+  description}` (same human values), and `data.links: {}`. `type_id` is
+  intentionally omitted to honor "optional for now" per `DIRECTION.md` and
+  `kafka-transaction-message-vocabulary.md`.
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`
+  — `buildDocument` now branches in three cases for `loc`/`grp`/`typ link_type`:
+  `lnk` (unchanged: `left`/`right` + `copyProperties(data.properties)`,
+  `links: {}`); explicit shape when `data.properties instanceof Map`
+  (`copyProperties(data.properties)` for root `properties` and
+  `copyProperties(data.links)` for root `links`); legacy flat fallback
+  (`buildInlineProperties(data)` and `links: {}`). `links` placement moved
+  inside each branch so the explicit shape can carry submitted `data.links`
+  through to the root. No change to `_id`, `id`, `collection`, `type_id`,
+  duplicate-key handling, `isSamePayload`, or `_head.provenance`.
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`
+  — added three Spock cases:
+  1. "materializes a human-readable loc create with explicit data.properties
+     and data.links into the root shape" — asserts `properties == [name:
+     'freezer_a', description: '…']` (no doubly-nested `properties.properties`,
+     no `properties.links` leak), `captured.links == [:]`, and full
+     `_head.provenance` population.
+  2. "human-readable loc create with explicit data.type_id sets top-level
+     type_id and keeps properties clean" — confirms `captured.type_id` is the
+     submitted typeId and `properties` excludes `id`/`type_id`.
+  3. "human-readable loc create copies a non-empty data.links map verbatim
+     into the root" — confirms `captured.links == linksValue` (e.g. `[contents:
+     [endpoint_role: 'container', count: 4]]`) and that `properties` does not
+     accidentally carry the `links` key.
+  All pre-existing legacy-shape tests (e.g. "materializes a loc create as a
+  root document with inline properties and _head.provenance", grp tests, lnk
+  tests, duplicate/conflict tests) remain unchanged and pass.
+- `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`
+  — added "loc create example uses the human-readable data.properties /
+  data.links shape" asserting that the rewritten `10-create-location.json`
+  parses into a `Message` with `Collection.LOCATION`, `Action.CREATE`,
+  `data.id` value preserved, `type_id` absent, `data.properties.{name,
+  description}` populated, and `data.links == [:]`. The pre-existing
+  `EXAMPLE_PATHS` round-trip + schema-validation loops continue to exercise
+  `10-create-location.json` so the new shape also goes through
+  `JsonMapper.fromJson` ↔ `toJson` and `message.schema.json`.
+
+Files NOT changed (in OWNED_PATHS but no edit was needed):
+
+- `DIRECTION.md` and `docs/architecture/jade-tipi-object-model-design-brief.md`
+  — both already prescribe the new human-readable shape; no wording mismatch
+  surfaced during implementation.
+- `docs/architecture/kafka-transaction-message-vocabulary.md` — the
+  "Human-Readable Authoring Rule" block (lines ~28–68) and the "Reference
+  Examples" list (line ~296 referencing `10-create-location.json`) already
+  prescribe and point to the rewritten file. No edit needed.
+- `docs/OVERVIEW.md` — not load-bearing for this change.
+- `libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json`
+  — out of `OWNED_PATHS`; also intentionally not tightened. The architecture
+  doc explicitly tolerates the legacy shape, and the new shape is already
+  accepted by the existing `SnakeCaseObject` rule for `data` on
+  non-`grp` collections.
+- `jade-tipi/src/integrationTest/...` — no new end-to-end Kafka spec was
+  added. The pre-work plan defaulted to relying on the existing
+  `TransactionMessageKafkaIngestIntegrationSpec` for the wire/ingest path
+  and the new unit-level `CommittedTransactionMaterializerSpec` cases for
+  the materialization path. The integration spec was rerun (see Verification)
+  and remained green.
+- `docs/orchestrator/tasks/TASK-026-human-readable-kafka-loc-submission.md`
+  — director owns the task status field; no developer-side edit.
+
+Verification (run from `developers/claude-1/`):
+
+- `./gradlew :libraries:jade-tipi-dto:test` — `BUILD SUCCESSFUL in 3s`. All
+  `MessageSpec` cases (including the new "loc create example uses the
+  human-readable data.properties / data.links shape" and the existing
+  `EXAMPLE_PATHS` round-trip + schema-validation loops on the rewritten
+  `10-create-location.json`) green.
+- `./gradlew :jade-tipi:test` — `BUILD SUCCESSFUL in 7s`. The full
+  `CommittedTransactionMaterializerSpec` (legacy + 3 new cases) plus the
+  rest of the backend unit suite passed. `JadetipiApplicationTests.contextLoads`
+  reached the running local Mongo at `jade-tipi-mongo` (Docker container up).
+- `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*TransactionMessageKafkaIngestIntegrationSpec*'` —
+  `BUILD SUCCESSFUL in 9s`. The narrow Kafka ingest spec exercises the
+  end-to-end producer → broker → `TransactionMessageKafkaIngestService`
+  path against the running `jade-tipi-kafka` and `jade-tipi-mongo` Docker
+  containers and stayed green with the materializer change in place.
+- Local Docker stack at the time of verification:
+  `jade-tipi-mongo`, `jade-tipi-kafka`, `jade-tipi-keycloak`, and
+  `jade-tipi-couchdb` all `Up (healthy)` per `docker ps`. No
+  `docker compose up` was needed in this turn.
+
+Setup commands referenced (per CLAUDE.md "Tooling Refresh"; not required
+this turn because the stack was already running):
+
+- `docker compose -f docker/docker-compose.yml up -d` — full local stack.
+- `docker compose -f docker/docker-compose.yml --profile mongodb up -d` —
+  Mongo only, sufficient for `:jade-tipi:test`'s `contextLoads`.
+
+Stay-in-scope check:
+
+This turn edited exactly four files, all inside TASK-026 `OWNED_PATHS`:
+
+- `libraries/jade-tipi-dto/src/main/resources/example/message/10-create-location.json`
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`
+- `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`
+
+Plus this report file (`docs/agents/claude-1-changes.md`), which is a base
+developer-owned path. No HTTP submission endpoint, schema tightening,
+property-definition system, `ent` materialization, permission enforcement,
+nested Kafka operation DSL, or `parent_location_id` was added.
+
+---
+
+STATUS: COMPLETED
 TASK: TASK-025 — Plan TypeScript 6 frontend upgrade (implementation)
 DATE: 2026-05-03
 SUMMARY: Bumped only `typescript` from `^5.9.3` to `^6.0.3` in

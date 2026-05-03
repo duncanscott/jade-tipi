@@ -254,6 +254,135 @@ class CommittedTransactionMaterializerSpec extends Specification {
         !captured.containsKey('_jt_provenance')
     }
 
+    def 'materializes a human-readable loc create with explicit data.properties and data.links into the root shape'() {
+        given:
+        Map<String, Object> captured = null
+        mongoTemplate.insert(_ as Map, 'loc') >> { Map doc, String _coll ->
+            captured = doc
+            return Mono.just(doc)
+        }
+        CommittedTransactionMessage message = new CommittedTransactionMessage(
+                msgUuid: '018fd849-2a47-7777-8f01-aaaaaaaaaaaa',
+                collection: 'loc',
+                action: 'create',
+                data: [
+                        id        : LOC_ID,
+                        properties: [
+                                name       : 'freezer_a',
+                                description: 'minus-80 freezer in room 110'
+                        ],
+                        links     : [:]
+                ],
+                receivedAt: Instant.parse('2026-01-01T00:00:01Z'),
+                kafka: null
+        )
+
+        when:
+        MaterializeResult result = materializer.materialize(snapshot([message])).block()
+
+        then:
+        result.materialized == 1
+        result.skippedUnsupported == 0
+        result.skippedInvalid == 0
+
+        and: 'shared root fields use the payload id and source collection'
+        captured._id == LOC_ID
+        captured.id == LOC_ID
+        captured.collection == 'loc'
+        captured.type_id == null
+
+        and: 'data.properties is preferred verbatim over the legacy flat-flatten path'
+        Map properties = captured.properties as Map
+        properties == [name: 'freezer_a', description: 'minus-80 freezer in room 110']
+        !properties.containsKey('properties')
+        !properties.containsKey('links')
+
+        and: 'submitted data.links lands at root, not nested under properties'
+        captured.links == [:]
+
+        and: '_head carries the standard schema metadata and provenance for the human-readable shape'
+        Map head = captured._head as Map
+        head.schema_version == 1
+        head.document_kind == 'root'
+        head.root_id == LOC_ID
+        Map provenance = head.provenance as Map
+        provenance.txn_id == TXN_ID
+        provenance.commit_id == COMMIT_ID
+        provenance.msg_uuid == '018fd849-2a47-7777-8f01-aaaaaaaaaaaa'
+        provenance.collection == 'loc'
+        provenance.action == 'create'
+        provenance.committed_at == COMMITTED_AT
+        provenance.materialized_at instanceof Instant
+    }
+
+    def 'human-readable loc create with explicit data.type_id sets top-level type_id and keeps properties clean'() {
+        given:
+        String typeId = 'jade-tipi-org~dev~018fd849-2a4c-7ccc-8c0c-cccccccccccc~typ~freezer'
+        Map<String, Object> captured = null
+        mongoTemplate.insert(_ as Map, 'loc') >> { Map doc, String _coll ->
+            captured = doc
+            return Mono.just(doc)
+        }
+        CommittedTransactionMessage message = new CommittedTransactionMessage(
+                msgUuid: '018fd849-2a47-7777-8f01-aaaaaaaaaaaa',
+                collection: 'loc',
+                action: 'create',
+                data: [
+                        id        : LOC_ID,
+                        type_id   : typeId,
+                        properties: [name: 'freezer_a'],
+                        links     : [:]
+                ],
+                receivedAt: Instant.parse('2026-01-01T00:00:01Z'),
+                kafka: null
+        )
+
+        when:
+        MaterializeResult result = materializer.materialize(snapshot([message])).block()
+
+        then:
+        result.materialized == 1
+        captured.type_id == typeId
+        Map properties = captured.properties as Map
+        properties == [name: 'freezer_a']
+        !properties.containsKey('type_id')
+        !properties.containsKey('id')
+        captured.links == [:]
+    }
+
+    def 'human-readable loc create copies a non-empty data.links map verbatim into the root'() {
+        given:
+        Map<String, Object> captured = null
+        mongoTemplate.insert(_ as Map, 'loc') >> { Map doc, String _coll ->
+            captured = doc
+            return Mono.just(doc)
+        }
+        Map<String, Object> linksValue = [
+                contents: [endpoint_role: 'container', count: 4]
+        ]
+        CommittedTransactionMessage message = new CommittedTransactionMessage(
+                msgUuid: '018fd849-2a47-7777-8f01-aaaaaaaaaaaa',
+                collection: 'loc',
+                action: 'create',
+                data: [
+                        id        : LOC_ID,
+                        properties: [name: 'freezer_a'],
+                        links     : linksValue
+                ],
+                receivedAt: Instant.parse('2026-01-01T00:00:01Z'),
+                kafka: null
+        )
+
+        when:
+        MaterializeResult result = materializer.materialize(snapshot([message])).block()
+
+        then:
+        result.materialized == 1
+        captured.links == linksValue
+        Map properties = captured.properties as Map
+        !properties.containsKey('links')
+    }
+
     def 'loc with an explicit data.type_id sets top-level type_id and excludes it from properties'() {
         given:
         String typeId = 'jade-tipi-org~dev~018fd849-2a4c-7ccc-8c0c-cccccccccccc~typ~freezer'

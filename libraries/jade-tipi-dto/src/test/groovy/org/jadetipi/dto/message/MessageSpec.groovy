@@ -300,6 +300,33 @@ class MessageSpec extends Specification {
         a.hashCode() == b.hashCode()
     }
 
+    def "loc create example uses the human-readable data.properties / data.links shape"() {
+        given:
+        String json = readResource('/example/message/10-create-location.json')
+
+        when:
+        Message message = JsonMapper.fromJson(json, Message)
+
+        then:
+        message.collection() == Collection.LOCATION
+        message.action() == Action.CREATE
+
+        and: 'data.id is the materialized object id; type_id is omitted on this minimal example'
+        Map data = message.data()
+        data.id == 'jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~freezer_a'
+        !data.containsKey('type_id')
+
+        and: 'human-authored properties live under data.properties, not at the data root'
+        Map properties = data.properties as Map
+        properties.name == 'freezer_a'
+        properties.description == 'minus-80 freezer in room 110'
+        !data.containsKey('name')
+        !data.containsKey('description')
+
+        and: 'data.links is present and explicitly empty on a simple create'
+        data.links == [:]
+    }
+
     def "contents typ example declares the canonical link-type facts"() {
         given:
         String json = readResource('/example/message/11-create-contents-type.json')

@@ -252,11 +252,15 @@ class CommittedTransactionMaterializer {
             doc.put(FIELD_LEFT, data.get(FIELD_LEFT))
             doc.put(FIELD_RIGHT, data.get(FIELD_RIGHT))
             doc.put(FIELD_PROPERTIES, copyProperties(data.get(FIELD_PROPERTIES)))
+            doc.put(FIELD_LINKS, new LinkedHashMap<String, Object>())
+        } else if (data.get(FIELD_PROPERTIES) instanceof Map) {
+            doc.put(FIELD_PROPERTIES, copyProperties(data.get(FIELD_PROPERTIES)))
+            doc.put(FIELD_LINKS, copyProperties(data.get(FIELD_LINKS)))
         } else {
             doc.put(FIELD_PROPERTIES, buildInlineProperties(data))
+            doc.put(FIELD_LINKS, new LinkedHashMap<String, Object>())
         }
 
-        doc.put(FIELD_LINKS, new LinkedHashMap<String, Object>())
         doc.put(FIELD_HEAD, buildHead(docId, snapshot, message))
         return doc
     }
