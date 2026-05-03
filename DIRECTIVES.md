@@ -98,17 +98,31 @@ is now accepted through `TASK-029`.
 bare entity-type `typ + create` records as root-shaped `typ` documents while
 preserving link-type `typ + create` behavior. The accepted shape handles absent
 or empty `data.links` without leaking reserved fields into root `properties`;
-`typ + update` property-reference materialization remains deferred to
+`typ + update` property-reference materialization is now accepted through
 `TASK-030`.
+
+`TASK-030` is accepted. The Kafka-first domain write path can now materialize a
+human-readable `typ + update` `operation: "add_property"` message as a
+reference-only update on an existing root-shaped `typ` document under
+`properties.property_refs.<property_id>`. The accepted behavior does not
+materialize `ppy + create`, does not resolve `data.property_id`, does not
+rewrite `_head.provenance`, and leaves property-value assignments for later
+bounded work.
 
 ## Active Task
 
+- `TASK-031 - Human-readable Kafka property-definition materialization path`
+  is `READY_FOR_PREWORK`. claude-1 should plan only the bounded
+  `ppy + create` `data.kind == "definition"` path: determine the smallest
+  root-shaped property-definition materialization, whether assignment
+  `ppy + create` messages should remain skipped for this unit, and the focused
+  DTO/materializer/integration verification.
 - `TASK-030 - Human-readable Kafka entity-type property-reference update path`
-  is `READY_FOR_PREWORK`. claude-1 should plan only the deferred
-  `typ + update` `operation: "add_property"` path: determine the smallest
-  materialized root update shape for property references, whether `ppy`
-  materialization or semantic `property_id` validation is required for this
-  bounded proof, and the focused DTO/materializer/integration verification.
+  is accepted. `typ + update add_property` now writes
+  `properties.property_refs.<property_id>` on an existing root-shaped `typ`
+  document, treats matching repeats as duplicate-matching, refuses conflicting
+  metadata without overwrite, counts missing target roots separately, and
+  preserves create-time `_head.provenance`.
 - `TASK-029 - Human-readable Kafka entity-type submission path` is accepted.
   Bare entity-type `typ + create` now materializes as a root-shaped `typ`
   document, including the accepted flat payload variant with empty
@@ -168,7 +182,7 @@ or empty `data.links` without leaking reserved fields into root `properties`;
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
-`TASK-030` is the active bounded task. Broader authentication redesign,
+`TASK-031` is the active bounded task. Broader authentication redesign,
 Keycloak changes, admin group-management changes, permission
 evaluation/enforcement semantics, and unrelated product increments remain
 future work unless the human selects one as a later bounded goal.
@@ -301,6 +315,63 @@ future work unless the human selects one as a later bounded goal.
   rather than treating setup as a product blocker.
 
 ## TASK-030 Direction
+
+- Director implementation review on 2026-05-03 accepts `TASK-030` with
+  `SIGNAL: REQUEST_NEXT_STEP` and creates `TASK-031` for property-definition
+  materialization pre-work. Scope check passed: claude-1 changed
+  `docs/agents/claude-1-changes.md`, `docs/OVERVIEW.md`,
+  `docs/architecture/kafka-transaction-message-vocabulary.md`,
+  `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`,
+  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`,
+  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/MaterializeResult.groovy`,
+  `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`,
+  and
+  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/EntityCreateKafkaMaterializeIntegrationSpec.groovy`.
+  These edits are outside claude-1's three base assignment paths but inside
+  TASK-030's explicitly expanded implementation `OWNED_PATHS`.
+- Behavior review accepted the bounded `typ + update add_property` path:
+  property references are written under
+  `properties.property_refs.<property_id>` with only wire-provided metadata,
+  missing `data.id`/`data.property_id` is `skippedInvalid`, missing target
+  roots are `skippedMissingTarget`, matching repeats are `duplicateMatching`,
+  conflicting metadata is `conflictingDuplicate` without overwrite, and
+  successful updates do not rewrite `_head.provenance`.
+- The implementation honored the task and directive limits: no HTTP submission
+  endpoint, `ppy + create` materialization, semantic `property_id` resolution,
+  property-value assignment materialization, required-property enforcement,
+  permission enforcement, contents-link read change, broad ID-abbreviation
+  cleanup, endpoint projection maintenance, or nested Kafka operation DSL was
+  added.
+- Director static verification passed `git diff --check HEAD^..HEAD`.
+  Director Gradle rerun was blocked before product tests by sandbox/tooling
+  permissions opening the Gradle wrapper cache lock under
+  `/Users/duncanscott/.gradle` with `Operation not permitted` while running
+  `./gradlew :libraries:jade-tipi-dto:test :jade-tipi:test`. In a normal
+  developer shell, use
+  `docker compose -f docker/docker-compose.yml --profile mongodb up -d` for
+  Mongo-backed unit tests, `docker compose -f docker/docker-compose.yml up -d`
+  for the full Kafka/Mongo stack when the integration suite is needed, run
+  `./gradlew --stop` only if stale Gradle daemons are implicated, then rerun
+  `./gradlew :libraries:jade-tipi-dto:test`, `./gradlew :jade-tipi:test`, and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*EntityCreateKafkaMaterializeIntegrationSpec*'`.
+- Credited developer verification: claude-1 reported
+  `./gradlew :libraries:jade-tipi-dto:test`,
+  `./gradlew :jade-tipi:test`,
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*EntityCreateKafkaMaterializeIntegrationSpec*'`, and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest` passing.
+- Director created `TASK-031` on 2026-05-03 after accepting `TASK-030`.
+  Pre-work should evaluate only `ppy + create` messages with
+  `data.kind == "definition"` from `02-create-property-definition-text.json`
+  and `03-create-property-definition-numeric.json`, while explicitly
+  inspecting and deferring `data.kind == "assignment"` examples unless the
+  pre-work identifies an unavoidable dependency.
+- Do not add HTTP submission endpoints, property-value assignment
+  materialization, required-property enforcement, semantic validation that
+  `typ.data.property_id` resolves, semantic assignment/type validation,
+  value-shape validation against `data.value_schema`, permission enforcement,
+  contents-link read changes, or a nested Kafka operation DSL.
 
 - Director created `TASK-030` on 2026-05-03 after accepting `TASK-029`.
 - Pre-work should evaluate only the deferred human-readable `typ + update`

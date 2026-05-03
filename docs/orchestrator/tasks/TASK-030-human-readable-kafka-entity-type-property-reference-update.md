@@ -3,12 +3,14 @@
 ID: TASK-030
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: ACCEPTED
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-029
   - TASK-013
   - TASK-014
+NEXT_TASK:
+  - TASK-031
 PAUSE_SOURCE_TASKS: true
 OWNED_PATHS:
   - DIRECTION.md
@@ -150,3 +152,71 @@ DIRECTOR_PREWORK_REVIEW:
   Node reported `v25.9.0`; per project guidance this is setup/sandbox friction,
   not a product blocker. In a normal shell, use the documented Node 20
   development environment before rerunning the orchestrator status command.
+
+DIRECTOR_IMPLEMENTATION_REVIEW:
+- 2026-05-03: Accepted. claude-1 implemented the requested bounded
+  `typ + update` `data.operation == "add_property"` materializer path. The
+  accepted behavior records references under
+  `properties.property_refs.<data.property_id>` on the existing root-shaped
+  `typ` document, carries only wire-provided metadata such as `required`, does
+  not synthesize `required: false`, does not resolve `data.property_id`
+  against `ppy`, and deliberately leaves `_head.provenance` at the original
+  create-message values.
+- Scope review passed. The implementation changed
+  `docs/agents/claude-1-changes.md`, `docs/OVERVIEW.md`,
+  `docs/architecture/kafka-transaction-message-vocabulary.md`,
+  `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`,
+  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`,
+  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/MaterializeResult.groovy`,
+  `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`,
+  and
+  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/EntityCreateKafkaMaterializeIntegrationSpec.groovy`.
+  These source, test, integration, and documentation paths are outside the
+  three base paths listed in `docs/agents/claude-1.md`, but that file allows
+  expansion by the active task file, and every changed path is inside
+  TASK-030's expanded `OWNED_PATHS`.
+- Behavior review passed. The materializer still skips unsupported update and
+  delete actions, treats missing `data.id` or `data.property_id` as
+  `skippedInvalid` before Mongo reads, counts a missing target root as the new
+  `skippedMissingTarget`, treats matching repeated references as
+  `duplicateMatching`, and treats conflicting reference metadata as
+  `conflictingDuplicate` without overwriting. The implementation did not add
+  HTTP submission endpoints, `ppy + create` materialization, semantic
+  property-reference validation, property-value assignment materialization,
+  required-property enforcement, permission enforcement, contents-link read
+  changes, endpoint projection maintenance, broad ID-abbreviation cleanup, or
+  a nested Kafka operation DSL.
+- Assertion review passed. DTO tests now pin the existing
+  `05-update-entity-type-add-property.json` wire shape and the
+  `01 -> 02 -> 04 -> 05 -> 09` reference sequence. Materializer tests cover
+  the positive `$set` shape, omitted `required`, unsupported other
+  operations, missing target, idempotent repeat, conflicting metadata,
+  missing `data.id`, missing `data.property_id`, and preserving unrelated
+  existing properties. The opt-in Kafka integration now proves
+  `open + typ + typ-update-add_property + ent + commit` through Kafka, Mongo
+  `txn`, and materialized `typ`/`ent` roots.
+- Director static verification passed `git diff --check HEAD^..HEAD`.
+  Director Gradle rerun was blocked before product tests by sandbox/tooling
+  permissions opening
+  `/Users/duncanscott/.gradle/wrapper/dists/gradle-8.14.3-bin/cv11ve7ro1n3o1j4so8xd9n66/gradle-8.14.3-bin.zip.lck`
+  with `Operation not permitted` while running
+  `./gradlew :libraries:jade-tipi-dto:test :jade-tipi:test`. In a normal
+  developer shell, use
+  `docker compose -f docker/docker-compose.yml --profile mongodb up -d` for
+  Mongo-backed unit tests, `docker compose -f docker/docker-compose.yml up -d`
+  for the full Kafka/Mongo stack when the integration suite is needed, run
+  `./gradlew --stop` only if stale Gradle daemons are implicated, then rerun
+  `./gradlew :libraries:jade-tipi-dto:test`, `./gradlew :jade-tipi:test`, and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*EntityCreateKafkaMaterializeIntegrationSpec*'`.
+- Credited developer verification: claude-1 reported
+  `./gradlew :libraries:jade-tipi-dto:test`,
+  `./gradlew :jade-tipi:test`,
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*EntityCreateKafkaMaterializeIntegrationSpec*'`, and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest` passing with the
+  local Docker stack healthy.
+- Created `TASK-031` for pre-work on the next bounded human-readable Kafka
+  increment: `ppy + create` property-definition materialization. Property-value
+  assignment materialization, required-property enforcement, semantic
+  validation, and ID-abbreviation cleanup remain future work.
