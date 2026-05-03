@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
@@ -37,20 +37,29 @@ committed materializer writes `grp + create` roots into the `grp` collection
 with `_head.provenance`. Permission enforcement remains intentionally
 unimplemented.
 
-New product direction from Duncan on 2026-05-03: do not integrate ORCID for
-the next auth/admin step. Use regular local Keycloak username/password
-authentication. Create a normal `jade-tipi` realm user `dnscott` / `Duncan
-Scott` with email `dnscott@jade-tipi.org`, grant an application admin role,
-and add a JWT-protected group-management web service plus a Next.js UI that can
-create and edit `grp` records. The application must authorize from a Jade-Tipi
-admin role in the user's JWT, not from the Keycloak `master` realm admin user.
+`TASK-021` is accepted. Jade-Tipi now has a narrow local-development admin
+path using regular Keycloak username/password authentication: the realm import
+defines a normal `dnscott` / Duncan Scott application-admin user, Spring maps
+the `jade-tipi-admin` realm role from the user's JWT, `/api/admin/**` is
+role-protected, and the Next.js admin UI can list, create, and edit root-shaped
+`grp` records. The application authorizes from the user's Jade-Tipi admin role,
+not from the Keycloak `master` realm admin user. Broader permission
+enforcement, Keycloak group synchronization, and production account lifecycle
+behavior remain future work.
+
+`TASK-022` is ready for pre-work. It is a narrow frontend build-baseline repair
+for the pre-existing TypeScript error in `frontend/app/list/[id]/page.tsx`
+that blocked `npm run build` verification after `TASK-021`.
 
 ## Active Task
 
-- `TASK-021 - Add admin group management` is ready for implementation and
-  assigned to `claude-1`. Implement the accepted pre-work defaults for a local
-  Keycloak `dnscott` application-admin user, JWT role mapping, admin-only
-  group CRUD endpoints, and a minimal Next.js group-management UI.
+- `TASK-022 - Restore frontend build baseline` is ready for pre-work and
+  assigned to `claude-1`. Plan the smallest type-safe repair for the
+  pre-existing `frontend/app/list/[id]/page.tsx` build error reported during
+  `TASK-021` verification.
+- `TASK-021 - Add admin group management` is accepted. The implementation
+  adds the local Keycloak `dnscott` application-admin user, JWT role mapping,
+  admin-only group CRUD endpoints, and a minimal Next.js group-management UI.
 - `TASK-020 - Define and materialize group records` is accepted. Do not add
   general permission enforcement, membership synchronization, object-level
   overrides, or property-value-level overrides beyond the narrow admin endpoint
@@ -70,9 +79,39 @@ admin role in the user's JWT, not from the Keycloak `master` realm admin user.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
-Active implementation is `TASK-021`. The task is intentionally narrow: local
-development admin group management using standard Keycloak login. Broader
-permission evaluation and enforcement semantics remain future product work.
+Active pre-work is `TASK-022`. Keep it limited to restoring the frontend build
+baseline; broader permission evaluation and enforcement semantics remain
+future product work.
+
+## TASK-022 Direction
+
+- Director review on 2026-05-03 created `TASK-022` after accepting
+  `TASK-021`. `TASK-021` frontend verification exposed a pre-existing build
+  blocker in `frontend/app/list/[id]/page.tsx` around
+  `getDocument(documentId, accessToken)`.
+- Pre-work should identify the TypeScript narrowing issue and propose the
+  smallest source-compatible fix. Do not modify admin group management,
+  backend code, Keycloak realm import, dependencies, or unrelated routes.
+- Use the project-documented frontend setup path if local dependencies are
+  absent: `cd frontend && npm install`, then `cd frontend && npm run build`.
+
+## TASK-021 Director Acceptance Review
+
+- Accepted on 2026-05-03. The implementation stayed within the task-expanded
+  ownership boundary and satisfied the narrow admin group-management task:
+  realm role/user setup, JWT role mapping, admin-only group CRUD endpoints,
+  root-shaped `grp` persistence, frontend admin gating, and focused docs/tests
+  were added.
+- Director static checks passed with `git diff --check HEAD~1..HEAD` and
+  `jq empty docker/jade-tipi-realm.json`.
+- Director Gradle verification was blocked by sandbox permissions for the
+  Gradle wrapper cache under `~/.gradle`; rerun
+  `./gradlew :jade-tipi:test --tests '*GroupAdmin*' --tests
+  '*RealmAccessRoles*'` in a normal developer shell.
+- Director frontend verification was blocked because `frontend/node_modules`
+  is absent in this worktree; run `cd frontend && npm install` before frontend
+  checks. The developer-reported pre-existing build failure is now tracked by
+  `TASK-022`.
 
 ## TASK-021 Director Pre-work Review
 

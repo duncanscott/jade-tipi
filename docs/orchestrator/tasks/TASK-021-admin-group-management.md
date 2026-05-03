@@ -3,10 +3,12 @@
 ID: TASK-021
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: ACCEPTED
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-020
+NEXT_TASK:
+  - TASK-022
 PAUSE_SOURCE_TASKS: true
 OWNED_PATHS:
   - docker/jade-tipi-realm.json
@@ -166,3 +168,34 @@ PREWORK_REVIEW:
   path: `docker compose -f docker/docker-compose.yml up -d`,
   `./gradlew generateFrontendEnv` when regenerating frontend env is needed,
   and `cd frontend && npm install` before frontend build/test commands.
+
+ACCEPTANCE_REVIEW:
+- 2026-05-03 director review accepts the implementation. The merge
+  satisfies the active task's narrow local-development admin path: the realm
+  import adds the `jade-tipi-admin` realm role and normal `dnscott` user,
+  Spring maps `realm_access.roles` through a WebFlux-compatible JWT
+  authentication converter, `/api/admin/**` is role-protected, admin group
+  endpoints provide create/list/read/update behavior, persisted records use
+  the accepted root-shaped `grp` contract, and the Next.js workflow gates the
+  group editor on an authenticated session with `session.isAdmin === true`.
+- Scope check passed against the active task's expanded `OWNED_PATHS`. The
+  implementation changed files outside claude-1's base assignment paths, but
+  every changed implementation file is covered by `TASK-021` and
+  `DIRECTIVES.md`; no unapproved edits to `frontend/package.json`, the
+  transaction/materializer paths, general permission enforcement, ORCID
+  integration, Keycloak group sync, CouchDB replication, Kafka ingest, or
+  production account lifecycle behavior were found.
+- Static director verification passed with `git diff --check HEAD~1..HEAD`
+  and `jq empty docker/jade-tipi-realm.json`.
+- Director backend verification was blocked by local sandbox permissions for
+  the Gradle wrapper cache:
+  `/Users/duncanscott/.gradle/wrapper/dists/gradle-8.14.3-bin/...zip.lck`
+  returned `Operation not permitted`. In a normal developer shell, rerun
+  `./gradlew :jade-tipi:test --tests '*GroupAdmin*' --tests '*RealmAccessRoles*'`.
+- Director frontend verification was blocked because this director worktree
+  does not currently have `frontend/node_modules`; `cd frontend && npm run
+  build` failed with `next: command not found`. The documented setup command
+  is `cd frontend && npm install`. The developer report also identifies a
+  pre-existing TypeScript build failure in `frontend/app/list/[id]/page.tsx`;
+  `TASK-022` is created as the next bounded repair task before relying on the
+  frontend build as a gate.

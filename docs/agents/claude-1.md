@@ -11,12 +11,12 @@ Report file: docs/agents/claude-1-changes.md
 
 ## Current Assignment
 
-- Active task: `TASK-021 - Add admin group management`.
+- Active task: `TASK-022 - Restore frontend build baseline`.
 - Current phase: pre-work. Read `DIRECTIVES.md` and
-  `docs/orchestrator/tasks/TASK-021-admin-group-management.md`, then propose
-  the concrete plan for a local Keycloak `dnscott` application-admin user,
-  JWT-protected group CRUD endpoints, and a minimal Next.js group-management
-  UI.
+  `docs/orchestrator/tasks/TASK-022-restore-frontend-build-baseline.md`, then
+  propose the smallest type-safe repair for the pre-existing
+  `frontend/app/list/[id]/page.tsx` build error reported during `TASK-021`
+  verification.
 - Do not implement yet. Record the pre-work plan in
   `docs/agents/claude-1-next-step.md`, commit, push, and stop.
 - Use `DIRECTIVES.md` as the current source of truth.
