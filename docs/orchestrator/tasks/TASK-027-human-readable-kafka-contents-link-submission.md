@@ -3,7 +3,7 @@
 ID: TASK-027
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-026
@@ -92,3 +92,35 @@ VERIFICATION:
 - If local verification is blocked by Docker, Kafka, Mongo, Gradle cache
   permissions, or missing dependencies, report the exact command and error
   rather than treating setup friction as a product blocker.
+
+DIRECTOR_PREWORK_REVIEW:
+- 2026-05-03: claude-1 pre-work accepted. The work stayed within claude-1's
+  base developer-owned pre-work path: the branch delta before director edits
+  was only `docs/agents/claude-1-next-step.md`.
+- Source review confirms the plan's main behavioral finding: the existing
+  examples already provide a complete `01 -> 11 -> 12 -> 09` human-readable
+  transaction flow for opening a transaction, declaring the `contents`
+  link-type, creating a `lnk` contents link, and committing the transaction.
+  The `lnk + create` example uses top-level `collection: "lnk"`,
+  `action: "create"`, `data.id`, `data.type_id`, raw `data.left` and
+  `data.right` endpoint IDs, and plain `data.properties.position`.
+- Source review also confirms `CommittedTransactionMaterializer` already
+  accepts `typ + create` link-types and `lnk + create`, materializing `lnk`
+  roots with top-level `type_id`, `left`, `right`, `properties`, `links`, and
+  `_head`; `ContentsLinkReadService` resolves canonical contents types through
+  `typ.properties.kind == "link_type"` and `typ.properties.name == "contents"`
+  before filtering `lnk.type_id`.
+- Proceed with the narrow implementation plan: no example, schema,
+  materializer, read-service, HTTP endpoint, or documentation rewrite is
+  required by default. Add focused test coverage proving the existing
+  human-readable examples and materialized `typ`/`lnk` roots line up with the
+  contents read criteria. Include the DTO co-presence assertion by default
+  because it cheaply proves the example transaction's `typ.data.id` and
+  `lnk.data.type_id` relationship at the authored wire layer.
+- Verification correction for the implementation turn: prefer documented setup
+  commands. For Mongo-backed unit tests when the local stack is missing, report
+  or run `docker compose -f docker/docker-compose.yml --profile mongodb up -d`.
+  For the Kafka/Mongo integration check, use the existing documented opt-in
+  only when the stack is available: run
+  `docker compose -f docker/docker-compose.yml up -d` followed by
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*ContentsHttpReadIntegrationSpec*'`.
