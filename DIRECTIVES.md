@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
@@ -88,23 +88,33 @@ line up with `ContentsLinkReadService`'s `typ.properties.kind/name` and
 submission endpoint, semantic reference validation, endpoint projection
 maintenance, `ent` materialization, or nested Kafka operation DSL was added.
 
-`TASK-028` is ready for implementation. Continue the Kafka-first domain write
-path with the smallest human-readable `ent + create` materialization step from
-the existing entity-type/entity examples. Implement `ent + create` root
-materialization only; leave bare entity-type `typ + create` materialization and
-ID-abbreviation cleanup for later direction.
+`TASK-028` is accepted. The Kafka-first domain write path can now materialize a
+human-readable `ent + create` transaction as a root-shaped `ent` document while
+preserving the existing entity example IDs. Bare entity-type `typ + create`,
+type-property update materialization, semantic type-reference validation, and
+ID-abbreviation cleanup remain future work.
+
+`TASK-029` is ready for pre-work. Continue the Kafka-first domain write path
+with the smallest human-readable bare entity-type `typ + create`
+materialization step from the existing `04-create-entity-type.json` example.
+Do not implement during pre-work.
 
 ## Active Task
 
-- `TASK-028 - Human-readable Kafka entity submission path` is
-  `READY_FOR_IMPLEMENTATION`. claude-1 should implement only `ent + create`
-  root materialization from the existing human-readable Kafka shape. Preserve
-  the current `06-create-entity.json` ID strings (`~en~plate_a` and
-  `~ty~plate_96`) for this task; do not perform broad ID-abbreviation cleanup.
-  Leave bare entity-type `typ + create` unsupported and do not add an
-  `entity_type` discriminator. Do not add HTTP submission endpoints, property
-  assignment materialization, semantic type-reference validation, permission
-  enforcement, contents-link read changes, or a nested Kafka operation DSL.
+- `TASK-029 - Human-readable Kafka entity-type submission path` is
+  `READY_FOR_PREWORK`. claude-1 should plan only the smallest bare
+  entity-type `typ + create` root-materialization increment from the existing
+  `04-create-entity-type.json` shape, then stop. Do not implement in the
+  pre-work turn.
+- `TASK-028 - Human-readable Kafka entity submission path` is accepted.
+  `ent + create` now materializes as a root-shaped `ent` document, the
+  canonical `06-create-entity.json` example exposes explicit empty
+  `data.properties` and `data.links`, and the existing `~en~plate_a` /
+  `~ty~plate_96` IDs were preserved. Bare entity-type `typ + create`,
+  type-property update materialization, semantic type-reference validation,
+  broad ID-abbreviation cleanup, HTTP submission endpoints, property assignment
+  materialization, permission enforcement, contents-link read changes, and a
+  nested Kafka operation DSL remain out of scope.
 - `TASK-027 - Human-readable Kafka contents link submission path` is accepted.
   The existing contents examples already express the intended human-readable
   shape and transaction sequence; focused tests now prove the DTO co-presence
@@ -150,7 +160,7 @@ ID-abbreviation cleanup for later direction.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
-`TASK-028` is the active bounded task. Broader authentication redesign,
+`TASK-029` is the active bounded task. Broader authentication redesign,
 Keycloak changes, admin group-management changes, permission
 evaluation/enforcement semantics, and unrelated product increments remain
 future work unless the human selects one as a later bounded goal.
@@ -216,6 +226,44 @@ future work unless the human selects one as a later bounded goal.
 
 ## TASK-028 Direction
 
+- Director implementation review on 2026-05-03 accepts `TASK-028` with
+  `SIGNAL: REQUEST_NEXT_STEP` and creates `TASK-029` for entity-type
+  submission pre-work. Scope check passed: claude-1 changed only
+  `docs/agents/claude-1-changes.md`,
+  `libraries/jade-tipi-dto/src/main/resources/example/message/06-create-entity.json`,
+  `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`,
+  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`,
+  `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`,
+  and
+  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/EntityCreateKafkaMaterializeIntegrationSpec.groovy`.
+  The implementation honored the task and directive limits: no HTTP
+  submission endpoint, bare entity-type materialization, `entity_type`
+  discriminator, semantic `type_id` resolution, property-assignment
+  materialization, permission enforcement, contents-read change, broad
+  ID-abbreviation cleanup, or nested Kafka operation DSL was added.
+- Behavior review accepted the narrow `ent + create` path: root-shaped `ent`
+  materialization now preserves submitted `data.id`, surfaces submitted
+  `data.type_id` as root `type_id`, writes root `properties` and `links`, and
+  records `_head.provenance`. Focused DTO, materializer, and opt-in Kafka/Mongo
+  integration coverage were added for the entity path.
+- Director static verification passed `git diff --check HEAD^..HEAD`.
+  Director Gradle reruns were blocked before product tests by sandbox/tooling
+  permissions opening the Gradle wrapper cache lock under
+  `/Users/duncanscott/.gradle` with `Operation not permitted`. In a normal
+  developer shell, use `docker compose -f docker/docker-compose.yml up -d` if
+  the full local stack is missing, run `./gradlew --stop` if stale Gradle
+  daemons are implicated, then rerun `./gradlew :libraries:jade-tipi-dto:test`,
+  `./gradlew :jade-tipi:test`, and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*EntityCreateKafkaMaterializeIntegrationSpec*'`.
+- Credited developer verification: claude-1 reported
+  `./gradlew :libraries:jade-tipi-dto:test`, `./gradlew :jade-tipi:test`,
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*EntityCreateKafkaMaterializeIntegrationSpec*'`, and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*ContentsHttpReadIntegrationSpec*' --tests
+  '*TransactionMessageKafkaIngestIntegrationSpec*'` passing with the local
+  Docker stack healthy.
 - Director created `TASK-028` on 2026-05-03 after accepting `TASK-027`.
 - Director pre-work review on 2026-05-03 accepts the plan with narrowed
   implementation constraints and advances `TASK-028` to
@@ -235,6 +283,31 @@ future work unless the human selects one as a later bounded goal.
 - Do not add HTTP submission endpoints, property assignment materialization,
   required property enforcement, semantic type-reference validation, permission
   enforcement, contents-link read changes, or a nested Kafka operation DSL.
+- Verification proposal should include `./gradlew :libraries:jade-tipi-dto:test`,
+  `./gradlew :jade-tipi:test`, and the narrowest practical Kafka/Mongo
+  integration opt-in command when the local stack is available. If local setup
+  blocks verification, report
+  `docker compose -f docker/docker-compose.yml --profile mongodb up -d`,
+  `docker compose -f docker/docker-compose.yml up -d`, `./gradlew --stop` when
+  stale Gradle daemons are implicated, and the exact blocked command/error
+  rather than treating setup as a product blocker.
+
+## TASK-029 Direction
+
+- Director created `TASK-029` on 2026-05-03 after accepting `TASK-028`.
+- Pre-work should evaluate the existing human-readable bare entity-type
+  `typ + create` path only: `04-create-entity-type.json`, the current
+  materializer's `typ` support for `data.kind == "link_type"`, and the current
+  skip behavior for bare entity-type `typ` messages.
+- The likely implementation unit is root-shaped materialization for bare
+  entity-type `typ + create`, preserving existing link-type materialization
+  behavior and leaving `05-update-entity-type-add-property.json` /
+  `typ + update` property-reference materialization as deferred unless the
+  pre-work finds an unavoidable dependency.
+- Do not add HTTP submission endpoints, property assignment materialization,
+  required property enforcement, semantic validation that `ent.data.type_id`
+  resolves, permission enforcement, object extension pages, contents-read
+  changes, broad ID-abbreviation cleanup, or a nested Kafka operation DSL.
 - Verification proposal should include `./gradlew :libraries:jade-tipi-dto:test`,
   `./gradlew :jade-tipi:test`, and the narrowest practical Kafka/Mongo
   integration opt-in command when the local stack is available. If local setup

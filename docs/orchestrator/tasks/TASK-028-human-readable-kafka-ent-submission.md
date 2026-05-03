@@ -3,13 +3,15 @@
 ID: TASK-028
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: ACCEPTED
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-027
   - TASK-026
   - TASK-013
   - TASK-014
+NEXT_TASK:
+  - TASK-029
 PAUSE_SOURCE_TASKS: true
 OWNED_PATHS:
   - DIRECTION.md
@@ -131,3 +133,56 @@ VERIFICATION:
   for Mongo-backed unit tests, `docker compose -f docker/docker-compose.yml up -d`
   for the full Kafka/Mongo stack, and `./gradlew --stop` only when stale Gradle
   daemons are implicated.
+
+DIRECTOR_IMPLEMENTATION_REVIEW:
+- Accepted on 2026-05-03. claude-1 implemented the requested narrow behavior:
+  `ent + create` is now materialized as a root-shaped `ent` document with
+  top-level `_id`, `id`, `collection`, `type_id`, root `properties`, root
+  `links`, and `_head.provenance`. The existing `06-create-entity.json`
+  example now makes the no-inline-facts shape explicit with empty
+  `data.properties` and `data.links` while preserving the directed
+  `~en~plate_a` and `~ty~plate_96` IDs.
+- Scope review passed. The implementation changed only
+  `libraries/jade-tipi-dto/src/main/resources/example/message/06-create-entity.json`,
+  `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`,
+  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`,
+  `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`,
+  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/EntityCreateKafkaMaterializeIntegrationSpec.groovy`,
+  and `docs/agents/claude-1-changes.md`. The source/test/resource paths are
+  inside TASK-028 `OWNED_PATHS`; the report file is inside claude-1's base
+  assignment paths. No HTTP submission endpoint, bare entity-type
+  materialization, `entity_type` discriminator, semantic `type_id` resolution,
+  property-assignment materialization, permission enforcement,
+  contents-read change, broad ID-abbreviation cleanup, or nested Kafka
+  operation DSL was added.
+- Behavior and assertion review passed. DTO coverage now asserts the
+  human-readable `06-create-entity.json` shape and its reference to
+  `04-create-entity-type.json`. Materializer coverage now proves the `ent`
+  root shape, empty-map defaults, missing/blank `data.id` invalid skips,
+  matching duplicate idempotency, conflicting duplicate handling, and mixed
+  snapshot ordering/counts with `ppy` still unsupported. The new opt-in Kafka
+  integration spec covers `open + ent + commit` through Kafka, Mongo `txn`, and
+  the materialized `ent` collection.
+- Director static verification passed `git diff --check HEAD^..HEAD`.
+  Director Gradle rerun was blocked before product tests by sandbox tooling
+  permissions opening
+  `/Users/duncanscott/.gradle/wrapper/dists/gradle-8.14.3-bin/.../gradle-8.14.3-bin.zip.lck`
+  with `Operation not permitted` while running
+  `./gradlew :libraries:jade-tipi-dto:test`. This is the known local Gradle
+  wrapper-cache permission issue, not an observed product failure. In a normal
+  developer shell, use `docker compose -f docker/docker-compose.yml up -d` if
+  the full local stack is missing, run `./gradlew --stop` if stale Gradle
+  daemons are implicated, then rerun `./gradlew :libraries:jade-tipi-dto:test`,
+  `./gradlew :jade-tipi:test`,
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*EntityCreateKafkaMaterializeIntegrationSpec*'`, and the reported
+  regression command covering `ContentsHttpReadIntegrationSpec` plus
+  `TransactionMessageKafkaIngestIntegrationSpec`.
+- Credited developer verification: claude-1 reported
+  `./gradlew :libraries:jade-tipi-dto:test`, `./gradlew :jade-tipi:test`,
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*EntityCreateKafkaMaterializeIntegrationSpec*'`, and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*ContentsHttpReadIntegrationSpec*' --tests
+  '*TransactionMessageKafkaIngestIntegrationSpec*'` all passing with the local
+  Docker stack already healthy.
