@@ -1,6 +1,73 @@
 # codex-1 Changes
 
 STATUS: READY_FOR_REVIEW
+TASK: VALIDATE-TASK-030-e5986755 - Validate TASK-030 staging candidate e5986755
+DATE: 2026-05-03
+VERDICT: PASSED
+STAGING_WORKTREE: /Users/duncanscott/orchestrator/jade-tipi/staging
+STAGING_COMMIT: e598675514ee82dd24c5e31bb2506f9704cded08
+PROMOTION: Staging can be pushed/promoted for TASK-030.
+
+Validation summary:
+- Confirmed the frozen staging worktree still points at
+  `e598675514ee82dd24c5e31bb2506f9704cded08`.
+- Confirmed staging has no local file modifications:
+  `git -C /Users/duncanscott/orchestrator/jade-tipi/staging status --short --branch`
+  reported `## staging...origin/staging [ahead 9]`.
+- Reviewed `DIRECTIVES.md`, the accepted TASK-030 task file, and
+  `docs/agents/claude-1-changes.md`; the accepted behavior is the bounded
+  `typ + update` `data.operation == "add_property"` path only.
+- Reviewed the staging source changes in
+  `CommittedTransactionMaterializer.groovy`,
+  `MaterializeResult.groovy`, the focused materializer/DTO/integration specs,
+  and the updated architecture/overview docs. The implementation matches the
+  accepted scope: it writes `properties.property_refs.<property_id>` on an
+  existing root-shaped `typ` document, carries only wire-provided metadata,
+  counts missing target roots as `skippedMissingTarget`, treats matching
+  repeats as `duplicateMatching`, refuses conflicting metadata as
+  `conflictingDuplicate`, and does not rewrite `_head.provenance`.
+- Scope review passed: the commit changed only the TASK-030 implementation,
+  test, report, and documentation paths listed in the accepted task file.
+  No HTTP submission endpoint, `ppy + create` materialization, semantic
+  property-id resolution, property-value assignment materialization,
+  permission enforcement, contents-link read change, broad ID cleanup,
+  endpoint projection maintenance, or nested Kafka DSL was added.
+
+Commands and checks:
+- `git -C /Users/duncanscott/orchestrator/jade-tipi/staging rev-parse HEAD`
+  -> `e598675514ee82dd24c5e31bb2506f9704cded08`.
+- `git -C /Users/duncanscott/orchestrator/jade-tipi/staging status --short --branch`
+  -> clean worktree on `staging`, ahead of `origin/staging`.
+- `git -C /Users/duncanscott/orchestrator/jade-tipi/staging diff --check e598675514ee82dd24c5e31bb2506f9704cded08^ e598675514ee82dd24c5e31bb2506f9704cded08`
+  -> passed.
+- `git -C /Users/duncanscott/orchestrator/jade-tipi/staging show --format=short --check e598675514ee82dd24c5e31bb2506f9704cded08 --`
+  -> passed.
+- `./gradlew :libraries:jade-tipi-dto:test` from the staging worktree was
+  blocked before product tests by sandbox/tooling permissions opening
+  `/Users/duncanscott/.gradle/wrapper/dists/gradle-8.14.3-bin/cv11ve7ro1n3o1j4so8xd9n66/gradle-8.14.3-bin.zip.lck`
+  with `Operation not permitted`. This matches the director-recorded local
+  setup friction and is not a product blocker.
+
+Normal-shell verification commands:
+- `docker compose -f docker/docker-compose.yml --profile mongodb up -d` if the
+  Mongo-backed unit-test stack is missing.
+- `docker compose -f docker/docker-compose.yml up -d` if rerunning the full
+  Kafka/Mongo integration suite.
+- `./gradlew --stop` only if stale Gradle daemons are implicated.
+- `./gradlew :libraries:jade-tipi-dto:test`
+- `./gradlew :jade-tipi:test`
+- `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*EntityCreateKafkaMaterializeIntegrationSpec*'`
+
+Credited prior verification:
+- claude-1 reported the DTO test, backend test, focused Kafka integration test,
+  and full `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest` passing
+  with the local Docker stack healthy.
+- The director accepted TASK-030 after source/scope/assertion review and
+  recorded the same Gradle wrapper lock sandbox blocker for director reruns.
+
+Previous report retained below.
+
+---
 
 ## TASK-001 - Restore DTO Units Test Baseline
 
