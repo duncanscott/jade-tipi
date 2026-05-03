@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
@@ -52,15 +52,15 @@ for the pre-existing TypeScript error in `frontend/app/list/[id]/page.tsx`.
 Build verification then surfaced the next unrelated pre-existing TypeScript
 blocker in `frontend/auth.ts`, now tracked by `TASK-023`.
 
-`TASK-023` is ready for pre-work. It should stay limited to the NextAuth
+`TASK-023` is ready for implementation. It should stay limited to the NextAuth
 `events.signOut` callback union-narrowing error in `frontend/auth.ts` and
 must not broaden authentication, Keycloak, admin group management, backend,
 dependency, or unrelated route behavior.
 
 ## Active Task
 
-- `TASK-023 - Fix NextAuth sign-out build error` is ready for pre-work and
-  assigned to `claude-1`. Identify the smallest type-safe repair for the
+- `TASK-023 - Fix NextAuth sign-out build error` is ready for implementation
+  and assigned to `claude-1`. Apply the smallest type-safe repair for the
   `frontend/auth.ts` `events.signOut` callback error reported after the
   accepted `TASK-022` list-page fix.
 - `TASK-022 - Restore frontend build baseline` is accepted. The implementation
@@ -95,6 +95,22 @@ changes, and permission evaluation/enforcement semantics remain future work.
 
 ## TASK-023 Direction
 
+- Director pre-work review on 2026-05-03 advances `TASK-023` to
+  `READY_FOR_IMPLEMENTATION` with `SIGNAL: PROCEED_TO_IMPLEMENTATION`.
+  claude-1's latest pre-work commit stayed inside the base ownership boundary:
+  it changed only `docs/agents/claude-1-next-step.md`.
+- Proceed with the proposed narrow fix in `frontend/auth.ts`: accept the
+  `events.signOut` callback message as a single value, narrow with
+  `'token' in message`, return without attempting Keycloak logout for the
+  `{ session }` variant or a missing `idToken`, and keep the existing
+  Keycloak logout URL, `id_token_hint`, `post_logout_redirect_uri`,
+  `fetch`, and `try/catch` behavior unchanged for the token variant.
+- Verification for the director pre-work review was source inspection plus
+  `git diff --check HEAD..origin/claude-1`; `frontend/node_modules` is present
+  in this worktree. In the implementation turn, run
+  `cd frontend && npm run build`. If frontend dependencies are missing or
+  stale in the developer worktree, use the documented setup command
+  `cd frontend && npm install` before the build.
 - Director review on 2026-05-03 accepts `TASK-022` and creates `TASK-023` as
   `READY_FOR_PREWORK` with `SIGNAL: REQUEST_NEXT_STEP`.
 - Pre-work should inspect `frontend/auth.ts` around `events.signOut` and
