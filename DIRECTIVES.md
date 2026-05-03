@@ -72,20 +72,35 @@ accepted Next.js 16.2.4 / React 19.2 stack. The package and lockfile changed
 only for the TypeScript bump; the existing `tsconfig.json` and frontend source
 remain compatible.
 
-`TASK-026` is created as the next product increment. The focus returns to the
-domain write path: prove that a human-readable Kafka transaction can create a
-root-shaped `loc` document in MongoDB using the existing ingest, commit, and
-materialization path. Keep Kafka as the first submission route; later HTTP
-endpoints should be thin adapters over the same behavior.
+`TASK-026` is accepted. The domain write path now proves that a human-readable
+Kafka transaction can create a root-shaped `loc` document in MongoDB using the
+existing ingest, commit, and materialization path. The accepted location shape
+uses `data.id`, optional `data.type_id`, explicit `data.properties`, and
+optional-or-empty `data.links`; the materializer preserves legacy flat
+location payload tolerance only as documented compatibility.
+
+`TASK-027` is created as the next product increment. Continue the Kafka-first
+domain write path by proving that a human-readable `contents` `lnk + create`
+message can materialize a root-shaped link document and remain readable by the
+existing contents read service. Do not add HTTP submission endpoints, endpoint
+projection maintenance, semantic reference validation, `ent` materialization,
+or a nested Kafka operation DSL.
 
 ## Active Task
 
-- `TASK-026 - Human-readable Kafka loc submission path` is
-  `READY_FOR_PREWORK`. claude-1 should first inspect the existing `loc + create`
-  materializer behavior, confirm whether it already accepts the proposed
-  `data.id`, optional `data.type_id`, `data.properties`, and optional
-  `data.links` shape, and propose the smallest implementation/test changes.
-  Do not add HTTP submission endpoints or a complex Kafka operation DSL.
+- `TASK-027 - Human-readable Kafka contents link submission path` is
+  `READY_FOR_PREWORK`. claude-1 should first inspect the existing
+  `typ + create` link-type and `lnk + create` materializer/read behavior,
+  confirm whether the existing contents-type/link examples already express the
+  intended human-readable shape and complete transaction sequence, and propose
+  the smallest implementation/test changes. Do not add HTTP submission
+  endpoints, semantic reference validation, endpoint projection maintenance, or
+  a complex Kafka operation DSL.
+- `TASK-026 - Human-readable Kafka loc submission path` is accepted. The
+  canonical `10-create-location.json` example now uses explicit
+  `data.properties` and `data.links: {}`; the materializer projects that shape
+  into root `properties` and root `links` without nesting while preserving the
+  legacy flat-location fallback.
 - `TASK-025 - Plan TypeScript 6 frontend upgrade` is accepted. The
   implementation bumped TypeScript to `^6.0.3`, regenerated the lockfile for
   that package only, and required no source or `tsconfig.json` migration.
@@ -122,10 +137,10 @@ endpoints should be thin adapters over the same behavior.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
-No active bounded task is selected. Broader authentication redesign, Keycloak
-changes, admin group-management changes, permission evaluation/enforcement
-semantics, and any next product increment remain future work unless the human
-selects one as a later bounded goal.
+`TASK-027` is the active bounded task. Broader authentication redesign,
+Keycloak changes, admin group-management changes, permission
+evaluation/enforcement semantics, and unrelated product increments remain
+future work unless the human selects one as a later bounded goal.
 
 ## Orchestrator Protocol Direction
 
@@ -133,6 +148,54 @@ selects one as a later bounded goal.
   during implementation. If an upgrade tool or build step requires edits
   outside the active task's `OWNED_PATHS`, report the exact file and reason
   for director review rather than self-expanding the task file.
+
+## TASK-027 Direction
+
+- Director created `TASK-027` on 2026-05-03 after accepting `TASK-026`.
+- Pre-work should evaluate the existing human-readable contents link path only:
+  `typ + create` link-type examples/materialization, `lnk + create` examples
+  and materialization, and whether the existing contents read service already
+  consumes the materialized link root without further product behavior.
+- Do not add HTTP submission endpoints, `ent` materialization, property
+  assignment materialization, permission enforcement, endpoint projection
+  maintenance, semantic reference validation, `parent_location_id`, or a nested
+  Kafka operation DSL.
+- Verification proposal should include `./gradlew :libraries:jade-tipi-dto:test`,
+  `./gradlew :jade-tipi:test`, and the existing Kafka/Mongo integration opt-in
+  command when the local stack is available. If local setup blocks verification,
+  report `docker compose -f docker/docker-compose.yml up -d`, `./gradlew --stop`
+  when stale Gradle daemons are implicated, and the exact blocked command/error
+  rather than treating setup as a product blocker.
+
+## TASK-026 Direction
+
+- Director implementation review on 2026-05-03 accepts `TASK-026` with
+  `SIGNAL: REQUEST_NEXT_STEP` and creates `TASK-027` for contents-link
+  pre-work. Scope check passed: claude-1 changed only the canonical location
+  example, focused DTO/materializer tests, the materializer service, and the
+  base report file. The implementation honored the task and directive limits:
+  no HTTP submission endpoint, schema hardening, `ent` materialization,
+  permission enforcement, `parent_location_id`, or nested Kafka operation DSL
+  was added.
+- Behavior review accepted the explicit human-readable `loc + create` shape:
+  `data.properties` now materializes as root `properties`, `data.links`
+  materializes as root `links`, and the legacy flat-location payload remains a
+  documented compatibility fallback.
+- Director static verification passed `git diff --check origin/director..HEAD`.
+  Director Gradle reruns were blocked before product tests by sandbox/tooling
+  permissions opening the Gradle wrapper cache lock under
+  `/Users/duncanscott/.gradle` with `Operation not permitted`. In a normal
+  developer shell, use `docker compose -f docker/docker-compose.yml up -d` if
+  the local stack is missing, run `./gradlew --stop` if stale Gradle daemons are
+  implicated, then rerun `./gradlew :libraries:jade-tipi-dto:test`,
+  `./gradlew :jade-tipi:test`, and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*TransactionMessageKafkaIngestIntegrationSpec*'`.
+- Credited developer verification: claude-1 reported
+  `./gradlew :libraries:jade-tipi-dto:test`, `./gradlew :jade-tipi:test`, and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*TransactionMessageKafkaIngestIntegrationSpec*'` passing with the local
+  Docker stack healthy.
 
 ## TASK-025 Direction
 

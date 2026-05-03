@@ -3,12 +3,14 @@
 ID: TASK-026
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: ACCEPTED
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-013
   - TASK-014
   - TASK-019
+NEXT_TASK:
+  - TASK-027
 PAUSE_SOURCE_TASKS: true
 OWNED_PATHS:
   - DIRECTION.md
@@ -105,3 +107,48 @@ DIRECTOR_PREWORK_REVIEW:
   documented opt-in pattern only when the stack is available:
   `docker compose -f docker/docker-compose.yml up -d` followed by
   `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*TransactionMessageKafkaIngestIntegrationSpec*'`.
+
+DIRECTOR_IMPLEMENTATION_REVIEW:
+- Accepted on 2026-05-03. claude-1 implemented the approved narrow shape change:
+  the canonical location example now uses `data.properties` plus explicit empty
+  `data.links`, and `CommittedTransactionMaterializer` now prefers
+  `data.properties` for non-`lnk` explicit-shape payloads while preserving the
+  legacy flat `loc` fallback.
+- Scope review passed. The implementation changed only
+  `libraries/jade-tipi-dto/src/main/resources/example/message/10-create-location.json`,
+  `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`,
+  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`,
+  `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`,
+  and `docs/agents/claude-1-changes.md`. The source/test/resource paths are
+  inside TASK-026 `OWNED_PATHS`; the report file is inside claude-1's base
+  assignment paths. No HTTP submission endpoint, schema hardening, `ent`
+  materialization, permission enforcement, `parent_location_id`, or nested Kafka
+  operation DSL was added.
+- Behavior review passed. The materialized `loc` root keeps `_id`, `id`,
+  `collection: "loc"`, top-level `type_id`, `_head.provenance`, root
+  `properties`, and root `links`; explicit `data.properties` no longer
+  materializes as nested `properties.properties`, and explicit `data.links` no
+  longer leaks under root `properties`.
+- Assertion review passed. `MessageSpec` now asserts the rewritten example's
+  human-readable DTO shape, while the existing example round-trip/schema loop
+  continues to validate it. `CommittedTransactionMaterializerSpec` now covers
+  explicit `loc` `data.properties`/`data.links`, explicit `data.type_id`, a
+  non-empty links map, and the existing legacy flat-location compatibility path.
+- Director static verification passed `git diff --check origin/director..HEAD`.
+  Director Gradle reruns were blocked before product tests by sandbox tooling
+  permissions opening
+  `/Users/duncanscott/.gradle/wrapper/dists/gradle-8.14.3-bin/.../gradle-8.14.3-bin.zip.lck`
+  with `Operation not permitted` while running
+  `./gradlew :libraries:jade-tipi-dto:test`. This is the known local Gradle
+  wrapper-cache permission issue, not an observed product failure. In a normal
+  developer shell, use `docker compose -f docker/docker-compose.yml up -d` if
+  the local Mongo/Kafka stack is missing, run `./gradlew --stop` if stale Gradle
+  daemons are implicated, then rerun `./gradlew :libraries:jade-tipi-dto:test`,
+  `./gradlew :jade-tipi:test`, and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*TransactionMessageKafkaIngestIntegrationSpec*'`.
+- Credited developer verification: claude-1 reported
+  `./gradlew :libraries:jade-tipi-dto:test`,
+  `./gradlew :jade-tipi:test`, and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*TransactionMessageKafkaIngestIntegrationSpec*'` all passing with the local
+  Docker stack already healthy.
