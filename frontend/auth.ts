@@ -77,22 +77,27 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }
   },
   events: {
-    async signOut({ token }) {
-      // Construct Keycloak logout URL to terminate the Keycloak session
-      if (token?.idToken) {
-        const issuerUrl = process.env.KEYCLOAK_ISSUER!
-        const logoutUrl = `${issuerUrl}/protocol/openid-connect/logout`
-        const params = new URLSearchParams({
-          id_token_hint: token.idToken as string,
-          post_logout_redirect_uri: process.env.NEXTAUTH_URL || 'http://localhost:3000'
-        })
+    async signOut(message) {
+      // The signOut event message is a discriminated union: { session } for
+      // database-session strategies and { token } for JWT. This app uses the
+      // JWT strategy via Keycloak; narrow with 'in' so the type checker
+      // stays honest if a future adapter is added.
+      if (!('token' in message) || !message.token?.idToken) {
+        return
+      }
+      const token = message.token
+      const issuerUrl = process.env.KEYCLOAK_ISSUER!
+      const logoutUrl = `${issuerUrl}/protocol/openid-connect/logout`
+      const params = new URLSearchParams({
+        id_token_hint: token.idToken as string,
+        post_logout_redirect_uri: process.env.NEXTAUTH_URL || 'http://localhost:3000'
+      })
 
-        try {
-          // Call Keycloak's logout endpoint to end the session
-          await fetch(`${logoutUrl}?${params.toString()}`, { method: 'GET' })
-        } catch (error) {
-          console.error('Error during Keycloak logout:', error)
-        }
+      try {
+        // Call Keycloak's logout endpoint to end the session
+        await fetch(`${logoutUrl}?${params.toString()}`, { method: 'GET' })
+      } catch (error) {
+        console.error('Error during Keycloak logout:', error)
       }
     }
   }

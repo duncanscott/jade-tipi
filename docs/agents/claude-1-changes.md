@@ -2,6 +2,68 @@
 
 The developer writes completed work reports here.
 
+STATUS: COMPLETED
+TASK: TASK-023 — Fix NextAuth sign-out build error
+DATE: 2026-05-03
+SUMMARY: Applied the director-approved narrow type-safe repair in
+`frontend/auth.ts`. The `events.signOut` callback now accepts the message
+argument as a single value and narrows the NextAuth discriminated union with
+the runtime `'token' in message` check before reading `message.token`.
+Behavior is preserved: when the JWT arm carries an `idToken`, the same
+Keycloak `protocol/openid-connect/logout` GET runs with the same
+`id_token_hint` and `post_logout_redirect_uri` inside the same `try/catch`
+with the same `console.error` on failure; for the database-session arm or a
+missing token, the handler returns without calling Keycloak — matching the
+prior `if (token?.idToken)` no-op path. `cd frontend && npm run build`
+completed cleanly: compiled, linted/type-checked, and generated all 9 static
+pages with no errors.
+
+Files changed (this turn):
+
+- `frontend/auth.ts` — replaced `async signOut({ token })` destructuring
+  with `async signOut(message)` plus an early `if (!('token' in message) ||
+  !message.token?.idToken) return` narrowing guard, then rebound `const
+  token = message.token` so the existing logout body is byte-equivalent for
+  the JWT arm. Added a short comment naming the discriminated-union reason.
+  Provider config, JWT/session callbacks, `decodeJwtPayload`,
+  `isAdminFromAccessToken`, and the `ADMIN_ROLE` constant are unchanged.
+- No edits to `frontend/package.json`, `frontend/package-lock.json`,
+  `frontend/tests/`, Keycloak realm import, backend code, or unrelated
+  frontend routes.
+
+Verification:
+
+- Setup: `frontend/node_modules` was already present in this worktree;
+  `npm install` was not required.
+- Ran `cd frontend && npm run build`. Result: `Compiled successfully in
+  1202ms`, `Linting and checking validity of types ...` passed, and
+  `Generating static pages (9/9)` completed. Final route table reports the
+  expected 10 entries (`/`, `/_not-found`, `/admin/groups`,
+  `/admin/groups/[id]`, `/admin/groups/new`, `/api/auth/[...nextauth]`,
+  `/document/create`, `/document/edit/[id]`, `/list`, `/list/[id]`).
+- The previous `frontend/auth.ts:80:21 Property 'token' does not exist on
+  type ...` error is gone. No new unrelated TypeScript blockers were
+  surfaced by the build.
+- One pre-existing non-blocking warning remained in the build output:
+  `⚠ turbopack.root should be absolute, using:
+  /Users/duncanscott/orchestrator/jade-tipi/developers/claude-1`. This is a
+  Next.js Turbopack config warning unrelated to `auth.ts`; the build still
+  succeeded.
+
+Stay-in-scope check:
+
+- Implementation edits were limited to `frontend/auth.ts`, which is in
+  `TASK-023` `OWNED_PATHS`. The report file
+  `docs/agents/claude-1-changes.md` is in the base ownership boundary.
+- No NextAuth provider, session/JWT callback, admin-role derivation,
+  Keycloak realm import, backend, package, lockfile, frontend test, or
+  unrelated frontend route was touched.
+
+Open questions / blockers: None. The frontend build baseline is restored
+end-to-end. Ready for director acceptance.
+
+---
+
 STATUS: BLOCKED
 TASK: TASK-022 — Restore frontend build baseline
 DATE: 2026-05-03
