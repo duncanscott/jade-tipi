@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
@@ -47,14 +47,14 @@ not from the Keycloak `master` realm admin user. Broader permission
 enforcement, Keycloak group synchronization, and production account lifecycle
 behavior remain future work.
 
-`TASK-022` is ready for pre-work. It is a narrow frontend build-baseline repair
+`TASK-022` is ready for implementation. It is a narrow frontend build-baseline repair
 for the pre-existing TypeScript error in `frontend/app/list/[id]/page.tsx`
 that blocked `npm run build` verification after `TASK-021`.
 
 ## Active Task
 
-- `TASK-022 - Restore frontend build baseline` is ready for pre-work and
-  assigned to `claude-1`. Plan the smallest type-safe repair for the
+- `TASK-022 - Restore frontend build baseline` is ready for implementation and
+  assigned to `claude-1`. Implement the smallest type-safe repair for the
   pre-existing `frontend/app/list/[id]/page.tsx` build error reported during
   `TASK-021` verification.
 - `TASK-021 - Add admin group management` is accepted. The implementation
@@ -85,6 +85,18 @@ future product work.
 
 ## TASK-022 Direction
 
+- Director review on 2026-05-03 advances `TASK-022` to
+  `READY_FOR_IMPLEMENTATION` with `SIGNAL: PROCEED_TO_IMPLEMENTATION`.
+  claude-1's latest pre-work commit stayed inside the base ownership boundary:
+  it changed only `docs/agents/claude-1-next-step.md`.
+- Proceed with the proposed narrow fix in `frontend/app/list/[id]/page.tsx`:
+  keep the `documentId` fast-return guard, move the `accessToken` guard into
+  the inner `loadDocument` function, leave the dependency array unchanged, and
+  do not change the `getDocument` helper signature.
+- Verification for the director pre-work review was static/source inspection
+  only. `frontend/node_modules` is absent in this worktree; use the documented
+  setup path `cd frontend && npm install`, then run
+  `cd frontend && npm run build` in the implementation turn.
 - Director review on 2026-05-03 created `TASK-022` after accepting
   `TASK-021`. `TASK-021` frontend verification exposed a pre-existing build
   blocker in `frontend/app/list/[id]/page.tsx` around

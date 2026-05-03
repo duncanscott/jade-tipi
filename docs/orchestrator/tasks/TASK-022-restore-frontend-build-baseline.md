@@ -3,7 +3,7 @@
 ID: TASK-022
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-021
@@ -55,3 +55,27 @@ DESIGN_NOTES:
 - This task follows from `TASK-021` verification. The admin implementation is
   accepted, but frontend build verification cannot be treated as restored
   until the existing list-page TypeScript error is fixed.
+
+PREWORK_REVIEW:
+- 2026-05-03 director review advances this task to
+  `READY_FOR_IMPLEMENTATION`. claude-1's latest pre-work commit stayed inside
+  the base pre-work ownership boundary: it changed only
+  `docs/agents/claude-1-next-step.md`.
+- Proceed with the proposed narrow source fix in
+  `frontend/app/list/[id]/page.tsx`: keep the `documentId` fast-return guard,
+  move the `accessToken` guard into the inner `loadDocument` function, and
+  leave the `getDocument` API helper signature unchanged.
+- The plan's core diagnosis matches source inspection:
+  `session?.accessToken` is `string | undefined`, `getDocument` requires a
+  `string`, and the current outer guard is not preserved across the nested
+  async function boundary at the call site. One rejected alternative in the
+  plan is overstated: capturing a post-guard `const token = accessToken`
+  would also be type-safe. That does not block implementation because the
+  selected in-function guard is smaller and matches the sibling list-load
+  effect.
+- Verification for this review was static/source inspection only. The director
+  worktree currently has no `frontend/node_modules`; the documented setup
+  command before implementation build verification is
+  `cd frontend && npm install`, followed by `cd frontend && npm run build`.
+  If that build reveals unrelated pre-existing failures, report the exact
+  file/error and stop rather than widening this task without director approval.
