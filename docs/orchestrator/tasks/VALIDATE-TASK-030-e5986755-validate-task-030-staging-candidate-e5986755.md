@@ -3,7 +3,7 @@
 ID: VALIDATE-TASK-030-e5986755
 TYPE: investigation
 ARTIFACT_INTENT: validation-report
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: ACCEPTED
 OWNER: codex-1
 VALIDATION_SOURCE_TASK: TASK-030
 VALIDATION_SOURCE_DEVELOPER: claude-1
@@ -57,5 +57,44 @@ DEPENDENCIES:
 - Local staging worktree at commit `e598675514ee82dd24c5e31bb2506f9704cded08`.
 
 LATEST_REPORT:
-Pending.
+codex-1 reported `VERDICT: PASSED` in `docs/agents/codex-1-changes.md` for
+staging commit `e598675514ee82dd24c5e31bb2506f9704cded08`.
 
+DIRECTOR_REVIEW:
+- 2026-05-03: Accepted. Director confirmed the staging worktree still points at
+  `e598675514ee82dd24c5e31bb2506f9704cded08` and is clean relative to the
+  local staging branch (`## staging...origin/staging [ahead 9]`).
+- codex-1 stayed inside its validation owned paths; the merged codex-1 turn
+  changed only `docs/agents/codex-1-changes.md`.
+- Source review found the TASK-030 staging implementation still matches the
+  accepted bounded behavior: only `typ + update` messages with
+  `data.operation == "add_property"` are newly supported, successful updates
+  write reference metadata under
+  `properties.property_refs.<data.property_id>` on an existing `typ` root,
+  missing targets count as `skippedMissingTarget`, matching repeats count as
+  `duplicateMatching`, conflicting repeats count as `conflictingDuplicate`
+  without overwrite, and successful updates do not rewrite
+  `_head.provenance`.
+- Assertion review passed for the focused DTO, materializer, and Kafka/Mongo
+  integration coverage described in the codex-1 report. The implementation did
+  not add HTTP submission endpoints, `ppy + create` materialization, semantic
+  `data.property_id` resolution, property-value assignment materialization,
+  required-property enforcement, permission enforcement, contents-link read
+  changes, endpoint projection maintenance, broad ID cleanup, or a nested
+  Kafka operation DSL.
+- Static verification passed:
+  `git -C /Users/duncanscott/orchestrator/jade-tipi/staging diff --check e598675514ee82dd24c5e31bb2506f9704cded08^ e598675514ee82dd24c5e31bb2506f9704cded08`,
+  `git -C /Users/duncanscott/orchestrator/jade-tipi/staging show --format=short --check e598675514ee82dd24c5e31bb2506f9704cded08 --`,
+  and `git diff --check HEAD^..HEAD` for the codex-1 report merge.
+- Director Gradle rerun from the staging worktree was blocked before product
+  tests by sandbox/tooling permissions opening
+  `/Users/duncanscott/.gradle/wrapper/dists/gradle-8.14.3-bin/cv11ve7ro1n3o1j4so8xd9n66/gradle-8.14.3-bin.zip.lck`
+  with `Operation not permitted` while running
+  `./gradlew :libraries:jade-tipi-dto:test`. In a normal developer shell, use
+  the project-documented setup commands from this task's `VERIFICATION`
+  section, then rerun `./gradlew :libraries:jade-tipi-dto:test`,
+  `./gradlew :jade-tipi:test`, and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*EntityCreateKafkaMaterializeIntegrationSpec*'`.
+- Staging can be pushed/promoted for TASK-030. The next bounded task is already
+  `TASK-031`, which remains `READY_FOR_PREWORK`; no new task file is needed.
