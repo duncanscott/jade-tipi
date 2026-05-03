@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: HUMAN_REQUIRED
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
@@ -37,11 +37,25 @@ committed materializer writes `grp + create` roots into the `grp` collection
 with `_head.provenance`. Permission enforcement remains intentionally
 unimplemented.
 
+New product direction from Duncan on 2026-05-03: do not integrate ORCID for
+the next auth/admin step. Use regular local Keycloak username/password
+authentication. Create a normal `jade-tipi` realm user `dnscott` / `Duncan
+Scott` with email `dnscott@jade-tipi.org`, grant an application admin role,
+and add a JWT-protected group-management web service plus a Next.js UI that can
+create and edit `grp` records. The application must authorize from a Jade-Tipi
+admin role in the user's JWT, not from the Keycloak `master` realm admin user.
+
 ## Active Task
 
+- `TASK-021 - Add admin group management` is ready for pre-work and assigned
+  to `claude-1`. The task should first plan a local Keycloak `dnscott`
+  application-admin user, JWT role mapping, admin-only group CRUD endpoints,
+  and a minimal Next.js group-management UI. Do not implement until the
+  director accepts the pre-work and advances the task.
 - `TASK-020 - Define and materialize group records` is accepted. Do not add
-  permission enforcement, membership synchronization, object-level overrides,
-  or property-value-level overrides without a new bounded task.
+  general permission enforcement, membership synchronization, object-level
+  overrides, or property-value-level overrides beyond the narrow admin endpoint
+  authorization explicitly scoped by `TASK-021`.
 - `TASK-013 - Define materialized root document contract` is accepted.
 - `TASK-014 - Implement root-shaped materialized documents` is
   accepted.
@@ -57,9 +71,9 @@ unimplemented.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
-No active implementation task is currently assigned. The next likely unit
-requires human product/security direction around permission evaluation and
-enforcement semantics.
+Active pre-work is `TASK-021`. The task is intentionally narrow: local
+development admin group management using standard Keycloak login. Broader
+permission evaluation and enforcement semantics remain future product work.
 
 ## TASK-020 Director Acceptance Review
 

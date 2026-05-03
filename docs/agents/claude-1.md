@@ -11,17 +11,14 @@ Report file: docs/agents/claude-1-changes.md
 
 ## Current Assignment
 
-- No active task is currently assigned. `TASK-016 - Plan root-shaped contents
-  HTTP integration coverage`, `TASK-017 - Add local CouchDB replication
-  bootstrap`, `TASK-019 - Prototype Clarity/ESP container materialization`,
-  and `TASK-020 - Define and materialize group records` are accepted, and
-  `TASK-012 - Plan contents HTTP read integration coverage` is accepted
-  historical context only.
-- Do not implement `TASK-012` as-is. Wait for the director to create or assign
-  a new bounded task after human product/architecture selection.
-- Record pre-work in `docs/agents/claude-1-next-step.md`; record implementation
-  outcomes in `docs/agents/claude-1-changes.md` only after implementation is
-  approved.
+- Active task: `TASK-021 - Add admin group management`.
+- Current phase: pre-work. Read `DIRECTIVES.md` and
+  `docs/orchestrator/tasks/TASK-021-admin-group-management.md`, then propose
+  the concrete plan for a local Keycloak `dnscott` application-admin user,
+  JWT-protected group CRUD endpoints, and a minimal Next.js group-management
+  UI.
+- Do not implement yet. Record the pre-work plan in
+  `docs/agents/claude-1-next-step.md`, commit, push, and stop.
 - Use `DIRECTIVES.md` as the current source of truth.
 
 ## Owned Paths
