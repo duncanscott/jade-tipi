@@ -457,6 +457,31 @@ class MessageSpec extends Specification {
         position.column == 1
     }
 
+    def "bare entity-type typ create example uses the human-readable data.id, data.name, optional data.description, and no data.kind/data.links shape"() {
+        given:
+        String json = readResource('/example/message/04-create-entity-type.json')
+
+        when:
+        Message message = JsonMapper.fromJson(json, Message)
+
+        then:
+        message.collection() == Collection.TYPE
+        message.action() == Action.CREATE
+
+        and: 'data.id is the materialized entity-type object id ending with the ~ty~ segment'
+        Map data = message.data()
+        data.id == 'jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~ty~plate_96'
+
+        and: 'human-authored facts live flat under data, with no link-type kind discriminator and no data.links block'
+        data.name == 'plate_96'
+        data.description == '96-well sample plate'
+        !data.containsKey('kind')
+        !data.containsKey('links')
+
+        and: 'no other facts leak onto the data root'
+        data.keySet() == ['id', 'name', 'description'] as Set
+    }
+
     def "ent create example uses the human-readable data.id, data.type_id, and explicit empty data.properties / data.links shape"() {
         given:
         String json = readResource('/example/message/06-create-entity.json')

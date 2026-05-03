@@ -3,6 +3,176 @@
 The developer writes completed work reports here.
 
 STATUS: COMPLETED
+TASK: TASK-029 — Human-readable Kafka entity-type submission path (implementation)
+DATE: 2026-05-03
+SUMMARY: Dropped the `data.kind == "link_type"` support gate from
+`CommittedTransactionMaterializer.isSupported()` so the existing human-readable
+bare entity-type `typ + create` example (`04-create-entity-type.json`,
+flat `data.id`/`data.name`/`data.description`, no `data.kind`, no
+`data.links`) now materializes as a root-shaped `typ` document with
+`_id`/`id` from `data.id`, `collection: "typ"`, `type_id: null`, root
+`properties: {name, description}` via the existing inline-properties
+fallback, empty `links: {}`, and `_head.provenance` pointing at this txn,
+commit, and msg uuid. The `data.kind == "link_type"` link-type
+materialization path is preserved unchanged. `typ + update`
+property-reference changes remain intentionally
+`skippedUnsupported`; no `update`-action code path was added. No
+example resource JSON, schema, ID convention, HTTP submission endpoint,
+property-assignment materialization, semantic `data.type_id` validation,
+permission enforcement, endpoint projection maintenance, contents-link
+read change, or nested Kafka operation DSL was added. All work stayed
+within the task's `OWNED_PATHS`.
+
+Files changed (this turn):
+
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`
+  — Replaced the `case COLLECTION_TYP: return LINK_TYPE_KIND == kind`
+  arm in `isSupported()` with a flat `case COLLECTION_TYP: return true`,
+  matching `loc`/`lnk`/`grp`/`ent`. Removed the now-unused
+  `static final String DATA_KIND` and `LINK_TYPE_KIND` constants.
+  `ContentsLinkReadService` keeps its own private `LINK_TYPE_KIND`
+  declaration unaffected. Updated the class-level Javadoc supported list
+  to describe `typ + create` as covering both link-type
+  (`data.kind == "link_type"`) and bare entity-type (`data.kind` absent)
+  records, and to note that `typ + update` property-reference changes
+  remain intentionally unsupported. No other production code changed:
+  `buildDocument()`'s inline-properties fallback for non-`lnk`,
+  non-Map-`data.properties` payloads already lifts `name`/`description`
+  into root `properties` and writes `links: {}`; `_head` provenance,
+  duplicate-key matching/conflicting handling, and missing/blank
+  `data.id` handling are reused unchanged.
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`
+  — Replaced the `'skips a typ create whose data.kind is not link_type'`
+  feature with a positive
+  `'materializes a bare entity-type typ create as a root document with
+   name and description under properties and null type_id'` feature
+  capturing `mongoTemplate.insert(_, 'typ')` and asserting `_id`/`id`,
+  `collection`, null `type_id`, root `properties.name == 'plate_96'`
+  and `properties.description == '96-well sample plate'`, no `id`/
+  `type_id`/`kind` leakage into properties, empty `links`, and full
+  `_head.provenance` (`txn_id`, `commit_id`, `msg_uuid`, `collection`,
+  `action`, `committed_at`, `materialized_at`). Extended the
+  `entityTypeMessage(Map dataOverrides = [:])` helper to default
+  `description: '96-well sample plate'` and accept overrides; introduced
+  a new `ENTITY_TYPE_MSG_UUID` constant and a new
+  `updateEntityTypeMessage()` helper modelled on the
+  `05-update-entity-type-add-property.json` shape. Added three new
+  features:
+  `'skips a typ + update message even after dropping the kind guard'`
+  (proves the `update` action remains skipped),
+  `'identical-payload bare entity-type typ duplicate is matching even
+   when materialized_at differs'` (proves idempotent retry coverage),
+  and `'differing-payload bare entity-type typ duplicate is conflicting
+   and not overwritten'` (proves conflict logging without overwrite).
+  Extended the `'mixed-message snapshot inserts in snapshot order with
+   correct counts'` feature in place: the snapshot now contains
+  `[loc, ppy (skip), typ link-type, typ bare entity-type, ent, lnk]`,
+  the assertion now verifies `insertOrder == ['loc', 'typ', 'typ',
+   'ent', 'lnk']`, the two `typ` insert ids are
+  `[TYP_ID, ENT_TYPE_ID]` in snapshot order, `materialized == 5`, and
+  `skippedUnsupported == 1` (only `ppy`). The existing
+  `'materializes a typ link-type create root with all six declarative
+   facts under properties'` and contents-flow features remain
+  unchanged and continue to prove the link-type path still
+  materializes.
+- `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`
+  — Added a focused feature
+  `'bare entity-type typ create example uses the human-readable
+   data.id, data.name, optional data.description, and no
+   data.kind/data.links shape'` that reads
+  `04-create-entity-type.json` and asserts
+  `message.collection() == Collection.TYPE`,
+  `message.action() == Action.CREATE`, the canonical `~ty~plate_96` id,
+  `data.name == 'plate_96'`, `data.description == '96-well sample plate'`,
+  `!data.containsKey('kind')`, `!data.containsKey('links')`, and
+  `data.keySet() == ['id', 'name', 'description'] as Set`. The existing
+  `EXAMPLE_PATHS` round-trip loop and the cross-reference feature
+  `'entity transaction example sequence shares one txn id and the
+   entity references the entity-type by id'` continue to cover the
+  `04-…` ↔ `06-…` link.
+- `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/EntityCreateKafkaMaterializeIntegrationSpec.groovy`
+  — Updated the spec-level Javadoc and the feature description from
+  `open + ent + commit` to `open + typ + ent + commit`. Added a
+  `TYP_COLLECTION = 'typ'` constant, published a bare entity-type
+  `Message.newInstance(txn, JtpCollection.TYPE, Action.CREATE, [
+   id: entityTypeId, name: 'plate_96',
+   description: '96-well sample plate'])` ahead of the entity create,
+  and added a wait/assert block for the materialized `typ` root that
+  checks `_id`/`id`, `collection`, null `type_id`, inline
+  `properties.name`/`description`, no `kind` discriminator, empty
+  `links`, and `_head.provenance` pointing at the typ message uuid.
+  Also asserts `entDoc.type_id == typDoc['_id']` to prove the entity
+  references the materialized entity-type by id end-to-end. Added a
+  cleanup step that removes the `typ` document by `_id` for the test's
+  generated `entityTypeId`. Spec remains opt-in via `JADETIPI_IT_KAFKA`
+  + Kafka reachable.
+- `docs/architecture/kafka-transaction-message-vocabulary.md`
+  — Updated the materialization sentence in
+  "Committed Materialization Of Locations And Links" to list the full
+  current supported set: `loc + create`, `typ + create` (both link-type
+  records where `data.kind == "link_type"` and bare entity-type records
+  where `data.kind` is absent), `lnk + create`, `ent + create`, and
+  `grp + create`. The "intentionally not materialized" sentence now
+  calls out `typ + update` property-reference changes specifically, and
+  the historical "bare entity-type `typ` records are intentionally not
+  materialized" wording is removed.
+
+Verification commands run (all from
+`/Users/duncanscott/orchestrator/jade-tipi/developers/claude-1`):
+
+- `docker compose -f docker/docker-compose.yml --profile mongodb up -d`
+  — succeeded; brought the Mongo/Kafka/Couch/Keycloak stack up
+  (mongodb container was already running, the other containers
+  recreated and went healthy).
+- `./gradlew :libraries:jade-tipi-dto:test --console=plain`
+  — `BUILD SUCCESSFUL` in ~1s; new MessageSpec feature plus the
+  existing EXAMPLE_PATHS round-trip and cross-reference features
+  passed.
+- `./gradlew :jade-tipi:test --console=plain`
+  — `BUILD SUCCESSFUL` in ~7s; the flipped
+  bare-entity-type materialization feature, the new
+  `typ + update` skip feature, the two new bare-entity-type duplicate
+  features, the extended mixed-message snapshot feature, and the
+  unchanged `loc`/`typ link-type`/`lnk`/`grp`/`ent`/duplicate/error
+  features all pass.
+- `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest
+   --tests '*EntityCreateKafkaMaterializeIntegrationSpec*' --console=plain`
+  — `BUILD SUCCESSFUL` in ~9s; the extended
+  `open + typ + ent + commit` flow lands a root-shaped bare
+  entity-type `typ` document and a root-shaped `ent` document whose
+  `type_id` matches the materialized typ `_id`, with full
+  `_head.provenance` on both.
+
+Decisions taken per the director's pre-work review:
+
+- Left `04-create-entity-type.json` unchanged. The existing flat
+  `data.id`/`data.name`/`data.description` shape already matches the
+  accepted human-readable bare entity-type contract, and the materializer's
+  inline-properties fallback writes `properties: {name, description}`
+  and `links: {}` exactly as specified.
+- Removed the now-dead `DATA_KIND` and `LINK_TYPE_KIND` constants from
+  the materializer (per pre-work default proposal). The
+  `ContentsLinkReadService` private `LINK_TYPE_KIND` constant is
+  unaffected.
+- Relied on the existing
+  `'materializes a typ link-type create root with all six declarative
+   facts under properties'` feature (and the contents-flow snapshot
+  feature) to prove the link-type path still materializes after the
+  guard was dropped; no duplicate "kept-behavior" feature was added.
+- Extended the mixed-message snapshot feature in place (per pre-work
+  default proposal) rather than adding a new one.
+- Deferred `typ + update` property-reference materialization to a
+  future task, as documented in the pre-work decision and the director's
+  pre-work review.
+
+No setup blockers. Local Docker stack (mongodb + kafka + keycloak +
+couchdb) was already running from a prior session; running
+`docker compose up -d` recreated keycloak/couchdb cleanly. Gradle
+wrapper cache is warm; no `./gradlew --stop` was needed.
+
+---
+
+STATUS: COMPLETED
 TASK: TASK-028 — Human-readable Kafka entity submission path (implementation)
 DATE: 2026-05-03
 SUMMARY: Added `ent + create` root materialization to the existing

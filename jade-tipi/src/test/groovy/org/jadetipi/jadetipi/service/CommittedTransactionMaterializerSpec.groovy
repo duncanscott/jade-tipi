@@ -39,6 +39,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
     static final String ENT_ID = 'jade-tipi-org~dev~018fd849-2a42-7222-8a02-dddddddddddd~ent~plate_a'
     static final String ENT_TYPE_ID = 'jade-tipi-org~dev~018fd849-2a48-7888-8a08-eeeeeeeeeeee~typ~plate_96'
     static final String ENT_MSG_UUID = '018fd849-2a42-7222-8a02-dddddddddddd'
+    static final String ENTITY_TYPE_MSG_UUID = '018fd849-2a48-7888-8a08-eeeeeeeeeeee'
 
     ReactiveMongoTemplate mongoTemplate
     CommittedTransactionReadService readService
@@ -104,14 +105,33 @@ class CommittedTransactionMaterializerSpec extends Specification {
         )
     }
 
-    private static CommittedTransactionMessage entityTypeMessage() {
+    private static CommittedTransactionMessage entityTypeMessage(Map dataOverrides = [:]) {
+        Map<String, Object> data = [
+                id         : ENT_TYPE_ID,
+                name       : 'plate_96',
+                description: '96-well sample plate'
+        ]
+        data.putAll(dataOverrides)
         return new CommittedTransactionMessage(
-                msgUuid: '018fd849-2a48-7888-8a08-eeeeeeeeeeee',
+                msgUuid: ENTITY_TYPE_MSG_UUID,
                 collection: 'typ',
                 action: 'create',
+                data: data,
+                receivedAt: Instant.parse('2026-01-01T00:00:02Z'),
+                kafka: null
+        )
+    }
+
+    private static CommittedTransactionMessage updateEntityTypeMessage() {
+        return new CommittedTransactionMessage(
+                msgUuid: '018fd849-2a44-7444-8d04-dddddddddddd',
+                collection: 'typ',
+                action: 'update',
                 data: [
-                        id  : 'jade-tipi-org~dev~018fd849-2a48-7888-8a08-eeeeeeeeeeee~typ~plate_96',
-                        name: 'plate_96'
+                        id         : ENT_TYPE_ID,
+                        operation  : 'add_property',
+                        property_id: 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode',
+                        required   : true
                 ],
                 receivedAt: Instant.parse('2026-01-01T00:00:02Z'),
                 kafka: null
@@ -457,14 +477,153 @@ class CommittedTransactionMaterializerSpec extends Specification {
         !captured.containsKey('_jt_provenance')
     }
 
-    def 'skips a typ create whose data.kind is not link_type'() {
+    def 'materializes a bare entity-type typ create as a root document with name and description under properties and null type_id'() {
+        given:
+        Map<String, Object> captured = null
+        mongoTemplate.insert(_ as Map, 'typ') >> { Map doc, String _coll ->
+            captured = doc
+            return Mono.just(doc)
+        }
+
         when:
         MaterializeResult result = materializer.materialize(snapshot([entityTypeMessage()])).block()
+
+        then:
+        result != null
+        result.materialized == 1
+        result.duplicateMatching == 0
+        result.conflictingDuplicate == 0
+        result.skippedUnsupported == 0
+        result.skippedInvalid == 0
+
+        and: 'shared root fields use the payload id and source collection'
+        captured._id == ENT_TYPE_ID
+        captured.id == ENT_TYPE_ID
+        captured.collection == 'typ'
+        captured.type_id == null
+
+        and: 'inline-properties fallback lifts name and description into root properties without a kind discriminator'
+        Map properties = captured.properties as Map
+        properties.name == 'plate_96'
+        properties.description == '96-well sample plate'
+        !properties.containsKey('id')
+        !properties.containsKey('type_id')
+        !properties.containsKey('kind')
+
+        and: 'links is initialized to an empty map for new bare entity-type roots'
+        captured.links == [:]
+
+        and: '_head carries schema metadata and typ provenance'
+        Map head = captured._head as Map
+        head.schema_version == 1
+        head.document_kind == 'root'
+        head.root_id == ENT_TYPE_ID
+        Map provenance = head.provenance as Map
+        provenance.txn_id == TXN_ID
+        provenance.commit_id == COMMIT_ID
+        provenance.msg_uuid == ENTITY_TYPE_MSG_UUID
+        provenance.collection == 'typ'
+        provenance.action == 'create'
+        provenance.committed_at == COMMITTED_AT
+        provenance.materialized_at instanceof Instant
+
+        and: 'the legacy _jt_provenance field is not written on new typ roots'
+        !captured.containsKey('_jt_provenance')
+    }
+
+    def 'skips a typ + update message even after dropping the kind guard'() {
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([updateEntityTypeMessage()])).block()
 
         then:
         result.materialized == 0
         result.skippedUnsupported == 1
         0 * mongoTemplate.insert(_, _)
+    }
+
+    def 'identical-payload bare entity-type typ duplicate is matching even when materialized_at differs'() {
+        given: 'existing typ root has the same payload but an earlier materialized_at'
+        Map existing = [
+                _id        : ENT_TYPE_ID,
+                id         : ENT_TYPE_ID,
+                collection : 'typ',
+                type_id    : null,
+                properties : [
+                        name       : 'plate_96',
+                        description: '96-well sample plate'
+                ],
+                links      : [:],
+                _head      : [
+                        schema_version: 1,
+                        document_kind : 'root',
+                        root_id       : ENT_TYPE_ID,
+                        provenance    : [
+                                txn_id         : TXN_ID,
+                                commit_id      : COMMIT_ID,
+                                msg_uuid       : ENTITY_TYPE_MSG_UUID,
+                                collection     : 'typ',
+                                action         : 'create',
+                                committed_at   : COMMITTED_AT,
+                                materialized_at: Instant.parse('2025-12-31T00:00:01Z')
+                        ]
+                ]
+        ]
+        mongoTemplate.insert(_ as Map, 'typ') >> Mono.error(springDuplicate())
+        mongoTemplate.findById(ENT_TYPE_ID, Map.class, 'typ') >> Mono.just(existing)
+
+        when:
+        MaterializeResult result = materializer.materialize(snapshot([entityTypeMessage()])).block()
+
+        then:
+        result.materialized == 0
+        result.duplicateMatching == 1
+        result.conflictingDuplicate == 0
+        result.skippedUnsupported == 0
+        result.skippedInvalid == 0
+    }
+
+    def 'differing-payload bare entity-type typ duplicate is conflicting and not overwritten'() {
+        given:
+        Map existing = [
+                _id        : ENT_TYPE_ID,
+                id         : ENT_TYPE_ID,
+                collection : 'typ',
+                type_id    : null,
+                properties : [
+                        name       : 'plate_96_OLD',
+                        description: 'a different description'
+                ],
+                links      : [:],
+                _head      : [
+                        schema_version: 1,
+                        document_kind : 'root',
+                        root_id       : ENT_TYPE_ID,
+                        provenance    : [
+                                txn_id         : TXN_ID,
+                                commit_id      : COMMIT_ID,
+                                msg_uuid       : ENTITY_TYPE_MSG_UUID,
+                                collection     : 'typ',
+                                action         : 'create',
+                                committed_at   : COMMITTED_AT,
+                                materialized_at: Instant.parse('2025-12-31T00:00:01Z')
+                        ]
+                ]
+        ]
+        mongoTemplate.insert(_ as Map, 'typ') >> Mono.error(springDuplicate())
+        mongoTemplate.findById(ENT_TYPE_ID, Map.class, 'typ') >> Mono.just(existing)
+
+        when:
+        MaterializeResult result = materializer.materialize(snapshot([entityTypeMessage()])).block()
+
+        then:
+        result.materialized == 0
+        result.duplicateMatching == 0
+        result.conflictingDuplicate == 1
+
+        and: 'no save, update, or overwrite path is taken'
+        0 * mongoTemplate.updateFirst(_, _, _)
+        0 * mongoTemplate.save(_, _)
     }
 
     def 'materializes a lnk create as a root with top-level type_id, left, right, and properties.position'() {
@@ -1127,12 +1286,14 @@ class CommittedTransactionMaterializerSpec extends Specification {
     def 'mixed-message snapshot inserts in snapshot order with correct counts'() {
         given:
         List<String> insertOrder = []
+        List<String> typInsertIds = []
         mongoTemplate.insert(_ as Map, 'loc') >> { Map doc, String _coll ->
             insertOrder << 'loc'
             return Mono.just(doc)
         }
         mongoTemplate.insert(_ as Map, 'typ') >> { Map doc, String _coll ->
             insertOrder << 'typ'
+            typInsertIds << (doc._id as String)
             return Mono.just(doc)
         }
         mongoTemplate.insert(_ as Map, 'ent') >> { Map doc, String _coll ->
@@ -1144,18 +1305,20 @@ class CommittedTransactionMaterializerSpec extends Specification {
             return Mono.just(doc)
         }
 
-        when: 'snapshot has loc, ppy (skip), typ link-type, ent, lnk in that order'
+        when: 'snapshot has loc, ppy (skip), typ link-type, typ bare entity-type, ent, lnk in that order'
         MaterializeResult result = materializer.materialize(snapshot([
                 locMessage(),
                 propertyCreateMessage(),
                 linkTypeMessage(),
+                entityTypeMessage(),
                 entityCreateMessage(),
                 linkMessage()
         ])).block()
 
-        then:
-        insertOrder == ['loc', 'typ', 'ent', 'lnk']
-        result.materialized == 4
+        then: 'both typ kinds materialize back-to-back; only the ppy create skips'
+        insertOrder == ['loc', 'typ', 'typ', 'ent', 'lnk']
+        typInsertIds == [TYP_ID, ENT_TYPE_ID]
+        result.materialized == 5
         result.skippedUnsupported == 1
         result.duplicateMatching == 0
         result.conflictingDuplicate == 0

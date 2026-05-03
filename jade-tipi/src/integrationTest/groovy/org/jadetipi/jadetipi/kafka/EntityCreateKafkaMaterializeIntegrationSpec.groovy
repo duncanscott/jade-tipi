@@ -49,15 +49,21 @@ import java.util.function.Supplier
 /**
  * End-to-end integration coverage for the Kafka entity-submission path.
  *
- * <p>Publishes one canonical {@code open + ent + commit} transaction to a
- * per-spec Kafka topic and waits for {@code TransactionMessageListener} plus
+ * <p>Publishes one canonical {@code open + typ + ent + commit} transaction to
+ * a per-spec Kafka topic and waits for {@code TransactionMessageListener} plus
  * the {@code CommittedTransactionMaterializer} to land:
  * <ul>
  *   <li>a committed {@code txn} header in the {@code txn} collection,</li>
+ *   <li>a root-shaped bare entity-type {@code typ} document in the
+ *       {@code typ} collection, carrying top-level {@code _id}, {@code id},
+ *       {@code collection}, {@code type_id == null}, inline
+ *       {@code properties.name}/{@code description}, and
+ *       {@code _head.provenance} pointing at this txn and msg uuid,</li>
  *   <li>a root-shaped {@code ent} document in the {@code ent} collection,
  *       carrying top-level {@code _id}, {@code id}, {@code collection},
- *       {@code type_id}, explicit empty {@code properties}/{@code links},
- *       and {@code _head.provenance.txn_id}/{@code msg_uuid}.</li>
+ *       {@code type_id} that matches the entity-type id, explicit empty
+ *       {@code properties}/{@code links}, and
+ *       {@code _head.provenance.txn_id}/{@code msg_uuid}.</li>
  * </ul>
  *
  * <p>Skip / run conditions (deliberately opt-in):
@@ -92,6 +98,7 @@ class EntityCreateKafkaMaterializeIntegrationSpec extends Specification {
     private static final String TEST_TOPIC = "jdtp-txn-itest-ent-${SHORT_UUID}"
     private static final String CONSUMER_GROUP = "jadetipi-itest-ent-${SHORT_UUID}"
     private static final String TXN_COLLECTION = 'txn'
+    private static final String TYP_COLLECTION = 'typ'
     private static final String ENT_COLLECTION = 'ent'
     private static final Duration AWAIT_TIMEOUT = Duration.ofSeconds(30)
     private static final Duration POLL_INTERVAL = Duration.ofMillis(250)
@@ -190,17 +197,26 @@ class EntityCreateKafkaMaterializeIntegrationSpec extends Specification {
             mongoTemplate.remove(Query.query(Criteria.where('txn_id').is(txnId)),
                     TXN_COLLECTION).block(Duration.ofSeconds(10))
         }
+        if (entityTypeId != null) {
+            mongoTemplate.remove(Query.query(Criteria.where('_id').is(entityTypeId)),
+                    TYP_COLLECTION).block(Duration.ofSeconds(10))
+        }
         if (entityId != null) {
             mongoTemplate.remove(Query.query(Criteria.where('_id').is(entityId)),
                     ENT_COLLECTION).block(Duration.ofSeconds(10))
         }
     }
 
-    def 'open + ent + commit materializes a root-shaped ent document with top-level type_id and _head.provenance'() {
-        given: 'one canonical entity transaction (open + ent + commit)'
+    def 'open + typ + ent + commit materializes a root-shaped bare entity-type and ent document with linked type_id and _head.provenance'() {
+        given: 'one canonical entity transaction (open + typ + ent + commit)'
         Message openMsg = Message.newInstance(txn, JtpCollection.TRANSACTION, Action.OPEN, [
                 hint: 'opened from ent kafka integration test'
         ])
+        Message typMsg = Message.newInstance(txn, JtpCollection.TYPE, Action.CREATE, [
+                id         : entityTypeId,
+                name       : 'plate_96',
+                description: '96-well sample plate'
+        ] as Map<String, Object>)
         Message entMsg = Message.newInstance(txn, JtpCollection.ENTITY, Action.CREATE, [
                 id        : entityId,
                 type_id   : entityTypeId,
@@ -208,11 +224,12 @@ class EntityCreateKafkaMaterializeIntegrationSpec extends Specification {
                 links     : [:]
         ] as Map<String, Object>)
         Message commitMsg = Message.newInstance(txn, JtpCollection.TRANSACTION, Action.COMMIT, [
-                summary: 'one entity created'
+                summary: 'one entity-type and one entity created'
         ])
 
-        when: 'all three records are produced to the test topic'
+        when: 'all four records are produced to the test topic'
         send(openMsg)
+        send(typMsg)
         send(entMsg)
         send(commitMsg)
 
@@ -229,7 +246,36 @@ class EntityCreateKafkaMaterializeIntegrationSpec extends Specification {
         header.commit_id instanceof String
         ((String) header.commit_id).length() > 0
 
-        and: 'the ent document is materialized in root shape with top-level type_id'
+        and: 'the bare entity-type typ document is materialized in root shape with null top-level type_id'
+        Map typDoc = awaitMongo(
+                { mongoTemplate.findById(entityTypeId, Map, TYP_COLLECTION) },
+                { Map d -> d != null },
+                'root-shaped bare entity-type typ document'
+        )
+        typDoc['_id'] == entityTypeId
+        typDoc.id == entityTypeId
+        typDoc.collection == 'typ'
+        typDoc.type_id == null
+        Map typProperties = typDoc.properties as Map
+        typProperties.name == 'plate_96'
+        typProperties.description == '96-well sample plate'
+        !typProperties.containsKey('id')
+        !typProperties.containsKey('type_id')
+        !typProperties.containsKey('kind')
+        typDoc.links == [:]
+
+        and: 'typ _head carries projection provenance pointing at the typ message uuid'
+        Map typHead = typDoc._head as Map
+        typHead.schema_version == 1
+        typHead.document_kind == 'root'
+        typHead.root_id == entityTypeId
+        Map typProvenance = typHead.provenance as Map
+        typProvenance.txn_id == txnId
+        typProvenance.msg_uuid == typMsg.uuid()
+        typProvenance.collection == 'typ'
+        typProvenance.action == 'create'
+
+        and: 'the ent document is materialized in root shape with top-level type_id matching the materialized typ id'
         Map entDoc = awaitMongo(
                 { mongoTemplate.findById(entityId, Map, ENT_COLLECTION) },
                 { Map d -> d != null },
@@ -239,6 +285,7 @@ class EntityCreateKafkaMaterializeIntegrationSpec extends Specification {
         entDoc.id == entityId
         entDoc.collection == 'ent'
         entDoc.type_id == entityTypeId
+        entDoc.type_id == typDoc['_id']
         entDoc.properties == [:]
         entDoc.links == [:]
 

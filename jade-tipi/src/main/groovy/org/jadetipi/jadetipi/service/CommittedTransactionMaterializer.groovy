@@ -33,9 +33,12 @@ import java.time.Instant
  * <p>Supported messages in this iteration:
  * <ul>
  *   <li>{@code loc + create} → {@code loc} collection.</li>
- *   <li>{@code typ + create} where {@code data.kind == "link_type"} → {@code typ}
- *       collection. Bare entity-type {@code typ} records are intentionally
- *       skipped here.</li>
+ *   <li>{@code typ + create} → {@code typ} collection. Both link-type
+ *       ({@code data.kind == "link_type"}) and bare entity-type
+ *       ({@code data.kind} absent) records materialize as root-shaped
+ *       {@code typ} documents; the materializer does not enforce a kind
+ *       discriminator. {@code typ + update} property-reference changes
+ *       remain intentionally unsupported.</li>
  *   <li>{@code lnk + create} → {@code lnk} collection.</li>
  *   <li>{@code ent + create} → {@code ent} collection. Top-level
  *       {@code data.type_id} surfaces as the root {@code type_id};
@@ -101,8 +104,6 @@ class CommittedTransactionMaterializer {
     static final String COLLECTION_ENT = 'ent'
 
     static final String ACTION_CREATE = 'create'
-    static final String DATA_KIND = 'kind'
-    static final String LINK_TYPE_KIND = 'link_type'
 
     private final ReactiveMongoTemplate mongoTemplate
     private final CommittedTransactionReadService readService
@@ -225,8 +226,7 @@ class CommittedTransactionMaterializer {
             case COLLECTION_ENT:
                 return true
             case COLLECTION_TYP:
-                Object kind = message.data?.get(DATA_KIND)
-                return LINK_TYPE_KIND == kind
+                return true
             default:
                 return false
         }
