@@ -3,7 +3,7 @@
 ID: TASK-025
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-024
@@ -60,3 +60,37 @@ VERIFICATION:
 - If npm registry access, local Node setup, or Playwright browser/server setup
   blocks verification, report the exact command and setup issue rather than
   treating it as a product blocker.
+
+DIRECTOR_PREWORK_REVIEW:
+- Reviewed claude-1 pre-work in `docs/agents/claude-1-next-step.md`.
+- Ownership check passed: the pre-work commit changed only
+  `docs/agents/claude-1-next-step.md`, which is within claude-1's base owned
+  paths for this phase.
+- The plan satisfies the TASK-025 pre-work requirements: it identifies the
+  current TypeScript surface, target `typescript@6.0.3`, compatibility evidence,
+  migration risks, expected file touch list, verification commands, and a
+  backout path.
+- Local npm metadata verification from the director sandbox failed with
+  `getaddrinfo ENOTFOUND registry.npmjs.org` for `npm view typescript`,
+  `npm view next@16.2.4`, and `npm view @types/*`. Treat this as registry/DNS
+  setup friction, not a product blocker. Re-run the same `npm view ...`
+  commands or the implementation `npm install --save-dev typescript@6.0.3`
+  when registry access is available.
+- External cross-checks found TypeScript 6.0 is stable and Next.js 16 documents
+  TypeScript 5.1+ as the minimum, not an upper bound. Snyk's npm package mirror
+  currently reports `typescript@6.0.3` as the latest TypeScript package version.
+- Implementation caveat: Next.js documentation says the custom TypeScript
+  plugin/type checker is used by `next build`, so do not treat plugin
+  compatibility as IDE-only. The required `npm run build` gate is the right
+  place to prove this with the project's installed TypeScript.
+- Implementation caveat: TypeScript 6.0 introduces default/deprecation changes
+  beyond deprecated option removals, including `types` behavior, `rootDir`,
+  `noUncheckedSideEffectImports`, `libReplacement`, DOM/lib updates, and command
+  line behavior. The project already pins several relevant compiler options, but
+  any build error from those areas should be reported or fixed narrowly inside
+  TASK-025 owned paths.
+- Proceed with the smallest implementation: bump only TypeScript and the
+  lockfile first, run `npm run build`, then apply only build-driven source or
+  `tsconfig.json` adjustments inside owned paths. If errors fan out broadly or
+  generated `.next` types are incompatible, stop with `STATUS: BLOCKED` and
+  include the exact errors and backout command.
