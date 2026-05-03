@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
@@ -88,24 +88,23 @@ line up with `ContentsLinkReadService`'s `typ.properties.kind/name` and
 submission endpoint, semantic reference validation, endpoint projection
 maintenance, `ent` materialization, or nested Kafka operation DSL was added.
 
-`TASK-028` is created as the next bounded product increment. Continue the
-Kafka-first domain write path by planning the smallest human-readable
-`ent + create` materialization step from the existing entity-type/entity
-examples. Start with pre-work only; do not implement until director review
-advances the task.
+`TASK-028` is ready for implementation. Continue the Kafka-first domain write
+path with the smallest human-readable `ent + create` materialization step from
+the existing entity-type/entity examples. Implement `ent + create` root
+materialization only; leave bare entity-type `typ + create` materialization and
+ID-abbreviation cleanup for later direction.
 
 ## Active Task
 
 - `TASK-028 - Human-readable Kafka entity submission path` is
-  `READY_FOR_PREWORK`. claude-1 should first inspect the existing
-  `04-create-entity-type.json` and `06-create-entity.json` examples, DTO
-  validation, and `CommittedTransactionMaterializer` support/skipping behavior
-  for entity-type `typ + create` and `ent + create`. Determine the smallest
-  implementation/test changes needed to materialize a root-shaped `ent`
-  document from a human-readable Kafka transaction. Stop after pre-work. Do
-  not add HTTP submission endpoints, property assignment materialization,
-  semantic type-reference validation, permission enforcement, contents-link
-  read changes, or a nested Kafka operation DSL.
+  `READY_FOR_IMPLEMENTATION`. claude-1 should implement only `ent + create`
+  root materialization from the existing human-readable Kafka shape. Preserve
+  the current `06-create-entity.json` ID strings (`~en~plate_a` and
+  `~ty~plate_96`) for this task; do not perform broad ID-abbreviation cleanup.
+  Leave bare entity-type `typ + create` unsupported and do not add an
+  `entity_type` discriminator. Do not add HTTP submission endpoints, property
+  assignment materialization, semantic type-reference validation, permission
+  enforcement, contents-link read changes, or a nested Kafka operation DSL.
 - `TASK-027 - Human-readable Kafka contents link submission path` is accepted.
   The existing contents examples already express the intended human-readable
   shape and transaction sequence; focused tests now prove the DTO co-presence
@@ -218,15 +217,21 @@ future work unless the human selects one as a later bounded goal.
 ## TASK-028 Direction
 
 - Director created `TASK-028` on 2026-05-03 after accepting `TASK-027`.
-- Pre-work should evaluate the existing human-readable entity path only:
-  `04-create-entity-type.json`, `06-create-entity.json`, DTO validation, and
-  `CommittedTransactionMaterializer` behavior for entity-type `typ + create`
-  and `ent + create`.
-- Determine whether the next implementation should materialize only
-  `ent + create` roots or also support the minimal entity-type `typ + create`
-  root required for the example relationship. If the ID convention or type
-  contract needs product judgment, stop with `STATUS: HUMAN_REQUIRED` rather
-  than guessing.
+- Director pre-work review on 2026-05-03 accepts the plan with narrowed
+  implementation constraints and advances `TASK-028` to
+  `READY_FOR_IMPLEMENTATION`. Scope check passed: claude-1 changed only
+  `docs/agents/claude-1-next-step.md`.
+- Source correction for the implementation turn: current
+  `06-create-entity.json` uses `~en~plate_a`, not `~ent~plate_a`; current
+  `04-create-entity-type.json` / `06-create-entity.json` also use `~ty~` for
+  the entity-type ID/reference. Preserve those IDs for this task and record any
+  desired ID-abbreviation cleanup as follow-up.
+- Implement only `ent + create` root materialization. Leave bare entity-type
+  `typ + create` unsupported, do not add `data.kind: "entity_type"`, and do
+  not add semantic validation that `data.type_id` resolves.
+- It is acceptable to add explicit empty `data.properties` and `data.links`
+  blocks to `06-create-entity.json` to make the human-readable no-inline-facts
+  entity shape visible.
 - Do not add HTTP submission endpoints, property assignment materialization,
   required property enforcement, semantic type-reference validation, permission
   enforcement, contents-link read changes, or a nested Kafka operation DSL.

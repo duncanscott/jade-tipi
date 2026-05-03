@@ -3,7 +3,7 @@
 ID: TASK-028
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-027
@@ -82,6 +82,41 @@ PREWORK_REQUIREMENTS:
   tests, materializer coverage, and integration verification.
 - Stop after pre-work. Do not implement until the director advances this task
   to `READY_FOR_IMPLEMENTATION`.
+
+DIRECTOR_PREWORK_REVIEW:
+- 2026-05-03: Pre-work accepted for implementation with the constraints below.
+  Scope check passed: claude-1 changed only
+  `docs/agents/claude-1-next-step.md`, which is inside the base owned paths in
+  `docs/agents/claude-1.md`.
+- Source correction for implementation: current
+  `06-create-entity.json` uses `~en~plate_a`, not `~ent~plate_a`. Current
+  `04-create-entity-type.json` and `06-create-entity.json` also use `~ty~` for
+  the entity-type ID/reference. Treat those existing IDs as stable for this
+  task; the materializer should preserve submitted IDs verbatim. Do not do a
+  broad ID-abbreviation cleanup in this implementation turn. If the mismatch
+  needs cleanup, record it as follow-up rather than changing `05-*`, `07-*`,
+  `08-*`, or the architecture vocabulary examples opportunistically.
+- Implement the smallest behavioral increment: support `ent + create`
+  materialization into the same root-shaped document contract used by `loc`,
+  `lnk`, `typ` link-type, and `grp`. Leave bare entity-type `typ + create`
+  unsupported in this task; do not introduce `data.kind: "entity_type"` or
+  semantic resolution of `data.type_id`.
+- It is acceptable to update `06-create-entity.json` to make the existing
+  entity wire shape explicit with `data.properties: {}` and `data.links: {}`.
+  Preserve `data.id` and `data.type_id` values unless a test requires only a
+  local synthetic ID.
+- Required focused coverage for the implementation turn:
+  DTO coverage for the `06-create-entity.json` shape and its reference to
+  `04-create-entity-type.json`; materializer unit coverage for `ent + create`
+  root shape, missing/blank `data.id`, idempotent duplicate handling,
+  conflicting duplicate handling, and mixed-message count/order changes with
+  `ppy` still skipped; and the narrowest practical Kafka/Mongo opt-in check for
+  `open + ent + commit` materialization if the local stack is available.
+- Verification should use the task commands below. If local tooling blocks the
+  checks because Docker, Kafka, Mongo, Gradle cache permissions, or stale Gradle
+  daemons are unavailable, report the exact command and error plus the
+  documented setup command instead of treating setup friction as a product
+  blocker.
 
 VERIFICATION:
 - Expected implementation-turn commands:
