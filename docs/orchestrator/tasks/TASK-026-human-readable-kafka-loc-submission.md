@@ -3,7 +3,7 @@
 ID: TASK-026
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-013
@@ -79,3 +79,29 @@ VERIFICATION:
 - If local verification is blocked by Docker, Kafka, Mongo, Gradle cache
   permissions, or missing dependencies, report the exact command and error
   rather than treating setup friction as a product blocker.
+
+DIRECTOR_PREWORK_REVIEW:
+- 2026-05-03: claude-1 pre-work accepted. The pre-work stayed within the base
+  developer-owned path: only `docs/agents/claude-1-next-step.md` changed.
+  `git diff --check origin/director..HEAD` passed.
+- Source review confirms the plan's key behavioral finding:
+  `CommittedTransactionMaterializer` currently accepts `loc + create`, but for
+  non-`lnk` collections it builds root `properties` by copying every `data`
+  field except `id` and `type_id`. A human-readable payload with
+  `data.properties` and `data.links` would therefore materialize as nested
+  `properties.properties` plus `properties.links`, violating the accepted root
+  document contract.
+- Proceed with the narrow implementation plan: rewrite the location example to
+  the explicit `data.properties` / optional-or-empty `data.links` shape, update
+  the materializer to prefer explicit `data.properties` when it is a map while
+  preserving the legacy flat location payload as documented tolerance, and add
+  focused DTO/materializer coverage. Do not add HTTP submission endpoints,
+  schema hardening, `ent` materialization, permission enforcement, or a nested
+  Kafka operation DSL.
+- Verification correction for the implementation turn: use project-documented
+  setup commands. For Mongo-backed unit tests, report or run
+  `docker compose -f docker/docker-compose.yml --profile mongodb up -d` if the
+  local stack is missing. For Kafka integration coverage, use the existing
+  documented opt-in pattern only when the stack is available:
+  `docker compose -f docker/docker-compose.yml up -d` followed by
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*TransactionMessageKafkaIngestIntegrationSpec*'`.
