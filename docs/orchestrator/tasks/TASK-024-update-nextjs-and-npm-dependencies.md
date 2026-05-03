@@ -3,7 +3,7 @@
 ID: TASK-024
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-023
@@ -89,3 +89,31 @@ VERIFICATION:
 - If npm network access, local Node version, Playwright browser installation,
   or other local tooling blocks verification, report the exact command and
   error plus the setup command needed to continue.
+
+DIRECTOR_PREWORK_REVIEW:
+- 2026-05-03: claude-1's pre-work in
+  `docs/agents/claude-1-next-step.md` is accepted for implementation.
+  Ownership check passed: the pre-work commit changed only
+  `docs/agents/claude-1-next-step.md`, which is within claude-1's base
+  owned paths.
+- Proceed with the pre-work default plan: update `next`, `react`,
+  `react-dom`, Playwright, Tailwind, React types, and compatible supporting
+  packages to the latest stable versions identified at implementation time;
+  keep `next-auth` on the existing Auth.js v5 beta line only because the
+  stable npm `latest` tag is the legacy v4 line and moving backward would
+  be a regression; keep `@types/node` on the latest Node 20-compatible patch
+  to match the project Node 20 baseline.
+- For this task, use the newest stable TypeScript 5.x line proposed in
+  pre-work rather than taking the TypeScript 6 major in the same turn. If
+  TypeScript 6 is desired later or turns out to be required by another
+  upgraded package, split it into a follow-up task or stop for director
+  review before broadening scope.
+- Run the official Next.js upgrade codemod once, review its diff, and keep
+  committed edits inside this task's `OWNED_PATHS`. If it proposes edits
+  outside the owned paths, stop and report rather than applying them.
+- Verification remains `cd frontend && npm install`,
+  `cd frontend && npm run build`, and `cd frontend && npm test` or the
+  narrowest practical Playwright command. If Playwright browser binaries are
+  missing, use/report `npx playwright install chromium`; if npm registry
+  access is unavailable, report the exact failing npm command and the setup
+  issue rather than treating it as a product blocker.
