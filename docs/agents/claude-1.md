@@ -11,14 +11,10 @@ Report file: docs/agents/claude-1-changes.md
 
 ## Current Assignment
 
-- Active task: `TASK-023 - Fix NextAuth sign-out build error`.
-- Current phase: pre-work. Read `DIRECTIVES.md` and
-  `docs/orchestrator/tasks/TASK-023-fix-nextauth-signout-build-error.md`, then
-  propose the smallest type-safe repair for the pre-existing
-  `frontend/auth.ts` `events.signOut` callback error reported after
-  `TASK-022` verification.
-- Do not implement yet. Record the pre-work plan in
-  `docs/agents/claude-1-next-step.md`, commit, push, and stop.
+- Active task: none. `TASK-023 - Fix NextAuth sign-out build error` is
+  accepted, and the frontend build-baseline repair chain is complete.
+- Current phase: idle. Wait for the director to assign the next bounded task
+  before writing new pre-work or implementation changes.
 - Use `DIRECTIVES.md` as the current source of truth.
 
 ## Owned Paths

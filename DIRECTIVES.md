@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: HUMAN_REQUIRED
 
 ## Active Focus
 
@@ -50,19 +50,24 @@ behavior remain future work.
 `TASK-022` is accepted. It applied the narrow frontend build-baseline repair
 for the pre-existing TypeScript error in `frontend/app/list/[id]/page.tsx`.
 Build verification then surfaced the next unrelated pre-existing TypeScript
-blocker in `frontend/auth.ts`, now tracked by `TASK-023`.
+blocker in `frontend/auth.ts`, which was tracked and fixed by accepted
+`TASK-023`.
 
-`TASK-023` is ready for implementation. It should stay limited to the NextAuth
-`events.signOut` callback union-narrowing error in `frontend/auth.ts` and
-must not broaden authentication, Keycloak, admin group management, backend,
-dependency, or unrelated route behavior.
+`TASK-023` is accepted. The NextAuth `events.signOut` callback now narrows the
+sign-out message union before reading the JWT token, preserving the existing
+Keycloak logout behavior and restoring the frontend production build baseline.
+No obvious next bounded implementation task is open under the current project
+goal; stop for human direction before routing more work.
 
 ## Active Task
 
-- `TASK-023 - Fix NextAuth sign-out build error` is ready for implementation
-  and assigned to `claude-1`. Apply the smallest type-safe repair for the
-  `frontend/auth.ts` `events.signOut` callback error reported after the
-  accepted `TASK-022` list-page fix.
+- No active implementation task is currently assigned. The frontend build
+  baseline repair chain is complete; wait for human direction before creating
+  or routing the next task.
+- `TASK-023 - Fix NextAuth sign-out build error` is accepted. The
+  implementation narrowed the `frontend/auth.ts` `events.signOut` callback
+  message union with `'token' in message`, preserved Keycloak logout behavior
+  for the JWT token variant, and restored `cd frontend && npm run build`.
 - `TASK-022 - Restore frontend build baseline` is accepted. The implementation
   fixed the `frontend/app/list/[id]/page.tsx` type narrowing issue and stopped
   at the next unrelated build blocker in `frontend/auth.ts`, as directed.
@@ -88,13 +93,26 @@ dependency, or unrelated route behavior.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
-Active pre-work is `TASK-023`. Keep it limited to restoring the frontend build
-baseline by fixing the `frontend/auth.ts` sign-out callback type narrowing;
-broader authentication redesign, Keycloak changes, admin group-management
-changes, and permission evaluation/enforcement semantics remain future work.
+There is no active pre-work. Broader authentication redesign, Keycloak changes,
+admin group-management changes, and permission evaluation/enforcement
+semantics remain future work unless the human selects one as the next bounded
+goal.
 
 ## TASK-023 Direction
 
+- Director implementation review on 2026-05-03 accepts `TASK-023` with
+  `SIGNAL: HUMAN_REQUIRED` because the current frontend build-baseline goal is
+  complete and the next bounded project task is not obvious without human
+  direction. Scope check passed: claude-1 changed only `frontend/auth.ts`
+  plus the base report file `docs/agents/claude-1-changes.md`.
+- The accepted implementation keeps the existing Keycloak logout body for the
+  JWT token variant and returns without logout for the `{ session }` variant
+  or a missing `idToken`. Director verification passed with
+  `git diff --check origin/director..HEAD` and
+  `cd frontend && npm run build`; the only build warning was the pre-existing
+  non-blocking Turbopack root warning.
+- Historical pre-work and implementation direction for the accepted sign-out
+  fix is retained below for context; do not route additional `TASK-023` work.
 - Director pre-work review on 2026-05-03 advances `TASK-023` to
   `READY_FOR_IMPLEMENTATION` with `SIGNAL: PROCEED_TO_IMPLEMENTATION`.
   claude-1's latest pre-work commit stayed inside the base ownership boundary:
