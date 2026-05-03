@@ -3,7 +3,7 @@
 ID: TASK-031
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_IMPLEMENTATION
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-030
@@ -110,3 +110,44 @@ VERIFICATION:
   for Mongo-backed unit tests, `docker compose -f docker/docker-compose.yml up -d`
   for the full Kafka/Mongo stack, and `./gradlew --stop` only when stale Gradle
   daemons are implicated.
+
+DIRECTOR_PREWORK_REVIEW:
+- DATE: 2026-05-03
+- RESULT: accepted for implementation.
+- SCOPE_CHECK: passed. claude-1's latest pre-work commit changed only
+  `docs/agents/claude-1-next-step.md`, which is within the developer's base
+  owned paths. `git diff --check HEAD^..HEAD` passed.
+- TOOLING_NOTE: director attempted the documented orchestrator status command
+  from `/Users/duncanscott/orchestrator/tools/agent-orchestrator`, but local
+  `tsx` failed before status inspection with `listen EPERM` on its IPC pipe,
+  including with `TMPDIR=/private/tmp`. Treat this as local tooling/sandbox
+  friction, not a product blocker. In a normal operator shell, rerun
+  `npm run dev -- status --config /Users/duncanscott/orchestrator/jade-tipi/config/orchestrator.local.json`;
+  if tool dependencies are stale or missing, the documented setup refresh is
+  `npm install` in the orchestrator tool checkout.
+- IMPLEMENTATION_DIRECTION: use the pre-work default proposals. Materialize
+  only `ppy + create` messages whose `data.kind == "definition"`. Continue to
+  count `ppy + create` assignments, missing/blank kinds, and unknown kinds as
+  `skippedUnsupported`.
+- MATERIALIZED_SHAPE: write a root-shaped `ppy` document through the existing
+  create pipeline. Keep `_id`/`id == data.id`, `collection == "ppy"`,
+  `type_id == null`, `links == {}`, and `_head.provenance`. Copy
+  `data.kind`, `data.name`, and `data.value_schema` under root `properties`.
+  Treat `value_schema` as an opaque verbatim JSON object; do not validate
+  assignment values against it.
+- ID_DIRECTION: preserve all example resource ID strings. For local synthetic
+  unit-test IDs, avoid broad ID-abbreviation cleanup; if the existing helper is
+  renamed anyway, it may be aligned to the canonical `~pp~` segment only within
+  that helper/test fixture.
+- COVERAGE_DIRECTION: add focused DTO tests for the existing `02`/`03`
+  definition shapes and the `07` assignment shape/cross-references; add
+  materializer unit coverage for definition materialization, assignment and
+  non-definition skipping, missing/blank `data.id`, idempotent duplicates,
+  conflicting duplicates, and the mixed-snapshot count/order change. Add a
+  dedicated narrow Kafka/Mongo integration spec for property-definition
+  materialization when local Docker is available.
+- OUT_OF_SCOPE_CONFIRMATION: do not add HTTP submission endpoints,
+  property-value assignment materialization, semantic `property_id` or
+  assignment/type validation, required-property enforcement, value-shape
+  validation, permission enforcement, contents-link read changes, endpoint
+  projection maintenance, broad ID cleanup, or a nested Kafka operation DSL.
