@@ -42,6 +42,10 @@ class CommittedTransactionMaterializerSpec extends Specification {
     static final String ENT_TYPE_ID = 'jade-tipi-org~dev~018fd849-2a48-7888-8a08-eeeeeeeeeeee~typ~plate_96'
     static final String ENT_MSG_UUID = '018fd849-2a42-7222-8a02-dddddddddddd'
     static final String ENTITY_TYPE_MSG_UUID = '018fd849-2a48-7888-8a08-eeeeeeeeeeee'
+    static final String PPY_ID = 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-cccccccccccc~pp~barcode'
+    static final String PPY_MSG_UUID = '018fd849-2a41-7111-8a01-cccccccccccc'
+    static final String PPY_ASSIGNMENT_ID = ENT_ID + '~' + PPY_ID
+    static final String PPY_ASSIGNMENT_MSG_UUID = '018fd849-2a46-7666-8f06-ffffffffffff'
 
     ReactiveMongoTemplate mongoTemplate
     CommittedTransactionReadService readService
@@ -161,16 +165,42 @@ class CommittedTransactionMaterializerSpec extends Specification {
         )
     }
 
-    private static CommittedTransactionMessage propertyCreateMessage() {
+    private static CommittedTransactionMessage propertyDefinitionCreateMessage(Map dataOverrides = [:]) {
+        Map<String, Object> data = [
+                kind        : 'definition',
+                id          : PPY_ID,
+                name        : 'barcode',
+                value_schema: [
+                        type      : 'object',
+                        required  : ['text'],
+                        properties: [text: [type: 'string']]
+                ]
+        ]
+        data.putAll(dataOverrides)
         return new CommittedTransactionMessage(
-                msgUuid: '018fd849-2a41-7111-8a01-cccccccccccc',
+                msgUuid: PPY_MSG_UUID,
                 collection: 'ppy',
                 action: 'create',
-                data: [
-                        kind: 'definition',
-                        id  : 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-cccccccccccc~ppy~barcode',
-                        name: 'barcode'
-                ],
+                data: data,
+                receivedAt: Instant.parse('2026-01-01T00:00:01Z'),
+                kafka: null
+        )
+    }
+
+    private static CommittedTransactionMessage propertyAssignmentCreateMessage(Map dataOverrides = [:]) {
+        Map<String, Object> data = [
+                kind       : 'assignment',
+                id         : PPY_ASSIGNMENT_ID,
+                entity_id  : ENT_ID,
+                property_id: PPY_ID,
+                value      : [text: 'barcode-1']
+        ]
+        data.putAll(dataOverrides)
+        return new CommittedTransactionMessage(
+                msgUuid: PPY_ASSIGNMENT_MSG_UUID,
+                collection: 'ppy',
+                action: 'create',
+                data: data,
                 receivedAt: Instant.parse('2026-01-01T00:00:01Z'),
                 kafka: null
         )
@@ -1206,15 +1236,214 @@ class CommittedTransactionMaterializerSpec extends Specification {
         input << ['', '   ']
     }
 
-    def 'skips a ppy create message'() {
+    def 'materializes a ppy + create kind=definition as a root document with kind, name, and value_schema in root properties'() {
+        given:
+        Map<String, Object> captured = null
+        mongoTemplate.insert(_ as Map, 'ppy') >> { Map doc, String _coll ->
+            captured = doc
+            return Mono.just(doc)
+        }
+
         when:
         MaterializeResult result = materializer.materialize(
-                snapshot([propertyCreateMessage()])).block()
+                snapshot([propertyDefinitionCreateMessage()])).block()
+
+        then:
+        result != null
+        result.materialized == 1
+        result.duplicateMatching == 0
+        result.conflictingDuplicate == 0
+        result.skippedUnsupported == 0
+        result.skippedInvalid == 0
+        result.skippedMissingTarget == 0
+
+        and: 'shared root fields use the payload id and source collection'
+        captured._id == PPY_ID
+        captured.id == PPY_ID
+        captured.collection == 'ppy'
+        captured.type_id == null
+
+        and: 'data.kind, data.name, and data.value_schema land verbatim under root properties'
+        Map properties = captured.properties as Map
+        properties.kind == 'definition'
+        properties.name == 'barcode'
+        properties.value_schema == [
+                type      : 'object',
+                required  : ['text'],
+                properties: [text: [type: 'string']]
+        ]
+        !properties.containsKey('id')
+        !properties.containsKey('type_id')
+
+        and: 'links is initialized to an empty map for new ppy roots'
+        captured.links == [:]
+
+        and: '_head carries schema metadata and ppy provenance'
+        Map head = captured._head as Map
+        head.schema_version == 1
+        head.document_kind == 'root'
+        head.root_id == PPY_ID
+        Map provenance = head.provenance as Map
+        provenance.txn_id == TXN_ID
+        provenance.commit_id == COMMIT_ID
+        provenance.msg_uuid == PPY_MSG_UUID
+        provenance.collection == 'ppy'
+        provenance.action == 'create'
+        provenance.committed_at == COMMITTED_AT
+        provenance.materialized_at instanceof Instant
+
+        and: 'the legacy _jt_provenance field is not written on new ppy roots'
+        !captured.containsKey('_jt_provenance')
+    }
+
+    def 'skips a ppy + create kind=assignment as skippedUnsupported without touching mongo'() {
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([propertyAssignmentCreateMessage()])).block()
 
         then:
         result.materialized == 0
         result.skippedUnsupported == 1
+        result.skippedInvalid == 0
         0 * mongoTemplate.insert(_, _)
+        0 * mongoTemplate.findById(_, _, _)
+    }
+
+    def 'skips a ppy + create with missing or other data.kind as skippedUnsupported'() {
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([propertyDefinitionCreateMessage([kind: input])])).block()
+
+        then:
+        result.skippedUnsupported == 1
+        result.materialized == 0
+        result.skippedInvalid == 0
+        0 * mongoTemplate.insert(_, _)
+
+        where:
+        input << [null, '', '   ', 'unknown', 'something_else']
+    }
+
+    def 'skips a ppy + create kind=definition with missing data.id as skippedInvalid'() {
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([propertyDefinitionCreateMessage([id: null])])).block()
+
+        then:
+        result.materialized == 0
+        result.skippedInvalid == 1
+        result.skippedUnsupported == 0
+        0 * mongoTemplate.insert(_, _)
+    }
+
+    def 'skips a ppy + create kind=definition with blank or whitespace data.id as skippedInvalid'() {
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([propertyDefinitionCreateMessage([id: input])])).block()
+
+        then:
+        result.skippedInvalid == 1
+        result.materialized == 0
+        0 * mongoTemplate.insert(_, _)
+
+        where:
+        input << ['', '   ']
+    }
+
+    def 'identical-payload ppy duplicate is matching even when materialized_at differs'() {
+        given: 'existing ppy root has the same payload but an earlier materialized_at'
+        Map existing = [
+                _id       : PPY_ID,
+                id        : PPY_ID,
+                collection: 'ppy',
+                type_id   : null,
+                properties: [
+                        kind        : 'definition',
+                        name        : 'barcode',
+                        value_schema: [
+                                type      : 'object',
+                                required  : ['text'],
+                                properties: [text: [type: 'string']]
+                        ]
+                ],
+                links     : [:],
+                _head     : [
+                        schema_version: 1,
+                        document_kind : 'root',
+                        root_id       : PPY_ID,
+                        provenance    : [
+                                txn_id         : TXN_ID,
+                                commit_id      : COMMIT_ID,
+                                msg_uuid       : PPY_MSG_UUID,
+                                collection     : 'ppy',
+                                action         : 'create',
+                                committed_at   : COMMITTED_AT,
+                                materialized_at: Instant.parse('2025-12-31T00:00:01Z')
+                        ]
+                ]
+        ]
+        mongoTemplate.insert(_ as Map, 'ppy') >> Mono.error(springDuplicate())
+        mongoTemplate.findById(PPY_ID, Map.class, 'ppy') >> Mono.just(existing)
+
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([propertyDefinitionCreateMessage()])).block()
+
+        then:
+        result.materialized == 0
+        result.duplicateMatching == 1
+        result.conflictingDuplicate == 0
+        result.skippedUnsupported == 0
+        result.skippedInvalid == 0
+    }
+
+    def 'differing-payload ppy duplicate is conflicting and not overwritten'() {
+        given: 'existing ppy root has a different value_schema.required'
+        Map existing = [
+                _id       : PPY_ID,
+                id        : PPY_ID,
+                collection: 'ppy',
+                type_id   : null,
+                properties: [
+                        kind        : 'definition',
+                        name        : 'barcode',
+                        value_schema: [
+                                type      : 'object',
+                                required  : ['name'],
+                                properties: [text: [type: 'string']]
+                        ]
+                ],
+                links     : [:],
+                _head     : [
+                        schema_version: 1,
+                        document_kind : 'root',
+                        root_id       : PPY_ID,
+                        provenance    : [
+                                txn_id         : TXN_ID,
+                                commit_id      : COMMIT_ID,
+                                msg_uuid       : PPY_MSG_UUID,
+                                collection     : 'ppy',
+                                action         : 'create',
+                                committed_at   : COMMITTED_AT,
+                                materialized_at: Instant.parse('2025-12-31T00:00:01Z')
+                        ]
+                ]
+        ]
+        mongoTemplate.insert(_ as Map, 'ppy') >> Mono.error(springDuplicate())
+        mongoTemplate.findById(PPY_ID, Map.class, 'ppy') >> Mono.just(existing)
+
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([propertyDefinitionCreateMessage()])).block()
+
+        then:
+        result.materialized == 0
+        result.duplicateMatching == 0
+        result.conflictingDuplicate == 1
+
+        and: 'no save, update, or overwrite path is taken'
+        0 * mongoTemplate.updateFirst(_, _, _)
+        0 * mongoTemplate.save(_, _)
     }
 
     def 'materializes an ent create as a root document with top-level type_id, empty properties, and empty links'() {
@@ -1630,6 +1859,10 @@ class CommittedTransactionMaterializerSpec extends Specification {
             insertOrder << 'loc'
             return Mono.just(doc)
         }
+        mongoTemplate.insert(_ as Map, 'ppy') >> { Map doc, String _coll ->
+            insertOrder << 'ppy'
+            return Mono.just(doc)
+        }
         mongoTemplate.insert(_ as Map, 'typ') >> { Map doc, String _coll ->
             insertOrder << 'typ'
             typInsertIds << (doc._id as String)
@@ -1644,21 +1877,21 @@ class CommittedTransactionMaterializerSpec extends Specification {
             return Mono.just(doc)
         }
 
-        when: 'snapshot has loc, ppy (skip), typ link-type, typ bare entity-type, ent, lnk in that order'
+        when: 'snapshot has loc, ppy definition, typ link-type, typ bare entity-type, ent, lnk in that order'
         MaterializeResult result = materializer.materialize(snapshot([
                 locMessage(),
-                propertyCreateMessage(),
+                propertyDefinitionCreateMessage(),
                 linkTypeMessage(),
                 entityTypeMessage(),
                 entityCreateMessage(),
                 linkMessage()
         ])).block()
 
-        then: 'both typ kinds materialize back-to-back; only the ppy create skips'
-        insertOrder == ['loc', 'typ', 'typ', 'ent', 'lnk']
+        then: 'every supported message materializes once in snapshot order'
+        insertOrder == ['loc', 'ppy', 'typ', 'typ', 'ent', 'lnk']
         typInsertIds == [TYP_ID, ENT_TYPE_ID]
-        result.materialized == 5
-        result.skippedUnsupported == 1
+        result.materialized == 6
+        result.skippedUnsupported == 0
         result.duplicateMatching == 0
         result.conflictingDuplicate == 0
         result.skippedInvalid == 0

@@ -643,4 +643,117 @@ class MessageSpec extends Specification {
         lnkData.left.contains('~loc~')
         lnkData.right.contains('~ent~')
     }
+
+    def "ppy + create definition example uses the human-readable kind, id, name, and value_schema shape"() {
+        given:
+        Message message = JsonMapper.fromJson(
+                readResource('/example/message/02-create-property-definition-text.json'), Message)
+
+        expect:
+        message.collection() == Collection.PROPERTY
+        message.action() == Action.CREATE
+
+        and:
+        Map data = message.data()
+        data.kind == 'definition'
+        data.id == 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~pp~barcode'
+        data.name == 'barcode'
+
+        and: 'value_schema is preserved verbatim as a JSON-object value contract'
+        Map valueSchema = data.value_schema as Map
+        valueSchema.type == 'object'
+        valueSchema.required == ['text']
+        Map vsProperties = valueSchema.properties as Map
+        Map textProperty = vsProperties.text as Map
+        textProperty.type == 'string'
+
+        and: 'no other facts leak onto the data root next to kind, id, name, and value_schema'
+        data.keySet() == ['kind', 'id', 'name', 'value_schema'] as Set
+    }
+
+    def "ppy + create numeric definition example uses kind=definition with a multi-key value_schema"() {
+        given:
+        Message message = JsonMapper.fromJson(
+                readResource('/example/message/03-create-property-definition-numeric.json'), Message)
+
+        expect:
+        message.collection() == Collection.PROPERTY
+        message.action() == Action.CREATE
+
+        and:
+        Map data = message.data()
+        data.kind == 'definition'
+        data.id == 'jade-tipi-org~dev~018fd849-2a42-7222-8b02-bbbbbbbbbbbb~pp~volume'
+        data.name == 'volume'
+
+        and: 'value_schema accepts multi-key required arrays for compound JSON-object values'
+        Map valueSchema = data.value_schema as Map
+        valueSchema.type == 'object'
+        valueSchema.required == ['number', 'unit_id']
+        Map vsProperties = valueSchema.properties as Map
+        ((Map) vsProperties.number).type == 'number'
+        ((Map) vsProperties.unit_id).type == 'string'
+
+        and: 'no other facts leak onto the data root'
+        data.keySet() == ['kind', 'id', 'name', 'value_schema'] as Set
+    }
+
+    def "ppy + create assignment example uses the human-readable kind, id, entity_id, property_id, and value shape"() {
+        given:
+        Message message = JsonMapper.fromJson(
+                readResource('/example/message/07-assign-property-value-text.json'), Message)
+
+        expect: 'assignment messages share the ppy collection and create action with definition messages'
+        message.collection() == Collection.PROPERTY
+        message.action() == Action.CREATE
+
+        and:
+        Map data = message.data()
+        data.kind == 'assignment'
+        data.entity_id == 'jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~en~plate_a'
+        data.property_id == 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~pp~barcode'
+        data.value == [text: 'barcode-1']
+
+        and: 'no other facts leak onto the data root next to the canonical assignment keys'
+        data.keySet() == ['kind', 'id', 'entity_id', 'property_id', 'value'] as Set
+    }
+
+    def "property-definition transaction example sequence shares one txn id and the assignment example references the property-definition and entity by id"() {
+        given: 'open, ppy create, entity-type create, ent create, ppy assignment, and commit examples'
+        Message open = JsonMapper.fromJson(
+                readResource('/example/message/01-open-transaction.json'), Message)
+        Message ppyCreate = JsonMapper.fromJson(
+                readResource('/example/message/02-create-property-definition-text.json'), Message)
+        Message typCreate = JsonMapper.fromJson(
+                readResource('/example/message/04-create-entity-type.json'), Message)
+        Message entCreate = JsonMapper.fromJson(
+                readResource('/example/message/06-create-entity.json'), Message)
+        Message ppyAssign = JsonMapper.fromJson(
+                readResource('/example/message/07-assign-property-value-text.json'), Message)
+        Message commit = JsonMapper.fromJson(
+                readResource('/example/message/09-commit-transaction.json'), Message)
+
+        expect: 'all six messages chain through the same transaction uuid'
+        String txnUuid = open.txn().uuid()
+        ppyCreate.txn().uuid() == txnUuid
+        typCreate.txn().uuid() == txnUuid
+        entCreate.txn().uuid() == txnUuid
+        ppyAssign.txn().uuid() == txnUuid
+        commit.txn().uuid() == txnUuid
+
+        and: 'open and commit are transaction-control messages on the txn collection'
+        open.collection() == Collection.TRANSACTION
+        open.action() == Action.OPEN
+        commit.collection() == Collection.TRANSACTION
+        commit.action() == Action.COMMIT
+
+        and: 'the assignment cross-references resolve verbatim to the entity and property-definition ids'
+        Map ppyData = ppyCreate.data()
+        Map entData = entCreate.data()
+        Map assignData = ppyAssign.data()
+        ppyData.kind == 'definition'
+        assignData.kind == 'assignment'
+        assignData.entity_id == entData.id
+        assignData.property_id == ppyData.id
+    }
 }

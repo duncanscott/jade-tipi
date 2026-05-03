@@ -61,11 +61,22 @@ import java.time.Instant
  *       permissions map (keyed by world-unique grp IDs with values {@code "rw"}
  *       or {@code "r"}) is copied verbatim through {@code properties.permissions};
  *       no permission enforcement is added at materialization time.</li>
+ *   <li>{@code ppy + create} with {@code data.kind == "definition"} →
+ *       {@code ppy} collection. The wire-shape {@code data.kind},
+ *       {@code data.name}, and {@code data.value_schema} land verbatim
+ *       under root {@code properties}; {@code data.value_schema} is
+ *       copied as an opaque JSON object and is not validated at
+ *       materialization time. Every other {@code data.kind} value
+ *       (including {@code "assignment"}, missing, blank, or unknown
+ *       values) remains {@code skippedUnsupported} pending a separate
+ *       follow-on task for property-value assignments.</li>
  * </ul>
  * Every other collection/action combination — including delete and
- * txn-control actions, and every {@code typ + update} whose
- * {@code data.operation} is not {@code "add_property"} — is counted as
- * {@code skippedUnsupported} without raising an error.
+ * txn-control actions, every {@code typ + update} whose
+ * {@code data.operation} is not {@code "add_property"}, and every
+ * {@code ppy + create} whose {@code data.kind} is not
+ * {@code "definition"} — is counted as {@code skippedUnsupported}
+ * without raising an error.
  *
  * <p>Each materialized document is a self-describing root with {@code _id},
  * {@code id}, {@code collection}, top-level {@code type_id}, explicit
@@ -116,6 +127,7 @@ class CommittedTransactionMaterializer {
     static final String COLLECTION_LNK = 'lnk'
     static final String COLLECTION_GRP = 'grp'
     static final String COLLECTION_ENT = 'ent'
+    static final String COLLECTION_PPY = 'ppy'
 
     static final String ACTION_CREATE = 'create'
     static final String ACTION_UPDATE = 'update'
@@ -124,8 +136,10 @@ class CommittedTransactionMaterializer {
     static final String FIELD_PROPERTY_ID = 'property_id'
     static final String FIELD_REQUIRED = 'required'
     static final String FIELD_PROPERTY_REFS = 'property_refs'
+    static final String FIELD_KIND = 'kind'
 
     static final String OPERATION_ADD_PROPERTY = 'add_property'
+    static final String KIND_DEFINITION = 'definition'
 
     private final ReactiveMongoTemplate mongoTemplate
     private final CommittedTransactionReadService readService
@@ -359,6 +373,8 @@ class CommittedTransactionMaterializer {
                     return true
                 case COLLECTION_TYP:
                     return true
+                case COLLECTION_PPY:
+                    return KIND_DEFINITION == message.data?.get(FIELD_KIND)
                 default:
                     return false
             }

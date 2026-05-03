@@ -101,6 +101,8 @@ Properties are first-class documents in `ppy`. A property definition names the p
 
 All property values are JSON objects. Scalar values are wrapped, for example `{ "text": "barcode-1" }`, `{ "number": 10, "unit_id": "..." }`, or `{ "boolean": true }`. The envelope schema does not yet validate the wrapper shape against the registered `value_schema`; that lookup belongs to the transaction snapshot/read layer.
 
+The committed materializer projects `ppy + create` messages whose `data.kind == "definition"` into the `ppy` MongoDB collection using the same root-document shape as the other supported roots: top-level `_id == data.id`, `id == data.id`, `collection: "ppy"`, `type_id: null` (a property definition has no parent type), inline `properties.kind`, `properties.name`, and `properties.value_schema` (copied verbatim as an opaque JSON object), an empty `links` map, and the reserved `_head` block with `provenance.collection == "ppy"` and `provenance.action == "create"`. The materializer does not validate `value_schema` against future assignment values; that lookup remains a future read-time validator concern.
+
 ## Types And Properties
 
 Entity types live in `typ`. A type can be created independently and then updated to include a property reference.
@@ -156,6 +158,8 @@ A property assignment is stored as a property record whose ID is the entity ID p
 ```
 
 Early backend validation should verify required envelope fields, known collection/action pairs, and object-shaped property values. Full reference validation between properties, types, entities, and assignments — and value-shape validation against the registered property `value_schema` — can follow once snapshot reads over `txn` exist.
+
+Property-value assignment materialization remains a separate future task; the committed materializer currently counts `ppy + create` messages whose `data.kind == "assignment"` (along with missing, blank, or unknown kinds) as `skippedUnsupported` without raising an error, while preserving the canonical assignment wire shape verbatim in the `txn` write-ahead log.
 
 ## Link Types And Concrete Links
 
@@ -256,7 +260,7 @@ introduce object-level or property-value-level permission overrides.
 
 ## Committed Materialization Of Locations And Links
 
-Once a transaction commits in `txn`, a post-commit projection currently materializes `loc + create`, `typ + create` (both link-type records where `data.kind == "link_type"` and bare entity-type records where `data.kind` is absent), `typ + update` messages whose `data.operation == "add_property"`, `lnk + create`, `ent + create`, and `grp + create` messages into their long-term collections (`loc`, `typ`, `lnk`, `ent`, `grp`). The projection is a read-after-commit step over the existing committed-snapshot read service; the `txn` write-ahead log remains the durable, authoritative record. Other collections and other actions — including every `typ + update` whose `data.operation` is not `add_property`, every `*+ delete`, and other update actions — are intentionally not materialized in this iteration and are counted as `skippedUnsupported` without raising an error.
+Once a transaction commits in `txn`, a post-commit projection currently materializes `loc + create`, `typ + create` (both link-type records where `data.kind == "link_type"` and bare entity-type records where `data.kind` is absent), `typ + update` messages whose `data.operation == "add_property"`, `lnk + create`, `ent + create`, `grp + create`, and `ppy + create` messages whose `data.kind == "definition"` into their long-term collections (`loc`, `typ`, `lnk`, `ent`, `grp`, `ppy`). The projection is a read-after-commit step over the existing committed-snapshot read service; the `txn` write-ahead log remains the durable, authoritative record. Other collections and other actions — including every `typ + update` whose `data.operation` is not `add_property`, every `ppy + create` whose `data.kind` is not `"definition"` (including `"assignment"`), every `*+ delete`, and other update actions — are intentionally not materialized in this iteration and are counted as `skippedUnsupported` without raising an error.
 
 The current materializer writes the accepted root-document shape from `DIRECTION.md`: one logical Jade-Tipi object normally stored as one root document with top-level `_id`, `id`, `collection`, `type_id`, explicit `properties`, denormalized `links`, and reserved `_head.provenance` metadata. Duplicate `_id` writes with an identical payload are idempotent successes; differing-payload duplicates are logged and counted but not overwritten, and missing or blank `data.id` is logged and skipped without synthesizing an id. Semantic reference validation (`type_id`, `left`, `right`, and `allowed_*_collections`) is still not enforced; that remains a follow-up reader/validator concern.
 
