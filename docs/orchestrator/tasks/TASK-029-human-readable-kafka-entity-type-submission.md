@@ -3,12 +3,14 @@
 ID: TASK-029
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: ACCEPTED
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-028
   - TASK-013
   - TASK-014
+NEXT_TASK:
+  - TASK-030
 PAUSE_SOURCE_TASKS: true
 OWNED_PATHS:
   - DIRECTION.md
@@ -132,6 +134,48 @@ DIRECTOR_PREWORK_REVIEW:
   treating local setup friction as a product blocker.
 
 DIRECTOR_IMPLEMENTATION_REVIEW:
+- 2026-05-03: Accepted after the follow-up fix. The previously blocking flat
+  bare entity-type case now excludes `data.links` from inline root
+  `properties`, so an otherwise-flat `typ + create` payload with empty
+  `data.links: {}` materializes with root `links: {}` and no
+  `properties.links` leakage.
+- Scope review passed for the follow-up turn. claude-1 changed
+  `docs/agents/claude-1-changes.md`,
+  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`,
+  and
+  `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`.
+  The source/test files are outside the three base paths listed in
+  `docs/agents/claude-1.md`, but `docs/agents/claude-1.md` explicitly allows
+  expansion by the active task file, and these edits are inside TASK-029's
+  implementation `OWNED_PATHS`.
+- Behavior review accepted the complete TASK-029 path: bare entity-type
+  `typ + create` records now materialize as root-shaped `typ` documents while
+  preserving existing link-type `typ + create` materialization, duplicate
+  handling, `_head.provenance`, unsupported `typ + update` behavior, and the
+  task's no-HTTP/no-enforcement/no-ID-cleanup boundaries.
+- Director static verification passed `git diff --check HEAD^..HEAD`.
+  Director focused Gradle verification was blocked before product tests by
+  sandbox/tooling permissions opening
+  `/Users/duncanscott/.gradle/wrapper/dists/gradle-8.14.3-bin/cv11ve7ro1n3o1j4so8xd9n66/gradle-8.14.3-bin.zip.lck`
+  with `Operation not permitted` while running
+  `./gradlew :jade-tipi:test --tests
+  'org.jadetipi.jadetipi.service.CommittedTransactionMaterializerSpec'
+  --console=plain`. In a normal developer shell, use
+  `docker compose -f docker/docker-compose.yml --profile mongodb up -d` for
+  Mongo-backed unit tests, `docker compose -f docker/docker-compose.yml up -d`
+  for the full Kafka/Mongo stack, run `./gradlew --stop` only if stale Gradle
+  daemons are implicated, then rerun
+  `./gradlew :libraries:jade-tipi-dto:test`,
+  `./gradlew :jade-tipi:test`, and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*EntityCreateKafkaMaterializeIntegrationSpec*'`.
+- Credited developer verification: claude-1 reported the focused
+  `CommittedTransactionMaterializerSpec`, full `:jade-tipi:test`, and
+  `:libraries:jade-tipi-dto:test` passing. claude-1 did not rerun the Kafka
+  integration test for the follow-up because the change was a focused
+  materializer-only accepted-shape variant.
+- Created `TASK-030` for pre-work on the deferred `typ + update
+  add_property` property-reference materialization path.
 - 2026-05-03: Requested changes before acceptance. claude-1 implemented the
   main bare entity-type `typ + create` path and added useful DTO,
   materializer, duplicate, skipped-`typ + update`, mixed-snapshot, and

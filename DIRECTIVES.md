@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
@@ -90,30 +90,37 @@ maintenance, `ent` materialization, or nested Kafka operation DSL was added.
 
 `TASK-028` is accepted. The Kafka-first domain write path can now materialize a
 human-readable `ent + create` transaction as a root-shaped `ent` document while
-preserving the existing entity example IDs. Bare entity-type `typ + create`,
-type-property update materialization, semantic type-reference validation, and
-ID-abbreviation cleanup remain future work.
+preserving the existing entity example IDs. Semantic type-reference validation
+and ID-abbreviation cleanup remain future work; bare entity-type `typ + create`
+is now accepted through `TASK-029`.
 
-`TASK-029` remains ready for implementation follow-up. The main bare
-entity-type `typ + create` path is present, but director review requested one
-narrow fix before acceptance: a flat bare entity-type payload with empty
-`data.links: {}` and no `data.properties` must materialize with root
-`links: {}` and no `properties.links` leakage.
+`TASK-029` is accepted. The Kafka-first domain write path can now materialize
+bare entity-type `typ + create` records as root-shaped `typ` documents while
+preserving link-type `typ + create` behavior. The accepted shape handles absent
+or empty `data.links` without leaking reserved fields into root `properties`;
+`typ + update` property-reference materialization remains deferred to
+`TASK-030`.
 
 ## Active Task
 
-- `TASK-029 - Human-readable Kafka entity-type submission path` is
-  `READY_FOR_IMPLEMENTATION`. claude-1 should make only the director-requested
-  follow-up fix from the task file: handle an otherwise-flat bare entity-type
-  `typ + create` with empty `data.links` without copying `links` into root
-  `properties`, and add a focused materializer assertion for that shape.
+- `TASK-030 - Human-readable Kafka entity-type property-reference update path`
+  is `READY_FOR_PREWORK`. claude-1 should plan only the deferred
+  `typ + update` `operation: "add_property"` path: determine the smallest
+  materialized root update shape for property references, whether `ppy`
+  materialization or semantic `property_id` validation is required for this
+  bounded proof, and the focused DTO/materializer/integration verification.
+- `TASK-029 - Human-readable Kafka entity-type submission path` is accepted.
+  Bare entity-type `typ + create` now materializes as a root-shaped `typ`
+  document, including the accepted flat payload variant with empty
+  `data.links: {}` and no `data.properties`.
 - `TASK-028 - Human-readable Kafka entity submission path` is accepted.
   `ent + create` now materializes as a root-shaped `ent` document, the
   canonical `06-create-entity.json` example exposes explicit empty
   `data.properties` and `data.links`, and the existing `~en~plate_a` /
-  `~ty~plate_96` IDs were preserved. Bare entity-type `typ + create`,
-  type-property update materialization, semantic type-reference validation,
-  broad ID-abbreviation cleanup, HTTP submission endpoints, property assignment
+  `~ty~plate_96` IDs were preserved. Bare entity-type `typ + create` was out
+  of scope for TASK-028 and is now accepted through TASK-029; type-property
+  update materialization, semantic type-reference validation, broad
+  ID-abbreviation cleanup, HTTP submission endpoints, property assignment
   materialization, permission enforcement, contents-link read changes, and a
   nested Kafka operation DSL remain out of scope.
 - `TASK-027 - Human-readable Kafka contents link submission path` is accepted.
@@ -161,7 +168,7 @@ narrow fix before acceptance: a flat bare entity-type payload with empty
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
-`TASK-029` is the active bounded task. Broader authentication redesign,
+`TASK-030` is the active bounded task. Broader authentication redesign,
 Keycloak changes, admin group-management changes, permission
 evaluation/enforcement semantics, and unrelated product increments remain
 future work unless the human selects one as a later bounded goal.
@@ -293,15 +300,59 @@ future work unless the human selects one as a later bounded goal.
   stale Gradle daemons are implicated, and the exact blocked command/error
   rather than treating setup as a product blocker.
 
+## TASK-030 Direction
+
+- Director created `TASK-030` on 2026-05-03 after accepting `TASK-029`.
+- Pre-work should evaluate only the deferred human-readable `typ + update`
+  `operation: "add_property"` path from `05-update-entity-type-add-property.json`.
+  Decide the smallest materialized root update shape for property references,
+  whether this proof requires `ppy + create` materialization or semantic
+  `property_id` validation, and how missing-target, idempotent duplicate, and
+  conflicting-reference cases should behave.
+- Do not add HTTP submission endpoints, property-value assignment
+  materialization, required property enforcement, semantic validation that
+  `data.property_id` resolves, permission enforcement, object extension pages,
+  endpoint projection maintenance, broad ID-abbreviation cleanup, or a nested
+  Kafka operation DSL.
+- Verification proposal should include `./gradlew :libraries:jade-tipi-dto:test`,
+  `./gradlew :jade-tipi:test`, and the narrowest practical Kafka/Mongo
+  integration opt-in command when the local stack is available. If local setup
+  blocks verification, report
+  `docker compose -f docker/docker-compose.yml --profile mongodb up -d`,
+  `docker compose -f docker/docker-compose.yml up -d`, `./gradlew --stop` when
+  stale Gradle daemons are implicated, and the exact blocked command/error
+  rather than treating setup as a product blocker.
+
 ## TASK-029 Direction
 
-- Director implementation review on 2026-05-03 requested changes and keeps
-  `TASK-029` at `READY_FOR_IMPLEMENTATION` with
-  `SIGNAL: PROCEED_TO_IMPLEMENTATION`. Fix only the accepted-shape gap where a
-  flat bare entity-type `typ + create` payload includes empty `data.links: {}`
-  without `data.properties`: it must materialize with root `links: {}` and no
-  `properties.links`. Add a focused materializer assertion for that shape.
-  Preserve the rest of claude-1's implementation and scope boundaries.
+- Director implementation review on 2026-05-03 accepts `TASK-029` with
+  `SIGNAL: REQUEST_NEXT_STEP` and creates `TASK-030` for entity-type
+  property-reference update pre-work. Scope check passed for the follow-up:
+  claude-1 changed only `docs/agents/claude-1-changes.md`,
+  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`,
+  and
+  `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`.
+  The source/test edits are outside claude-1's three base assignment paths but
+  inside TASK-029's explicitly expanded implementation-owned paths.
+- Behavior review accepted the completed bare entity-type path: root-shaped
+  `typ + create` materialization now covers both absent and empty `data.links`
+  while preserving link-type `typ + create`, duplicate handling, `_head`
+  provenance, and unsupported `typ + update` behavior.
+- Director static verification passed `git diff --check HEAD^..HEAD`.
+  Director Gradle reruns were blocked before product tests by sandbox/tooling
+  permissions opening the Gradle wrapper cache lock under
+  `/Users/duncanscott/.gradle` with `Operation not permitted`. In a normal
+  developer shell, use `docker compose -f docker/docker-compose.yml up -d` if
+  the full local stack is missing, run `./gradlew --stop` if stale Gradle
+  daemons are implicated, then rerun `./gradlew :libraries:jade-tipi-dto:test`,
+  `./gradlew :jade-tipi:test`, and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*EntityCreateKafkaMaterializeIntegrationSpec*'`.
+- Credited developer verification: claude-1 reported
+  `./gradlew :jade-tipi:test --tests
+  'org.jadetipi.jadetipi.service.CommittedTransactionMaterializerSpec'
+  --console=plain`, `./gradlew :jade-tipi:test --console=plain`, and
+  `./gradlew :libraries:jade-tipi-dto:test --console=plain` passing.
 - Director created `TASK-029` on 2026-05-03 after accepting `TASK-028`.
 - Pre-work should evaluate the existing human-readable bare entity-type
   `typ + create` path only: `04-create-entity-type.json`, the current
