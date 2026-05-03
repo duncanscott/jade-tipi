@@ -11,12 +11,12 @@ Report file: docs/agents/claude-1-changes.md
 
 ## Current Assignment
 
-- Active task: `TASK-022 - Restore frontend build baseline`.
+- Active task: `TASK-023 - Fix NextAuth sign-out build error`.
 - Current phase: pre-work. Read `DIRECTIVES.md` and
-  `docs/orchestrator/tasks/TASK-022-restore-frontend-build-baseline.md`, then
+  `docs/orchestrator/tasks/TASK-023-fix-nextauth-signout-build-error.md`, then
   propose the smallest type-safe repair for the pre-existing
-  `frontend/app/list/[id]/page.tsx` build error reported during `TASK-021`
-  verification.
+  `frontend/auth.ts` `events.signOut` callback error reported after
+  `TASK-022` verification.
 - Do not implement yet. Record the pre-work plan in
   `docs/agents/claude-1-next-step.md`, commit, push, and stop.
 - Use `DIRECTIVES.md` as the current source of truth.

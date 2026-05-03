@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: PROCEED_TO_IMPLEMENTATION
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
@@ -47,16 +47,25 @@ not from the Keycloak `master` realm admin user. Broader permission
 enforcement, Keycloak group synchronization, and production account lifecycle
 behavior remain future work.
 
-`TASK-022` is ready for implementation. It is a narrow frontend build-baseline repair
-for the pre-existing TypeScript error in `frontend/app/list/[id]/page.tsx`
-that blocked `npm run build` verification after `TASK-021`.
+`TASK-022` is accepted. It applied the narrow frontend build-baseline repair
+for the pre-existing TypeScript error in `frontend/app/list/[id]/page.tsx`.
+Build verification then surfaced the next unrelated pre-existing TypeScript
+blocker in `frontend/auth.ts`, now tracked by `TASK-023`.
+
+`TASK-023` is ready for pre-work. It should stay limited to the NextAuth
+`events.signOut` callback union-narrowing error in `frontend/auth.ts` and
+must not broaden authentication, Keycloak, admin group management, backend,
+dependency, or unrelated route behavior.
 
 ## Active Task
 
-- `TASK-022 - Restore frontend build baseline` is ready for implementation and
-  assigned to `claude-1`. Implement the smallest type-safe repair for the
-  pre-existing `frontend/app/list/[id]/page.tsx` build error reported during
-  `TASK-021` verification.
+- `TASK-023 - Fix NextAuth sign-out build error` is ready for pre-work and
+  assigned to `claude-1`. Identify the smallest type-safe repair for the
+  `frontend/auth.ts` `events.signOut` callback error reported after the
+  accepted `TASK-022` list-page fix.
+- `TASK-022 - Restore frontend build baseline` is accepted. The implementation
+  fixed the `frontend/app/list/[id]/page.tsx` type narrowing issue and stopped
+  at the next unrelated build blocker in `frontend/auth.ts`, as directed.
 - `TASK-021 - Add admin group management` is accepted. The implementation
   adds the local Keycloak `dnscott` application-admin user, JWT role mapping,
   admin-only group CRUD endpoints, and a minimal Next.js group-management UI.
@@ -79,12 +88,41 @@ that blocked `npm run build` verification after `TASK-021`.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
-Active pre-work is `TASK-022`. Keep it limited to restoring the frontend build
-baseline; broader permission evaluation and enforcement semantics remain
-future product work.
+Active pre-work is `TASK-023`. Keep it limited to restoring the frontend build
+baseline by fixing the `frontend/auth.ts` sign-out callback type narrowing;
+broader authentication redesign, Keycloak changes, admin group-management
+changes, and permission evaluation/enforcement semantics remain future work.
+
+## TASK-023 Direction
+
+- Director review on 2026-05-03 accepts `TASK-022` and creates `TASK-023` as
+  `READY_FOR_PREWORK` with `SIGNAL: REQUEST_NEXT_STEP`.
+- Pre-work should inspect `frontend/auth.ts` around `events.signOut` and
+  propose the smallest type-safe NextAuth callback union narrowing. Preserve
+  current Keycloak logout behavior for the token variant and return without
+  logout for non-token variants.
+- Do not change the NextAuth provider setup, session/JWT callbacks,
+  admin-role derivation, Keycloak realm import, backend code, package
+  dependencies, or unrelated frontend routes.
+- Use the project-documented frontend setup path if local dependencies are
+  absent: `cd frontend && npm install`, then `cd frontend && npm run build`.
 
 ## TASK-022 Direction
 
+- Director implementation review on 2026-05-03 accepts `TASK-022`. The
+  implementation stayed within `frontend/app/list/[id]/page.tsx` plus the
+  base developer report file. It moved the `accessToken` guard into
+  `loadDocument`, kept the `documentId` guard, left the dependency array
+  unchanged, and preserved the `getDocument` helper signature.
+- Director verification: `git diff --check HEAD~1..HEAD` passed. The
+  director worktree needed the documented setup command
+  `cd frontend && npm install`; after that, `cd frontend && npm run build`
+  was blocked by the sandbox/Turbopack environment while creating a process
+  and binding to a port. A local no-emit TypeScript check confirmed the next
+  blocker is `frontend/auth.ts(80,21)` and the original list-page error is no
+  longer reported.
+- Historical pre-work direction for the accepted list-page fix is retained
+  below for context; do not route additional `TASK-022` work.
 - Director review on 2026-05-03 advances `TASK-022` to
   `READY_FOR_IMPLEMENTATION` with `SIGNAL: PROCEED_TO_IMPLEMENTATION`.
   claude-1's latest pre-work commit stayed inside the base ownership boundary:

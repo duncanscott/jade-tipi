@@ -3,10 +3,12 @@
 ID: TASK-022
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: ACCEPTED
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-021
+NEXT_TASK:
+  - TASK-023
 PAUSE_SOURCE_TASKS: true
 OWNED_PATHS:
   - frontend/app/list/[id]/page.tsx
@@ -79,3 +81,34 @@ PREWORK_REVIEW:
   `cd frontend && npm install`, followed by `cd frontend && npm run build`.
   If that build reveals unrelated pre-existing failures, report the exact
   file/error and stop rather than widening this task without director approval.
+
+IMPLEMENTATION_REVIEW:
+- 2026-05-03 director implementation review accepts `TASK-022` as the scoped
+  list-page build repair. The implementation stayed within the active
+  ownership boundary: `frontend/app/list/[id]/page.tsx` plus the base
+  developer report file `docs/agents/claude-1-changes.md`.
+- The source change matches the approved narrow fix: the `documentId`
+  fast-return guard remains outside the effect's inner async function, the
+  `accessToken` guard moved inside `loadDocument`, the
+  `[documentId, accessToken]` dependency array is unchanged, and the
+  `getDocument` helper signature remains `getDocument(id, accessToken)`.
+  This preserves the prior unauthenticated no-op behavior while giving
+  TypeScript a local `string` narrowing at the API call site.
+- Director static verification passed with `git diff --check HEAD~1..HEAD`.
+  The director worktree initially lacked frontend dependencies, so the
+  documented setup command `cd frontend && npm install` was run before
+  verification. `cd frontend && npm run build` was then blocked by the local
+  sandbox/Turbopack environment before type checking, with
+  `Operation not permitted (os error 1)` while creating a process and binding
+  to a port. Treat that as a local verification environment limit, not a
+  product blocker.
+- A targeted no-emit TypeScript check in `frontend/` confirmed the reported
+  next blocker and did not report the prior list-page error:
+  `auth.ts(80,21): error TS2339: Property 'token' does not exist on type
+  '{ session: void | AdapterSession | null | undefined; } | { token: JWT |
+  null; }'.` This matches claude-1's developer report that full build
+  verification now stops at `frontend/auth.ts`, outside `TASK-022`'s
+  implementation source path.
+- Created `TASK-023` as the next bounded pre-work task to address the
+  `frontend/auth.ts` NextAuth `events.signOut` union narrowing issue without
+  widening this accepted task.
