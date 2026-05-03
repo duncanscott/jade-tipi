@@ -49,16 +49,19 @@ import java.util.function.Supplier
 /**
  * End-to-end integration coverage for the Kafka entity-submission path.
  *
- * <p>Publishes one canonical {@code open + typ + ent + commit} transaction to
- * a per-spec Kafka topic and waits for {@code TransactionMessageListener} plus
+ * <p>Publishes one canonical
+ * {@code open + typ + typ-update-add_property + ent + commit} transaction to a
+ * per-spec Kafka topic and waits for {@code TransactionMessageListener} plus
  * the {@code CommittedTransactionMaterializer} to land:
  * <ul>
  *   <li>a committed {@code txn} header in the {@code txn} collection,</li>
  *   <li>a root-shaped bare entity-type {@code typ} document in the
  *       {@code typ} collection, carrying top-level {@code _id}, {@code id},
  *       {@code collection}, {@code type_id == null}, inline
- *       {@code properties.name}/{@code description}, and
- *       {@code _head.provenance} pointing at this txn and msg uuid,</li>
+ *       {@code properties.name}/{@code description}, the
+ *       {@code properties.property_refs.<property_id>} reference entry written
+ *       by the {@code typ + update add_property} message, and
+ *       {@code _head.provenance} pointing at the original create message,</li>
  *   <li>a root-shaped {@code ent} document in the {@code ent} collection,
  *       carrying top-level {@code _id}, {@code id}, {@code collection},
  *       {@code type_id} that matches the entity-type id, explicit empty
@@ -158,6 +161,7 @@ class EntityCreateKafkaMaterializeIntegrationSpec extends Specification {
     String txnId
     String entityId
     String entityTypeId
+    String propertyDefinitionId
 
     def setupSpec() {
         Properties props = new Properties()
@@ -190,6 +194,7 @@ class EntityCreateKafkaMaterializeIntegrationSpec extends Specification {
         String featureUuid = UUID.randomUUID().toString().substring(0, 8)
         entityId = "jadetipi-itest-ent~ent~plate_${featureUuid}"
         entityTypeId = "jadetipi-itest-ent~typ~plate_96_${featureUuid}"
+        propertyDefinitionId = "jadetipi-itest-ent~ppy~barcode_${featureUuid}"
     }
 
     def cleanup() {
@@ -207,8 +212,8 @@ class EntityCreateKafkaMaterializeIntegrationSpec extends Specification {
         }
     }
 
-    def 'open + typ + ent + commit materializes a root-shaped bare entity-type and ent document with linked type_id and _head.provenance'() {
-        given: 'one canonical entity transaction (open + typ + ent + commit)'
+    def 'open + typ + typ-update-add_property + ent + commit materializes the property reference on the typ root and the ent root with linked type_id'() {
+        given: 'one canonical entity transaction (open + typ + typ-update + ent + commit)'
         Message openMsg = Message.newInstance(txn, JtpCollection.TRANSACTION, Action.OPEN, [
                 hint: 'opened from ent kafka integration test'
         ])
@@ -217,6 +222,12 @@ class EntityCreateKafkaMaterializeIntegrationSpec extends Specification {
                 name       : 'plate_96',
                 description: '96-well sample plate'
         ] as Map<String, Object>)
+        Message typUpdateMsg = Message.newInstance(txn, JtpCollection.TYPE, Action.UPDATE, [
+                id         : entityTypeId,
+                operation  : 'add_property',
+                property_id: propertyDefinitionId,
+                required   : true
+        ] as Map<String, Object>)
         Message entMsg = Message.newInstance(txn, JtpCollection.ENTITY, Action.CREATE, [
                 id        : entityId,
                 type_id   : entityTypeId,
@@ -224,12 +235,13 @@ class EntityCreateKafkaMaterializeIntegrationSpec extends Specification {
                 links     : [:]
         ] as Map<String, Object>)
         Message commitMsg = Message.newInstance(txn, JtpCollection.TRANSACTION, Action.COMMIT, [
-                summary: 'one entity-type and one entity created'
+                summary: 'one entity-type, one type-update add_property, and one entity created'
         ])
 
-        when: 'all four records are produced to the test topic'
+        when: 'all five records are produced to the test topic'
         send(openMsg)
         send(typMsg)
+        send(typUpdateMsg)
         send(entMsg)
         send(commitMsg)
 
@@ -246,11 +258,15 @@ class EntityCreateKafkaMaterializeIntegrationSpec extends Specification {
         header.commit_id instanceof String
         ((String) header.commit_id).length() > 0
 
-        and: 'the bare entity-type typ document is materialized in root shape with null top-level type_id'
+        and: 'the bare entity-type typ document is materialized in root shape with the add_property reference under properties.property_refs'
         Map typDoc = awaitMongo(
                 { mongoTemplate.findById(entityTypeId, Map, TYP_COLLECTION) },
-                { Map d -> d != null },
-                'root-shaped bare entity-type typ document'
+                { Map d ->
+                    Map p = (d?.properties as Map)
+                    p?.property_refs instanceof Map &&
+                            ((Map) p.property_refs).containsKey(propertyDefinitionId)
+                },
+                'root-shaped bare entity-type typ document with property_refs populated'
         )
         typDoc['_id'] == entityTypeId
         typDoc.id == entityTypeId
@@ -264,7 +280,12 @@ class EntityCreateKafkaMaterializeIntegrationSpec extends Specification {
         !typProperties.containsKey('kind')
         typDoc.links == [:]
 
-        and: 'typ _head carries projection provenance pointing at the typ message uuid'
+        and: 'the property_refs sub-map carries the wire required value verbatim, keyed by the property-definition id'
+        Map propertyRefs = typProperties.property_refs as Map
+        propertyRefs.size() == 1
+        propertyRefs[propertyDefinitionId] == [required: true]
+
+        and: 'typ _head still carries the create-time projection provenance; add_property does not rewrite _head.provenance'
         Map typHead = typDoc._head as Map
         typHead.schema_version == 1
         typHead.document_kind == 'root'

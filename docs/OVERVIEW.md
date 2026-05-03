@@ -322,7 +322,10 @@ The realm configuration in `docker/jade-tipi-realm.json` is automatically import
 
 - Prove the human-readable Kafka submission path for domain data: a complete
   open/create/commit transaction should be easy to hand-author and should
-  materialize a root-shaped `loc` document in MongoDB.
+  materialize a root-shaped `loc` document in MongoDB. Bare entity-type
+  `typ + create` and the bounded `typ + update` `add_property` reference write
+  (set on `properties.property_refs.<property_id>` of an existing `typ` root)
+  also materialize through the same path.
 - Keep the first Kafka domain messages simple: top-level `collection` and
   `action`, submitted object under `data`, explicit `properties`, and no nested
   operation DSL.

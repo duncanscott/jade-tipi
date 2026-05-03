@@ -33,4 +33,6 @@ class MaterializeResult {
     int skippedUnsupported = 0
     /** Supported messages whose {@code data.id} was missing or blank; never auto-id'd. */
     int skippedInvalid = 0
+    /** Supported update messages whose target root document does not yet exist in the long-term collection. */
+    int skippedMissingTarget = 0
 }

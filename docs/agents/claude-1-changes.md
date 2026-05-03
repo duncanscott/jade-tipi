@@ -3,6 +3,249 @@
 The developer writes completed work reports here.
 
 STATUS: COMPLETED
+TASK: TASK-030 — Human-readable Kafka entity-type property-reference update path (implementation)
+DATE: 2026-05-03
+SUMMARY: Implemented the bounded `typ + update` `data.operation == "add_property"`
+materializer path per the accepted pre-work plan and the director's TASK-030
+direction rulings. `CommittedTransactionMaterializer.isSupported()` now
+also accepts `typ + update` whose `data.operation == "add_property"`, and
+`processMessage()` dispatches that combination to a new
+`processTypUpdateAddProperty(snapshot, message, result)` helper; every
+other `typ + update` operation, every `*+ delete`, and every other
+collection's update remains `skippedUnsupported` exactly as before.
+The new helper extracts `data.id` and `data.property_id` (missing/blank
+either side counts as `skippedInvalid` before any Mongo read), builds a
+reference entry that carries `required` only when present on the wire
+(no invented `required: false`), then `mongoTemplate.findById(targetId,
+Map.class, "typ")` against the long-term `typ` collection. A
+present-vs-empty wrapper (`map { Optional.of(it) }.defaultIfEmpty(Optional.empty())`)
+distinguishes "target missing" (counts as the new
+`MaterializeResult.skippedMissingTarget`) from "target found but no
+$set issued" (idempotent `duplicateMatching` or `conflictingDuplicate`).
+On the create path, the helper issues a single
+`Update.set("properties.property_refs." + propertyId, referenceEntry)`
+via `mongoTemplate.updateFirst(Query.query(Criteria.where("_id").is(targetId)),
+update, "typ")` and increments `result.materialized`. Idempotent repeats
+where the existing reference entry equals the incoming one count as
+`duplicateMatching` and skip the `$set`; conflicting entries (e.g. the
+incoming `required: true` against an existing `required: false`) count
+as `conflictingDuplicate` and never overwrite. The successful update
+intentionally does not touch `_head.provenance` per the director's
+ruling — full per-message provenance history is out of scope for
+TASK-030, and updating only `materialized_at` would mix create-message
+fields with an update timestamp.
+
+A new `MaterializeResult.skippedMissingTarget` int field was added; all
+existing counters are unchanged. Example resource JSON was not edited:
+`05-update-entity-type-add-property.json` already shows the accepted
+human-readable wire shape verbatim, the cross-references
+`05-….data.id == 04-….data.id` and `05-….data.property_id ==
+02-….data.id` already hold, and the directive forbids broad
+ID-abbreviation cleanup (so the `~ty~`/`~pp~` 2-char segments in
+`02-…`, `04-…`, and `05-…` are preserved exactly as-is). The unit
+spec helper continues to use its local synthetic `~ppy~barcode`
+property id where it sets up its own `mongoTemplate.findById` mock — no
+broad ID-abbreviation cleanup was attempted. No HTTP submission
+endpoint, `ppy + create` materialization, semantic `data.property_id`
+resolution against the `ppy` collection, property-value assignment
+materialization, required-property enforcement, contents-link read
+change, endpoint projection maintenance, or nested Kafka operation DSL
+was added. All edits stayed within TASK-030's `OWNED_PATHS`.
+
+Files changed (this turn):
+
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`
+  — Added imports for `org.springframework.data.mongodb.core.query.Criteria`/`Query`/`Update`.
+  Updated the class Javadoc to document the new `typ + update add_property`
+  bullet and to clarify that "every other update/delete and every
+  unsupported `typ + update` operation" remains `skippedUnsupported`.
+  Added constants `ACTION_UPDATE = 'update'`,
+  `FIELD_OPERATION = 'operation'`, `FIELD_PROPERTY_ID = 'property_id'`,
+  `FIELD_REQUIRED = 'required'`, `FIELD_PROPERTY_REFS = 'property_refs'`,
+  and `OPERATION_ADD_PROPERTY = 'add_property'`. Restructured
+  `isSupported(...)` so the create-action collection switch is wrapped
+  in `if (action == ACTION_CREATE)` and a second branch returns true
+  for `action == ACTION_UPDATE && collection == COLLECTION_TYP &&
+  data?.get('operation') == 'add_property'`. `processMessage(...)` now
+  short-circuits the supported-update case to the new helper
+  `processTypUpdateAddProperty(snapshot, message, result)`. The new
+  helper plus the supporting privates `extractPropertyId(data)`,
+  `buildPropertyReferenceEntry(data)`, and `readExistingPropertyRef
+  (existing, propertyId)` add the dispatch, validation, idempotency,
+  conflict-detection, and missing-target paths described above.
+  No other production code path changed (the create insert flow,
+  `buildDocument`, `buildHead`, `isSamePayload`, duplicate-key
+  handling, and the existing `loc + create` / `lnk + create` /
+  `grp + create` / `ent + create` / `typ + create` behavior are
+  untouched).
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/MaterializeResult.groovy`
+  — Added one purely additive field
+  `int skippedMissingTarget = 0` with a one-line javadoc:
+  "Supported update messages whose target root document does not yet
+  exist in the long-term collection." Existing fields and existing
+  callers/tests are unaffected.
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`
+  — Added imports for `Query` and `Update`. Replaced the existing
+  `'skips a typ + update message even after dropping the kind guard'`
+  feature with a positive feature
+  `'materializes a typ + update add_property as a $set onto
+   root.properties.property_refs.<property_id>'` that mocks
+  `mongoTemplate.findById(ENT_TYPE_ID, Map.class, 'typ')` to return an
+  existing post-create root, captures the `mongoTemplate.updateFirst`
+  query/update/collection arguments, and asserts
+  `result.materialized == 1`, every other counter zero, the captured
+  query targets `_id == ENT_TYPE_ID`, the captured collection is
+  `'typ'`, and the `$set` ops are exactly `{['properties.property_refs.
+  jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode':
+  [required: true]]}`. Added supporting features:
+  `'typ + update add_property without data.required materializes a
+   reference entry that omits required'` (asserts the dotted-path
+  $set value is `[:]` when the wire omits `required`),
+  `'skips a typ + update with operation other than add_property as
+   skippedUnsupported'` (`@where operation << ['remove_property',
+  'update_required', '', null]`),
+  `'skips a typ + update add_property whose target typ root does not
+   exist as skippedMissingTarget'`,
+  `'idempotent typ + update add_property with matching reference
+   metadata is duplicate-matching and does not re-write'`,
+  `'conflicting typ + update add_property is conflicting-duplicate and
+   not overwritten'`,
+  `'typ + update add_property with missing data.id is counted as
+   skippedInvalid before any Mongo read'` (`@where missingId << [null,
+  '', '   ']`),
+  `'typ + update add_property with missing data.property_id is counted
+   as skippedInvalid before any Mongo read'` (`@where missingPropertyId
+  << [null, '', '   ']`), and
+  `'typ + update add_property with no existing property_refs sub-map
+   adds the keyed entry without disturbing other properties'`. The
+  existing `updateEntityTypeMessage()` helper (which already pinned
+  the `add_property` wire shape) was reused unchanged. The pre-existing
+  `'skips update and delete actions on supported collections'` feature
+  for `loc + update` and the mixed-snapshot feature were left
+  untouched.
+- `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`
+  — Added two focused features. The first,
+  `"typ + update add_property example uses the human-readable data.id,
+   data.operation, data.property_id, and optional data.required shape"`,
+  reads `05-update-entity-type-add-property.json` and asserts
+  `Collection.TYPE` + `Action.UPDATE`, `data.id`, `data.operation ==
+  'add_property'`, `data.property_id`, `data.required == true`, and
+  `data.keySet() == ['id', 'operation', 'property_id', 'required'] as
+  Set`. The second,
+  `"entity-type-with-property example sequence shares one txn id and
+   the type-update references the property-definition by id"`, reads
+  `01 + 02 + 04 + 05 + 09`, asserts shared `txn.uuid` across all five,
+  asserts the `txn`/`commit` collection/action pair, asserts
+  `02-…` is `Collection.PROPERTY` + `Action.CREATE`, `04-…` is
+  `Collection.TYPE` + `Action.CREATE`, `05-…` is `Collection.TYPE` +
+  `Action.UPDATE`, and asserts the verbatim cross-references
+  `updateData.id == typData.id` and `updateData.property_id ==
+  ppyData.id`. The pre-existing `EXAMPLE_PATHS` round-trip /
+  schema-validate loop and the existing entity / contents transaction
+  example features were left unchanged.
+- `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/EntityCreateKafkaMaterializeIntegrationSpec.groovy`
+  — Extended the spec from `open + typ + ent + commit` to
+  `open + typ + typ-update-add_property + ent + commit`. Added a
+  `propertyDefinitionId` per-feature id (synthetic, scoped to the
+  test). Updated the class Javadoc to describe the new five-message
+  sequence. Updated the existing feature's awaitMongo predicate so it
+  returns the typ root only after `properties.property_refs` has been
+  populated by the `add_property` apply, and added two new
+  `and:`-blocks asserting (a) `propertyRefs.size() == 1` and
+  `propertyRefs[propertyDefinitionId] == [required: true]`, and
+  (b) the `_head.provenance` on the materialized typ root continues
+  to reflect the create-time message (`txn_id`, `msg_uuid ==
+  typMsg.uuid()`, `collection == 'typ'`, `action == 'create'`) so the
+  documented "no `_head.provenance` rewrite for `add_property`"
+  behavior is also asserted end-to-end. The Kafka topic / consumer
+  group / producer / cleanup machinery, the txn header assertions, the
+  ent-root assertions, and `ent.type_id == typDoc._id` are unchanged.
+- `docs/architecture/kafka-transaction-message-vocabulary.md`
+  — In "Types And Properties", replaced the future-tense sentence
+  ("The materialized type document should eventually include property
+  references…") with a concrete description of the materialized
+  `properties.property_refs.<data.property_id>` sub-map, the
+  reference-only metadata semantics (`required` only when present;
+  empty object when omitted), and the explicit non-resolution against
+  `ppy`. In "Committed Materialization Of Locations And Links",
+  expanded the supported set to also include `typ + update` whose
+  `data.operation == "add_property"`, narrowed the previously broad
+  "Other collections, other actions … are intentionally not
+  materialized" sentence to the new scope ("every `typ + update`
+  whose `data.operation` is not `add_property`", every `*+ delete`,
+  and other update actions), and added a final paragraph documenting
+  the `add_property` $set behavior, idempotent `duplicateMatching`,
+  refused `conflictingDuplicate`, missing-target `skippedMissingTarget`,
+  pre-Mongo `skippedInvalid` for missing `data.id`/`data.property_id`,
+  and the deliberate "no `_head.provenance` rewrite on the successful
+  update" decision.
+- `docs/OVERVIEW.md`
+  — Extended the existing "Prove the human-readable Kafka submission
+  path" Next Steps bullet to also note bare entity-type `typ + create`
+  and the bounded `typ + update add_property` reference write
+  (set on `properties.property_refs.<property_id>` of an existing
+  `typ` root) materializing through the same path.
+
+Verification (this turn):
+
+- `./gradlew :libraries:jade-tipi-dto:test` →
+  BUILD SUCCESSFUL in 5s. The new MessageSpec features
+  (`"typ + update add_property example …"` and the 5-message
+  `01 + 02 + 04 + 05 + 09` sequence assertion) and the existing
+  `EXAMPLE_PATHS` round-trip / schema-validate loop pass.
+- `./gradlew :jade-tipi:test` →
+  BUILD SUCCESSFUL in 8s. The new
+  `CommittedTransactionMaterializerSpec` features for
+  `typ + update add_property` (positive shape, omitted `required`,
+  other-operation skip with the unrolled `where:` block, missing-target
+  `skippedMissingTarget`, idempotent `duplicateMatching`, conflicting
+  `conflictingDuplicate`, missing-`data.id` and missing-`property_id`
+  `skippedInvalid` `where:` blocks, and the no-existing-`property_refs`
+  sub-map case) plus every existing materializer / read / persistence
+  feature pass. The local Docker stack (`docker ps`) showed
+  `jade-tipi-mongo`, `jade-tipi-keycloak`, `jade-tipi-kafka`, and
+  `jade-tipi-couchdb` already up before the unit-test invocation, so
+  `JadetipiApplicationTests.contextLoads` reached Mongo without
+  re-running `docker compose up`.
+- `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*EntityCreateKafkaMaterializeIntegrationSpec*'` →
+  BUILD SUCCESSFUL in 9s. Server logs confirm the sequence
+  `Materialized typ root` → `Materialized typ + update add_property:
+   id=…~typ~plate_96_<uuid>, propertyId=…~ppy~barcode_<uuid>` →
+  `Materialized ent root`, and the awaitMongo predicate that gates on
+  `properties.property_refs` populated returned a typ root carrying
+  the `[required: true]` entry under the test's `propertyDefinitionId`.
+- `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest` →
+  BUILD SUCCESSFUL in 29s. The full integration suite (including the
+  pre-existing `TransactionMessageKafkaIngestIntegrationSpec`,
+  `ContentsHttpReadIntegrationSpec`, and group/admin specs) passes
+  alongside the extended `EntityCreateKafkaMaterializeIntegrationSpec`.
+  No setup workaround was needed: the local Docker stack
+  (`jade-tipi-mongo`, `jade-tipi-kafka`, `jade-tipi-keycloak`,
+  `jade-tipi-couchdb`) was already healthy.
+
+Open questions / follow-ups for the director:
+
+- TASK-030 covered only `typ + update add_property`. Likely follow-on
+  bounded units remain available for sequencing: `typ + update
+  remove_property`, `typ + update update_required` (or richer reference
+  metadata edits), `ppy + create` materialization, semantic resolution
+  of `data.property_id → ppy` at materializer or `vdn` time, and
+  property-value-assignment materialization (`07-…`, `08-…`).
+- The `updateEntityTypeMessage()` Spock helper still uses the
+  `~ppy~barcode` 3-char segment while
+  `05-update-entity-type-add-property.json` uses the 2-char
+  `~pp~barcode` segment. Both are accepted today because nothing
+  resolves the property id semantically; per the directive's
+  "Preserve the current example ID strings" and "Do not redesign the
+  ID abbreviation scheme" guardrails, neither was changed in
+  TASK-030. Flagged for any future ID-cleanup follow-up.
+
+Previous turn report retained verbatim below.
+
+---
+
+STATUS: COMPLETED
 TASK: TASK-029 — Human-readable Kafka entity-type submission path
   (director follow-up fix for empty `data.links` inline payload)
 DATE: 2026-05-03

@@ -539,6 +539,74 @@ class MessageSpec extends Specification {
         entData.type_id == typData.id
     }
 
+    def "typ + update add_property example uses the human-readable data.id, data.operation, data.property_id, and optional data.required shape"() {
+        given:
+        String json = readResource('/example/message/05-update-entity-type-add-property.json')
+
+        when:
+        Message message = JsonMapper.fromJson(json, Message)
+
+        then:
+        message.collection() == Collection.TYPE
+        message.action() == Action.UPDATE
+
+        and: 'data.id targets the existing bare entity-type root by id'
+        Map data = message.data()
+        data.id == 'jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~ty~plate_96'
+
+        and: 'data.operation names the bounded supported variant'
+        data.operation == 'add_property'
+
+        and: 'data.property_id references the property-definition by id; data.required carries the wire-shape boolean'
+        data.property_id == 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~pp~barcode'
+        data.required == true
+
+        and: 'no other facts leak onto the data root next to id, operation, property_id, and required'
+        data.keySet() == ['id', 'operation', 'property_id', 'required'] as Set
+    }
+
+    def "entity-type-with-property example sequence shares one txn id and the type-update references the property-definition by id"() {
+        given: 'open, property-definition create, entity-type create, type-update add_property, and commit examples'
+        Message open = JsonMapper.fromJson(
+                readResource('/example/message/01-open-transaction.json'), Message)
+        Message ppyCreate = JsonMapper.fromJson(
+                readResource('/example/message/02-create-property-definition-text.json'), Message)
+        Message typCreate = JsonMapper.fromJson(
+                readResource('/example/message/04-create-entity-type.json'), Message)
+        Message typUpdate = JsonMapper.fromJson(
+                readResource('/example/message/05-update-entity-type-add-property.json'), Message)
+        Message commit = JsonMapper.fromJson(
+                readResource('/example/message/09-commit-transaction.json'), Message)
+
+        expect: 'all five messages chain through the same transaction uuid'
+        String txnUuid = open.txn().uuid()
+        ppyCreate.txn().uuid() == txnUuid
+        typCreate.txn().uuid() == txnUuid
+        typUpdate.txn().uuid() == txnUuid
+        commit.txn().uuid() == txnUuid
+
+        and: 'open and commit are transaction-control messages on the txn collection'
+        open.collection() == Collection.TRANSACTION
+        open.action() == Action.OPEN
+        commit.collection() == Collection.TRANSACTION
+        commit.action() == Action.COMMIT
+
+        and: 'the in-resource collections and actions match the human-readable type-with-property sequence'
+        ppyCreate.collection() == Collection.PROPERTY
+        ppyCreate.action() == Action.CREATE
+        typCreate.collection() == Collection.TYPE
+        typCreate.action() == Action.CREATE
+        typUpdate.collection() == Collection.TYPE
+        typUpdate.action() == Action.UPDATE
+
+        and: 'the type-update targets the freshly-created bare entity-type by id and references the freshly-created property-definition by id'
+        Map ppyData = ppyCreate.data()
+        Map typData = typCreate.data()
+        Map updateData = typUpdate.data()
+        updateData.id == typData.id
+        updateData.property_id == ppyData.id
+    }
+
     def "contents transaction example trio shares one txn id and pairs typ link-type with a referencing lnk create"() {
         given: 'open, contents-type create, contents-link create, and commit examples'
         Message open = JsonMapper.fromJson(

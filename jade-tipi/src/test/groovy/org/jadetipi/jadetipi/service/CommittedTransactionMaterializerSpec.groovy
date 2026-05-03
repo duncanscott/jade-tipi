@@ -18,6 +18,8 @@ import com.mongodb.WriteError
 import org.bson.BsonDocument
 import org.springframework.dao.DuplicateKeyException
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
+import org.springframework.data.mongodb.core.query.Query
+import org.springframework.data.mongodb.core.query.Update
 import reactor.core.publisher.Mono
 import spock.lang.Specification
 
@@ -558,15 +560,325 @@ class CommittedTransactionMaterializerSpec extends Specification {
         !properties.containsKey('type_id')
     }
 
-    def 'skips a typ + update message even after dropping the kind guard'() {
+    def 'materializes a typ + update add_property as a $set onto root.properties.property_refs.<property_id>'() {
+        given: 'an existing bare entity-type typ root post-create with no property_refs yet'
+        Map existing = [
+                _id        : ENT_TYPE_ID,
+                id         : ENT_TYPE_ID,
+                collection : 'typ',
+                type_id    : null,
+                properties : [
+                        name       : 'plate_96',
+                        description: '96-well sample plate'
+                ],
+                links      : [:],
+                _head      : [
+                        schema_version: 1,
+                        document_kind : 'root',
+                        root_id       : ENT_TYPE_ID,
+                        provenance    : [
+                                txn_id         : TXN_ID,
+                                commit_id      : COMMIT_ID,
+                                msg_uuid       : ENTITY_TYPE_MSG_UUID,
+                                collection     : 'typ',
+                                action         : 'create',
+                                committed_at   : COMMITTED_AT,
+                                materialized_at: Instant.parse('2025-12-31T00:00:01Z')
+                        ]
+                ]
+        ]
+        Query capturedQuery = null
+        Update capturedUpdate = null
+        String capturedCollection = null
+        mongoTemplate.findById(ENT_TYPE_ID, Map.class, 'typ') >> Mono.just(existing)
+        mongoTemplate.updateFirst(_ as Query,
+                _ as Update,
+                _ as String) >> {
+            Query q,
+            Update u,
+            String coll ->
+                capturedQuery = q
+                capturedUpdate = u
+                capturedCollection = coll
+                return Mono.empty()
+        }
+
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([updateEntityTypeMessage()])).block()
+
+        then:
+        result.materialized == 1
+        result.duplicateMatching == 0
+        result.conflictingDuplicate == 0
+        result.skippedMissingTarget == 0
+        result.skippedUnsupported == 0
+        result.skippedInvalid == 0
+
+        and: 'the captured update is a $set on properties.property_refs.<property_id> with the wire required value'
+        capturedCollection == 'typ'
+        capturedQuery.queryObject.get('_id') == ENT_TYPE_ID
+        Map setOps = capturedUpdate.updateObject.get('$set') as Map
+        setOps.size() == 1
+        String expectedKey = 'properties.property_refs.jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
+        setOps[expectedKey] == [required: true]
+
+        and: 'no insert path is taken for the update message'
+        0 * mongoTemplate.insert(_, _)
+    }
+
+    def 'typ + update add_property without data.required materializes a reference entry that omits required'() {
+        given: 'existing root carries no property_refs sub-map yet'
+        Map existing = [
+                _id        : ENT_TYPE_ID,
+                id         : ENT_TYPE_ID,
+                collection : 'typ',
+                type_id    : null,
+                properties : [name: 'plate_96'],
+                links      : [:]
+        ]
+        Update capturedUpdate = null
+        mongoTemplate.findById(ENT_TYPE_ID, Map.class, 'typ') >> Mono.just(existing)
+        mongoTemplate.updateFirst(_ as Query,
+                _ as Update,
+                _ as String) >> { _q, Update u, _c ->
+            capturedUpdate = u
+            return Mono.empty()
+        }
+        CommittedTransactionMessage message = new CommittedTransactionMessage(
+                msgUuid: '018fd849-2a44-7444-8d04-dddddddddddd',
+                collection: 'typ',
+                action: 'update',
+                data: [
+                        id         : ENT_TYPE_ID,
+                        operation  : 'add_property',
+                        property_id: 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
+                ],
+                receivedAt: Instant.parse('2026-01-01T00:00:02Z'),
+                kafka: null
+        )
+
+        when:
+        MaterializeResult result = materializer.materialize(snapshot([message])).block()
+
+        then: 'the reference entry is an empty map; required is not invented'
+        result.materialized == 1
+        Map setOps = capturedUpdate.updateObject.get('$set') as Map
+        String expectedKey = 'properties.property_refs.jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
+        setOps[expectedKey] == [:]
+    }
+
+    def 'skips a typ + update with operation other than add_property as skippedUnsupported'() {
+        given:
+        CommittedTransactionMessage message = new CommittedTransactionMessage(
+                msgUuid: '018fd849-2a44-7444-8d04-dddddddddddd',
+                collection: 'typ',
+                action: 'update',
+                data: [
+                        id         : ENT_TYPE_ID,
+                        operation  : operation,
+                        property_id: 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
+                ],
+                receivedAt: Instant.parse('2026-01-01T00:00:02Z'),
+                kafka: null
+        )
+
+        when:
+        MaterializeResult result = materializer.materialize(snapshot([message])).block()
+
+        then:
+        result.materialized == 0
+        result.skippedUnsupported == 1
+        result.skippedInvalid == 0
+        result.skippedMissingTarget == 0
+        0 * mongoTemplate.insert(_, _)
+        0 * mongoTemplate.updateFirst(_, _, _)
+        0 * mongoTemplate.findById(_, _, _)
+
+        where:
+        operation << ['remove_property', 'update_required', '', null]
+    }
+
+    def 'skips a typ + update add_property whose target typ root does not exist as skippedMissingTarget'() {
+        given:
+        mongoTemplate.findById(ENT_TYPE_ID, Map.class, 'typ') >> Mono.empty()
+
         when:
         MaterializeResult result = materializer.materialize(
                 snapshot([updateEntityTypeMessage()])).block()
 
         then:
         result.materialized == 0
-        result.skippedUnsupported == 1
+        result.duplicateMatching == 0
+        result.conflictingDuplicate == 0
+        result.skippedMissingTarget == 1
+        result.skippedInvalid == 0
+        result.skippedUnsupported == 0
+        0 * mongoTemplate.updateFirst(_, _, _)
         0 * mongoTemplate.insert(_, _)
+    }
+
+    def 'idempotent typ + update add_property with matching reference metadata is duplicate-matching and does not re-write'() {
+        given: 'existing root already carries the same property_ref entry'
+        String propertyId = 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
+        Map existing = [
+                _id        : ENT_TYPE_ID,
+                id         : ENT_TYPE_ID,
+                collection : 'typ',
+                type_id    : null,
+                properties : [
+                        name         : 'plate_96',
+                        description  : '96-well sample plate',
+                        property_refs: [
+                                (propertyId): [required: true]
+                        ]
+                ],
+                links      : [:]
+        ]
+        mongoTemplate.findById(ENT_TYPE_ID, Map.class, 'typ') >> Mono.just(existing)
+
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([updateEntityTypeMessage()])).block()
+
+        then:
+        result.materialized == 0
+        result.duplicateMatching == 1
+        result.conflictingDuplicate == 0
+        result.skippedUnsupported == 0
+        result.skippedMissingTarget == 0
+        result.skippedInvalid == 0
+        0 * mongoTemplate.updateFirst(_, _, _)
+        0 * mongoTemplate.insert(_, _)
+    }
+
+    def 'conflicting typ + update add_property is conflicting-duplicate and not overwritten'() {
+        given: 'existing root carries the same property_id with a different required value'
+        String propertyId = 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
+        Map existing = [
+                _id        : ENT_TYPE_ID,
+                id         : ENT_TYPE_ID,
+                collection : 'typ',
+                type_id    : null,
+                properties : [
+                        name         : 'plate_96',
+                        property_refs: [
+                                (propertyId): [required: false]
+                        ]
+                ],
+                links      : [:]
+        ]
+        mongoTemplate.findById(ENT_TYPE_ID, Map.class, 'typ') >> Mono.just(existing)
+
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([updateEntityTypeMessage()])).block()
+
+        then:
+        result.materialized == 0
+        result.duplicateMatching == 0
+        result.conflictingDuplicate == 1
+        result.skippedUnsupported == 0
+        result.skippedMissingTarget == 0
+        result.skippedInvalid == 0
+        0 * mongoTemplate.updateFirst(_, _, _)
+        0 * mongoTemplate.insert(_, _)
+    }
+
+    def 'typ + update add_property with missing data.id is counted as skippedInvalid before any Mongo read'() {
+        given:
+        CommittedTransactionMessage message = new CommittedTransactionMessage(
+                msgUuid: '018fd849-2a44-7444-8d04-dddddddddddd',
+                collection: 'typ',
+                action: 'update',
+                data: [
+                        id         : missingId,
+                        operation  : 'add_property',
+                        property_id: 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode',
+                        required   : true
+                ],
+                receivedAt: Instant.parse('2026-01-01T00:00:02Z'),
+                kafka: null
+        )
+
+        when:
+        MaterializeResult result = materializer.materialize(snapshot([message])).block()
+
+        then:
+        result.materialized == 0
+        result.skippedInvalid == 1
+        result.skippedMissingTarget == 0
+        result.skippedUnsupported == 0
+        0 * mongoTemplate.findById(_, _, _)
+        0 * mongoTemplate.updateFirst(_, _, _)
+
+        where:
+        missingId << [null, '', '   ']
+    }
+
+    def 'typ + update add_property with missing data.property_id is counted as skippedInvalid before any Mongo read'() {
+        given:
+        CommittedTransactionMessage message = new CommittedTransactionMessage(
+                msgUuid: '018fd849-2a44-7444-8d04-dddddddddddd',
+                collection: 'typ',
+                action: 'update',
+                data: [
+                        id         : ENT_TYPE_ID,
+                        operation  : 'add_property',
+                        property_id: missingPropertyId,
+                        required   : true
+                ],
+                receivedAt: Instant.parse('2026-01-01T00:00:02Z'),
+                kafka: null
+        )
+
+        when:
+        MaterializeResult result = materializer.materialize(snapshot([message])).block()
+
+        then:
+        result.materialized == 0
+        result.skippedInvalid == 1
+        result.skippedMissingTarget == 0
+        result.skippedUnsupported == 0
+        0 * mongoTemplate.findById(_, _, _)
+        0 * mongoTemplate.updateFirst(_, _, _)
+
+        where:
+        missingPropertyId << [null, '', '   ']
+    }
+
+    def 'typ + update add_property with no existing property_refs sub-map adds the keyed entry without disturbing other properties'() {
+        given: 'existing root has scalar facts but no property_refs sub-map'
+        String propertyId = 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
+        Map existing = [
+                _id        : ENT_TYPE_ID,
+                id         : ENT_TYPE_ID,
+                collection : 'typ',
+                type_id    : null,
+                properties : [
+                        name       : 'plate_96',
+                        description: '96-well sample plate'
+                ],
+                links      : [:]
+        ]
+        Update capturedUpdate = null
+        mongoTemplate.findById(ENT_TYPE_ID, Map.class, 'typ') >> Mono.just(existing)
+        mongoTemplate.updateFirst(_ as Query,
+                _ as Update,
+                _ as String) >> { _q, Update u, _c ->
+            capturedUpdate = u
+            return Mono.empty()
+        }
+
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([updateEntityTypeMessage()])).block()
+
+        then: 'only the dotted property_refs sub-key is set; name/description are not touched'
+        result.materialized == 1
+        Map setOps = capturedUpdate.updateObject.get('$set') as Map
+        setOps.keySet() == ['properties.property_refs.' + propertyId] as Set
+        setOps['properties.property_refs.' + propertyId] == [required: true]
     }
 
     def 'identical-payload bare entity-type typ duplicate is matching even when materialized_at differs'() {

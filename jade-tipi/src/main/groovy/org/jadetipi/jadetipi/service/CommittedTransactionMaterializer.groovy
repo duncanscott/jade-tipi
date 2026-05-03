@@ -16,6 +16,9 @@ import com.mongodb.DuplicateKeyException
 import groovy.util.logging.Slf4j
 import org.springframework.dao.DuplicateKeyException as SpringDuplicateKeyException
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
+import org.springframework.data.mongodb.core.query.Criteria
+import org.springframework.data.mongodb.core.query.Query
+import org.springframework.data.mongodb.core.query.Update
 import org.springframework.stereotype.Service
 import org.springframework.util.Assert
 import reactor.core.publisher.Flux
@@ -37,8 +40,18 @@ import java.time.Instant
  *       ({@code data.kind == "link_type"}) and bare entity-type
  *       ({@code data.kind} absent) records materialize as root-shaped
  *       {@code typ} documents; the materializer does not enforce a kind
- *       discriminator. {@code typ + update} property-reference changes
- *       remain intentionally unsupported.</li>
+ *       discriminator.</li>
+ *   <li>{@code typ + update} with {@code data.operation == "add_property"} →
+ *       sets {@code properties.property_refs.<data.property_id>} on the
+ *       existing target {@code typ} root. The reference value carries only
+ *       the wire-shape metadata that is present (currently {@code required}
+ *       when supplied); the materializer never invents reference metadata
+ *       and never resolves {@code data.property_id} against the {@code ppy}
+ *       collection. Idempotent repeats with matching metadata count as
+ *       {@code duplicateMatching}; conflicting metadata counts as
+ *       {@code conflictingDuplicate} and never overwrites. A missing target
+ *       {@code typ} root counts as {@code skippedMissingTarget}. Other
+ *       {@code typ + update} operations remain {@code skippedUnsupported}.</li>
  *   <li>{@code lnk + create} → {@code lnk} collection.</li>
  *   <li>{@code ent + create} → {@code ent} collection. Top-level
  *       {@code data.type_id} surfaces as the root {@code type_id};
@@ -49,9 +62,10 @@ import java.time.Instant
  *       or {@code "r"}) is copied verbatim through {@code properties.permissions};
  *       no permission enforcement is added at materialization time.</li>
  * </ul>
- * Every other collection/action combination — including update, delete, and
- * txn-control actions — is counted as {@code skippedUnsupported} without
- * raising an error.
+ * Every other collection/action combination — including delete and
+ * txn-control actions, and every {@code typ + update} whose
+ * {@code data.operation} is not {@code "add_property"} — is counted as
+ * {@code skippedUnsupported} without raising an error.
  *
  * <p>Each materialized document is a self-describing root with {@code _id},
  * {@code id}, {@code collection}, top-level {@code type_id}, explicit
@@ -104,6 +118,14 @@ class CommittedTransactionMaterializer {
     static final String COLLECTION_ENT = 'ent'
 
     static final String ACTION_CREATE = 'create'
+    static final String ACTION_UPDATE = 'update'
+
+    static final String FIELD_OPERATION = 'operation'
+    static final String FIELD_PROPERTY_ID = 'property_id'
+    static final String FIELD_REQUIRED = 'required'
+    static final String FIELD_PROPERTY_REFS = 'property_refs'
+
+    static final String OPERATION_ADD_PROPERTY = 'add_property'
 
     private final ReactiveMongoTemplate mongoTemplate
     private final CommittedTransactionReadService readService
@@ -156,6 +178,12 @@ class CommittedTransactionMaterializer {
             return Mono.empty()
         }
 
+        if (message.action == ACTION_UPDATE
+                && message.collection == COLLECTION_TYP
+                && OPERATION_ADD_PROPERTY == message.data?.get(FIELD_OPERATION)) {
+            return processTypUpdateAddProperty(snapshot, message, result)
+        }
+
         Map<String, Object> data = message.data
         String docId = extractDocId(data)
         if (docId == null) {
@@ -177,6 +205,112 @@ class CommittedTransactionMaterializer {
                     handleInsertError(snapshot, message, doc, docId, ex, result)
                 })
                 .then() as Mono<Void>
+    }
+
+    private Mono<Void> processTypUpdateAddProperty(CommittedTransactionSnapshot snapshot,
+                                                   CommittedTransactionMessage message,
+                                                   MaterializeResult result) {
+        Map<String, Object> data = message.data
+        String targetId = extractDocId(data)
+        if (targetId == null) {
+            log.error('Materializer skipping typ + update add_property with missing or blank data.id: ' +
+                    'txnId={}, commitId={}, msgUuid={}',
+                    snapshot.txnId, snapshot.commitId, message.msgUuid)
+            result.skippedInvalid++
+            return Mono.empty()
+        }
+        String propertyId = extractPropertyId(data)
+        if (propertyId == null) {
+            log.error('Materializer skipping typ + update add_property with missing or blank data.property_id: ' +
+                    'txnId={}, commitId={}, id={}, msgUuid={}',
+                    snapshot.txnId, snapshot.commitId, targetId, message.msgUuid)
+            result.skippedInvalid++
+            return Mono.empty()
+        }
+
+        Map<String, Object> referenceEntry = buildPropertyReferenceEntry(data)
+        String dottedKey = FIELD_PROPERTIES + '.' + FIELD_PROPERTY_REFS + '.' + propertyId
+
+        return mongoTemplate.findById(targetId, Map.class, COLLECTION_TYP)
+                .map({ Map existing -> Optional.of(existing) })
+                .defaultIfEmpty(Optional.empty())
+                .flatMap({ Optional<Map> probe ->
+                    if (!probe.isPresent()) {
+                        log.warn('Materializer skipping typ + update add_property with missing target typ root: ' +
+                                'id={}, propertyId={}, txnId={}, commitId={}, msgUuid={}',
+                                targetId, propertyId, snapshot.txnId, snapshot.commitId, message.msgUuid)
+                        result.skippedMissingTarget++
+                        return Mono.empty()
+                    }
+                    Map existing = probe.get()
+                    Map<String, Object> existingEntry = readExistingPropertyRef(existing, propertyId)
+                    if (existingEntry != null) {
+                        if (Objects.equals(existingEntry, referenceEntry)) {
+                            log.info('Materialize duplicate matching typ + update add_property: ' +
+                                    'id={}, propertyId={}, txnId={}',
+                                    targetId, propertyId, snapshot.txnId)
+                            result.duplicateMatching++
+                        } else {
+                            log.error('Materialize conflicting typ + update add_property (not overwriting): ' +
+                                    'id={}, propertyId={}, txnId={}, commitId={}, msgUuid={}',
+                                    targetId, propertyId, snapshot.txnId, snapshot.commitId, message.msgUuid)
+                            result.conflictingDuplicate++
+                        }
+                        return Mono.empty()
+                    }
+                    Query query = Query.query(Criteria.where(FIELD_ID).is(targetId))
+                    Update update = new Update().set(dottedKey, referenceEntry)
+                    return mongoTemplate.updateFirst(query, update, COLLECTION_TYP)
+                            .doOnSuccess({ Object updateResult ->
+                                log.info('Materialized typ + update add_property: id={}, propertyId={}, txnId={}, commitId={}',
+                                        targetId, propertyId, snapshot.txnId, snapshot.commitId)
+                                result.materialized++
+                            })
+                            .then()
+                })
+                .then() as Mono<Void>
+    }
+
+    private static String extractPropertyId(Map<String, Object> data) {
+        if (data == null) {
+            return null
+        }
+        Object value = data.get(FIELD_PROPERTY_ID)
+        if (value == null) {
+            return null
+        }
+        String asString = value.toString()
+        return asString.trim().isEmpty() ? null : asString
+    }
+
+    private static Map<String, Object> buildPropertyReferenceEntry(Map<String, Object> data) {
+        Map<String, Object> entry = new LinkedHashMap<>()
+        if (data != null && data.containsKey(FIELD_REQUIRED)) {
+            entry.put(FIELD_REQUIRED, data.get(FIELD_REQUIRED))
+        }
+        return entry
+    }
+
+    private static Map<String, Object> readExistingPropertyRef(Map existing, String propertyId) {
+        if (existing == null) {
+            return null
+        }
+        Object propertiesValue = existing.get(FIELD_PROPERTIES)
+        if (!(propertiesValue instanceof Map)) {
+            return null
+        }
+        Object refsValue = ((Map) propertiesValue).get(FIELD_PROPERTY_REFS)
+        if (!(refsValue instanceof Map)) {
+            return null
+        }
+        Object existingEntry = ((Map) refsValue).get(propertyId)
+        if (existingEntry == null) {
+            return null
+        }
+        if (existingEntry instanceof Map) {
+            return new LinkedHashMap<String, Object>((Map<String, Object>) existingEntry)
+        }
+        return null
     }
 
     private Mono<Void> handleInsertError(CommittedTransactionSnapshot snapshot,
@@ -213,23 +347,28 @@ class CommittedTransactionMaterializer {
         if (message == null) {
             return false
         }
-        if (message.action != ACTION_CREATE) {
-            return false
+        if (message.action == ACTION_CREATE) {
+            switch (message.collection) {
+                case COLLECTION_LOC:
+                    return true
+                case COLLECTION_LNK:
+                    return true
+                case COLLECTION_GRP:
+                    return true
+                case COLLECTION_ENT:
+                    return true
+                case COLLECTION_TYP:
+                    return true
+                default:
+                    return false
+            }
         }
-        switch (message.collection) {
-            case COLLECTION_LOC:
-                return true
-            case COLLECTION_LNK:
-                return true
-            case COLLECTION_GRP:
-                return true
-            case COLLECTION_ENT:
-                return true
-            case COLLECTION_TYP:
-                return true
-            default:
-                return false
+        if (message.action == ACTION_UPDATE
+                && message.collection == COLLECTION_TYP
+                && OPERATION_ADD_PROPERTY == message.data?.get(FIELD_OPERATION)) {
+            return true
         }
+        return false
     }
 
     private static String extractDocId(Map<String, Object> data) {
