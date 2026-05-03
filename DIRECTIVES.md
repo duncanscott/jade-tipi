@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: HUMAN_REQUIRED
+SIGNAL: REQUEST_NEXT_STEP
 
 ## Active Focus
 
@@ -56,14 +56,23 @@ blocker in `frontend/auth.ts`, which was tracked and fixed by accepted
 `TASK-023` is accepted. The NextAuth `events.signOut` callback now narrows the
 sign-out message union before reading the JWT token, preserving the existing
 Keycloak logout behavior and restoring the frontend production build baseline.
-No obvious next bounded implementation task is open under the current project
-goal; stop for human direction before routing more work.
+A director hotfix after `TASK-023` added Keycloak access-token refresh handling
+for the frontend so the admin group UI does not keep sending expired bearer
+tokens.
+
+`TASK-024` is ready for pre-work. The next bounded goal is to update the
+Next.js frontend to the latest stable Next.js release available at
+implementation time and update all npm dependencies/devDependencies in
+`frontend/package.json` to current stable compatible versions.
 
 ## Active Task
 
-- No active implementation task is currently assigned. The frontend build
-  baseline repair chain is complete; wait for human direction before creating
-  or routing the next task.
+- `TASK-024 - Update Next.js and npm dependencies` is
+  `READY_FOR_PREWORK`. Route to `claude-1` for pre-work first. The pre-work
+  must list current and target npm versions, call out any prerelease/stability
+  caveats, identify migration risks, and name the exact update/verification
+  commands. Do not begin implementation until the director advances the task
+  to `READY_FOR_IMPLEMENTATION`.
 - `TASK-023 - Fix NextAuth sign-out build error` is accepted. The
   implementation narrowed the `frontend/auth.ts` `events.signOut` callback
   message union with `'token' in message`, preserved Keycloak logout behavior
@@ -93,10 +102,31 @@ goal; stop for human direction before routing more work.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
-There is no active pre-work. Broader authentication redesign, Keycloak changes,
-admin group-management changes, and permission evaluation/enforcement
-semantics remain future work unless the human selects one as the next bounded
-goal.
+Active pre-work is limited to `TASK-024`. Broader authentication redesign,
+Keycloak changes, admin group-management changes, and permission
+evaluation/enforcement semantics remain future work unless the human selects
+one as a later bounded goal.
+
+## TASK-024 Direction
+
+- Director created `TASK-024` on 2026-05-03 after Duncan requested a frontend
+  dependency refresh.
+- Pre-work should inspect `frontend/package.json` and npm metadata to identify
+  the latest stable compatible versions for all dependencies and
+  devDependencies, including Next.js, React, React DOM, NextAuth/Auth.js,
+  Playwright, Tailwind, TypeScript, and type packages.
+- Prefer stable npm dist-tags. Do not intentionally upgrade to prerelease,
+  canary, beta, or release-candidate packages unless the existing package has
+  no stable replacement and the tradeoff is documented for director review.
+- The implementation, once authorized, may update `frontend/package.json`,
+  `frontend/package-lock.json`, and frontend source/tests needed for
+  compatibility. Preserve the existing admin group workflow, Keycloak login,
+  access-token refresh behavior, document CRUD pages, and test routes.
+- Verification should include `cd frontend && npm install`,
+  `cd frontend && npm run build`, and the narrowest practical frontend test
+  command. If Playwright browser setup or npm network access blocks
+  verification, report the exact setup command rather than treating local
+  tooling as a product blocker.
 
 ## TASK-023 Direction
 
