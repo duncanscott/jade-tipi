@@ -130,3 +130,56 @@ DIRECTOR_PREWORK_REVIEW:
   for the full Kafka/Mongo stack, and `./gradlew --stop` only when stale Gradle
   daemons are implicated. Report exact blocked commands/errors rather than
   treating local setup friction as a product blocker.
+
+DIRECTOR_IMPLEMENTATION_REVIEW:
+- 2026-05-03: Requested changes before acceptance. claude-1 implemented the
+  main bare entity-type `typ + create` path and added useful DTO,
+  materializer, duplicate, skipped-`typ + update`, mixed-snapshot, and
+  Kafka/Mongo integration assertions, but one accepted wire-shape variant is
+  not handled correctly.
+- Blocking finding: the task's accepted shape says `data.links` for a bare
+  entity-type `typ + create` may be absent or empty. The current materializer
+  only produces the right root shape when `data.links` is absent or when
+  `data.properties` is present. If a valid flat bare entity-type payload
+  includes `data.links: {}` without `data.properties`, `buildDocument()` falls
+  through to `buildInlineProperties(data)`, and `buildInlineProperties()`
+  excludes only `id` and `type_id`. That means the empty `links` object is
+  copied into root `properties.links` instead of being treated only as root
+  `links: {}`. Fix this narrow case and add a focused assertion proving an
+  otherwise-flat bare entity-type `typ + create` with `links: [:]`
+  materializes with root `links == [:]` and no `properties.links`.
+- Scope review: the implementation changed
+  `docs/agents/claude-1-changes.md`,
+  `docs/architecture/kafka-transaction-message-vocabulary.md`,
+  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/EntityCreateKafkaMaterializeIntegrationSpec.groovy`,
+  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`,
+  `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`,
+  and
+  `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`.
+  Those source/test/doc paths are inside this task's expanded
+  implementation-owned paths, and the report file is inside claude-1's base
+  assignment paths. They are not limited to the three static
+  `docs/agents/claude-1*` base paths listed in `docs/agents/claude-1.md`; the
+  active task file explicitly expands implementation ownership for TASK-029.
+- Accepted parts to preserve: do not add HTTP data submission endpoints,
+  property-assignment materialization, required-property enforcement, semantic
+  `type_id` resolution, permission enforcement, endpoint projection
+  maintenance, contents-link read changes, broad ID-abbreviation cleanup, or a
+  nested Kafka operation DSL. Keep `typ + update` property-reference changes
+  unsupported/deferred. Keep the existing `04-create-entity-type.json` example
+  unchanged unless the narrow fix proves an example edit is strictly required.
+- Director verification: `git diff --check origin/director..HEAD` passed.
+  Local Gradle verification in the Codex sandbox was blocked before product
+  tests by Gradle wrapper cache permissions:
+  `./gradlew :jade-tipi:test --tests 'org.jadetipi.jadetipi.service.CommittedTransactionMaterializerSpec' --console=plain`
+  failed opening
+  `/Users/duncanscott/.gradle/wrapper/dists/gradle-8.14.3-bin/cv11ve7ro1n3o1j4so8xd9n66/gradle-8.14.3-bin.zip.lck`
+  with `Operation not permitted`. In a normal developer shell, use
+  `docker compose -f docker/docker-compose.yml --profile mongodb up -d` for
+  Mongo-backed unit tests, `docker compose -f docker/docker-compose.yml up -d`
+  for the full Kafka/Mongo stack, run `./gradlew --stop` only if stale Gradle
+  daemons are implicated, then rerun
+  `./gradlew :libraries:jade-tipi-dto:test`,
+  `./gradlew :jade-tipi:test`, and
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*EntityCreateKafkaMaterializeIntegrationSpec*'`.

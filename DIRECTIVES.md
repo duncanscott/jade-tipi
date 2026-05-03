@@ -1,6 +1,6 @@
 # Director Directives
 
-SIGNAL: REQUEST_NEXT_STEP
+SIGNAL: PROCEED_TO_IMPLEMENTATION
 
 ## Active Focus
 
@@ -94,18 +94,19 @@ preserving the existing entity example IDs. Bare entity-type `typ + create`,
 type-property update materialization, semantic type-reference validation, and
 ID-abbreviation cleanup remain future work.
 
-`TASK-029` is ready for pre-work. Continue the Kafka-first domain write path
-with the smallest human-readable bare entity-type `typ + create`
-materialization step from the existing `04-create-entity-type.json` example.
-Do not implement during pre-work.
+`TASK-029` remains ready for implementation follow-up. The main bare
+entity-type `typ + create` path is present, but director review requested one
+narrow fix before acceptance: a flat bare entity-type payload with empty
+`data.links: {}` and no `data.properties` must materialize with root
+`links: {}` and no `properties.links` leakage.
 
 ## Active Task
 
 - `TASK-029 - Human-readable Kafka entity-type submission path` is
-  `READY_FOR_PREWORK`. claude-1 should plan only the smallest bare
-  entity-type `typ + create` root-materialization increment from the existing
-  `04-create-entity-type.json` shape, then stop. Do not implement in the
-  pre-work turn.
+  `READY_FOR_IMPLEMENTATION`. claude-1 should make only the director-requested
+  follow-up fix from the task file: handle an otherwise-flat bare entity-type
+  `typ + create` with empty `data.links` without copying `links` into root
+  `properties`, and add a focused materializer assertion for that shape.
 - `TASK-028 - Human-readable Kafka entity submission path` is accepted.
   `ent + create` now materializes as a root-shaped `ent` document, the
   canonical `06-create-entity.json` example exposes explicit empty
@@ -294,6 +295,13 @@ future work unless the human selects one as a later bounded goal.
 
 ## TASK-029 Direction
 
+- Director implementation review on 2026-05-03 requested changes and keeps
+  `TASK-029` at `READY_FOR_IMPLEMENTATION` with
+  `SIGNAL: PROCEED_TO_IMPLEMENTATION`. Fix only the accepted-shape gap where a
+  flat bare entity-type `typ + create` payload includes empty `data.links: {}`
+  without `data.properties`: it must materialize with root `links: {}` and no
+  `properties.links`. Add a focused materializer assertion for that shape.
+  Preserve the rest of claude-1's implementation and scope boundaries.
 - Director created `TASK-029` on 2026-05-03 after accepting `TASK-028`.
 - Pre-work should evaluate the existing human-readable bare entity-type
   `typ + create` path only: `04-create-entity-type.json`, the current

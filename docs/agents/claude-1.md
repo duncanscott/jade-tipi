@@ -12,8 +12,9 @@ Report file: docs/agents/claude-1-changes.md
 ## Current Assignment
 
 - Active task: `TASK-029 - Human-readable Kafka entity-type submission path`.
-- Current phase: pre-work. Write the required plan in
-  `docs/agents/claude-1-next-step.md` only, then stop for director review.
+- Current phase: implementation follow-up. Address only the director-requested
+  TASK-029 review finding recorded in the active task file and `DIRECTIVES.md`,
+  then update `docs/agents/claude-1-changes.md`.
 - Use `DIRECTIVES.md` as the current source of truth.
 
 ## Owned Paths
