@@ -327,7 +327,11 @@ The realm configuration in `docker/jade-tipi-realm.json` is automatically import
   (set on `properties.property_refs.<property_id>` of an existing `typ` root),
   and `ppy + create` messages whose `data.kind == "definition"` (carrying
   inline `kind`, `name`, and a verbatim `value_schema` under root
-  `properties`) also materialize through the same path.
+  `properties`) also materialize through the same path. `ppy + create`
+  assignments (`data.kind == "assignment"`) materialize as their own
+  root-shaped `ppy` records gated by type registration: the target `ent`
+  root must exist and its `typ` root must list `data.property_id` under
+  `properties.property_refs` before the assignment is written.
 - Keep the first Kafka domain messages simple: top-level `collection` and
   `action`, submitted object under `data`, explicit `properties`, and no nested
   operation DSL.

@@ -157,9 +157,17 @@ A property assignment is stored as a property record whose ID is the entity ID p
 }
 ```
 
-Early backend validation should verify required envelope fields, known collection/action pairs, and object-shaped property values. Full reference validation between properties, types, entities, and assignments — and value-shape validation against the registered property `value_schema` — can follow once snapshot reads over `txn` exist.
+Early backend validation should verify required envelope fields, known collection/action pairs, and object-shaped property values. Value-shape validation against the registered property `value_schema` remains a future read-time validator concern.
 
-Property-value assignment materialization remains a separate future task; the committed materializer currently counts `ppy + create` messages whose `data.kind == "assignment"` (along with missing, blank, or unknown kinds) as `skippedUnsupported` without raising an error, while preserving the canonical assignment wire shape verbatim in the `txn` write-ahead log.
+The committed materializer projects `ppy + create` messages whose `data.kind == "assignment"` into the `ppy` MongoDB collection as their own root-shaped records, gated by type registration. The materialized root uses `_id == data.id` (conventionally `<entity_id>~<property_id>`), `collection: "ppy"`, `type_id: null`, inline `properties.kind`, `properties.entity_id`, `properties.property_id`, and the verbatim object-shaped `properties.value`, plus an empty `links` map and `_head.provenance` pointing at the assignment message.
+
+Before inserting, the materializer enforces the rule from `DIRECTION.md` that a property must be added to the type before clients may assign it to an object of that type:
+
+- The target `ent` root referenced by `data.entity_id` must already be materialized; a missing entity root counts as `skippedMissingTarget`.
+- The entity root must carry a non-blank `type_id`, the referenced `typ` root must exist, and that `typ` root must list `data.property_id` under `properties.property_refs`. Any of those failing counts as `skippedUnregisteredProperty`.
+- Missing or blank `data.id`, `data.entity_id`, or `data.property_id`, and a missing or non-object `data.value`, count as `skippedInvalid`.
+
+Duplicate assignment inserts follow the shared root rules: identical payloads are idempotent (`duplicateMatching`); differing payloads are `conflictingDuplicate` and never overwritten. The materializer does not resolve `data.property_id` against the `ppy` collection, does not validate `data.value` against the registered `value_schema`, and does not rewrite the entity root's own `properties` map — assignment projection onto entity roots remains future work, like `lnk` endpoint projections. `ppy + create` messages with missing, blank, or unknown `data.kind` values remain `skippedUnsupported`.
 
 ## Link Types And Concrete Links
 
@@ -260,7 +268,7 @@ introduce object-level or property-value-level permission overrides.
 
 ## Committed Materialization Of Locations And Links
 
-Once a transaction commits in `txn`, a post-commit projection currently materializes `loc + create`, `typ + create` (both link-type records where `data.kind == "link_type"` and bare entity-type records where `data.kind` is absent), `typ + update` messages whose `data.operation == "add_property"`, `lnk + create`, `ent + create`, `grp + create`, and `ppy + create` messages whose `data.kind == "definition"` into their long-term collections (`loc`, `typ`, `lnk`, `ent`, `grp`, `ppy`). The projection is a read-after-commit step over the existing committed-snapshot read service; the `txn` write-ahead log remains the durable, authoritative record. Other collections and other actions — including every `typ + update` whose `data.operation` is not `add_property`, every `ppy + create` whose `data.kind` is not `"definition"` (including `"assignment"`), every `*+ delete`, and other update actions — are intentionally not materialized in this iteration and are counted as `skippedUnsupported` without raising an error.
+Once a transaction commits in `txn`, a post-commit projection currently materializes `loc + create`, `typ + create` (both link-type records where `data.kind == "link_type"` and bare entity-type records where `data.kind` is absent), `typ + update` messages whose `data.operation == "add_property"`, `lnk + create`, `ent + create`, `grp + create`, and `ppy + create` messages whose `data.kind` is `"definition"` or `"assignment"` (assignments gated by type registration as described above) into their long-term collections (`loc`, `typ`, `lnk`, `ent`, `grp`, `ppy`). The projection is a read-after-commit step over the existing committed-snapshot read service; the `txn` write-ahead log remains the durable, authoritative record. Other collections and other actions — including every `typ + update` whose `data.operation` is not `add_property`, every `ppy + create` whose `data.kind` is neither `"definition"` nor `"assignment"`, every `*+ delete`, and other update actions — are intentionally not materialized in this iteration and are counted as `skippedUnsupported` without raising an error.
 
 The current materializer writes the accepted root-document shape from `DIRECTION.md`: one logical Jade-Tipi object normally stored as one root document with top-level `_id`, `id`, `collection`, `type_id`, explicit `properties`, denormalized `links`, and reserved `_head.provenance` metadata. Duplicate `_id` writes with an identical payload are idempotent successes; differing-payload duplicates are logged and counted but not overwritten, and missing or blank `data.id` is logged and skipped without synthesizing an id. Semantic reference validation (`type_id`, `left`, `right`, and `allowed_*_collections`) is still not enforced; that remains a follow-up reader/validator concern.
 
@@ -295,14 +303,17 @@ A complete early transaction flow is bundled as resources under `libraries/jade-
 3. `03-create-property-definition-numeric.json`
 4. `04-create-entity-type.json`
 5. `05-update-entity-type-add-property.json`
-6. `06-create-entity.json`
-7. `07-assign-property-value-text.json`
-8. `08-assign-property-value-number.json`
-9. `09-commit-transaction.json`
-10. `10-create-location.json`
-11. `11-create-contents-type.json`
-12. `12-create-contents-link-plate-sample.json`
-13. `13-create-group.json`
+6. `05a-update-entity-type-add-property-volume.json`
+7. `06-create-entity.json`
+8. `07-assign-property-value-text.json`
+9. `08-assign-property-value-number.json`
+10. `09-commit-transaction.json`
+11. `10-create-location.json`
+12. `11-create-contents-type.json`
+13. `12-create-contents-link-plate-sample.json`
+14. `13-create-group.json`
+
+`05a` registers the numeric `volume` property-definition on the same entity type as `05` registers `barcode`, so both canonical assignments (`07` and `08`) satisfy the materializer's type-registration gate within the one example transaction.
 
 These examples are exercised by `MessageSpec` to round-trip through `JsonMapper` and pass `Message.validate()` against `message.schema.json`.
 

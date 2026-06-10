@@ -35,4 +35,12 @@ class MaterializeResult {
     int skippedInvalid = 0
     /** Supported update messages whose target root document does not yet exist in the long-term collection. */
     int skippedMissingTarget = 0
+    /**
+     * Supported {@code ppy + create} assignment messages whose
+     * {@code data.property_id} is not registered on the target entity's type:
+     * the entity root has no {@code type_id}, the referenced {@code typ} root
+     * does not exist, or the {@code typ} root has no
+     * {@code properties.property_refs} entry for the property.
+     */
+    int skippedUnregisteredProperty = 0
 }

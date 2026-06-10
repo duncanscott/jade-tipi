@@ -1296,17 +1296,289 @@ class CommittedTransactionMaterializerSpec extends Specification {
         !captured.containsKey('_jt_provenance')
     }
 
-    def 'skips a ppy + create kind=assignment as skippedUnsupported without touching mongo'() {
+    private static Map existingEntityRoot(Map overrides = [:]) {
+        Map root = [
+                _id       : ENT_ID,
+                id        : ENT_ID,
+                collection: 'ent',
+                type_id   : ENT_TYPE_ID,
+                properties: [:],
+                links     : [:]
+        ]
+        root.putAll(overrides)
+        return root
+    }
+
+    private static Map existingEntityTypeRootWithBarcodeRef() {
+        return [
+                _id       : ENT_TYPE_ID,
+                id        : ENT_TYPE_ID,
+                collection: 'typ',
+                type_id   : null,
+                properties: [
+                        name         : 'plate_96',
+                        property_refs: [
+                                (PPY_ID): [required: true]
+                        ]
+                ],
+                links     : [:]
+        ]
+    }
+
+    def 'materializes a ppy + create kind=assignment as a root document when the property is registered on the entity type'() {
+        given: 'the target ent root and its typ root carrying a property_refs entry for the assigned property'
+        mongoTemplate.findById(ENT_ID, Map.class, 'ent') >> Mono.just(existingEntityRoot())
+        mongoTemplate.findById(ENT_TYPE_ID, Map.class, 'typ') >> Mono.just(existingEntityTypeRootWithBarcodeRef())
+        Map<String, Object> captured = null
+        mongoTemplate.insert(_ as Map, 'ppy') >> { Map doc, String _coll ->
+            captured = doc
+            return Mono.just(doc)
+        }
+
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([propertyAssignmentCreateMessage()])).block()
+
+        then:
+        result.materialized == 1
+        result.duplicateMatching == 0
+        result.conflictingDuplicate == 0
+        result.skippedUnsupported == 0
+        result.skippedInvalid == 0
+        result.skippedMissingTarget == 0
+        result.skippedUnregisteredProperty == 0
+
+        and: 'the assignment root uses the composite data.id in the ppy collection'
+        captured._id == PPY_ASSIGNMENT_ID
+        captured.id == PPY_ASSIGNMENT_ID
+        captured.collection == 'ppy'
+        captured.type_id == null
+
+        and: 'kind, entity_id, property_id, and the verbatim value land under root properties'
+        Map properties = captured.properties as Map
+        properties.kind == 'assignment'
+        properties.entity_id == ENT_ID
+        properties.property_id == PPY_ID
+        properties.value == [text: 'barcode-1']
+        !properties.containsKey('id')
+        !properties.containsKey('type_id')
+
+        and: 'links is initialized to an empty map and _head carries provenance for the assignment message'
+        captured.links == [:]
+        Map head = captured._head as Map
+        head.schema_version == 1
+        head.document_kind == 'root'
+        head.root_id == PPY_ASSIGNMENT_ID
+        Map provenance = head.provenance as Map
+        provenance.txn_id == TXN_ID
+        provenance.commit_id == COMMIT_ID
+        provenance.msg_uuid == PPY_ASSIGNMENT_MSG_UUID
+        provenance.collection == 'ppy'
+        provenance.action == 'create'
+
+        and: 'the entity root itself is never rewritten by an assignment'
+        0 * mongoTemplate.updateFirst(_, _, _)
+    }
+
+    def 'skips a ppy assignment whose target ent root does not exist as skippedMissingTarget'() {
+        given:
+        mongoTemplate.findById(ENT_ID, Map.class, 'ent') >> Mono.empty()
+
         when:
         MaterializeResult result = materializer.materialize(
                 snapshot([propertyAssignmentCreateMessage()])).block()
 
         then:
         result.materialized == 0
-        result.skippedUnsupported == 1
+        result.skippedMissingTarget == 1
+        result.skippedUnregisteredProperty == 0
+        result.skippedInvalid == 0
+        result.skippedUnsupported == 0
+        0 * mongoTemplate.insert(_, _)
+        0 * mongoTemplate.findById(_, _, 'typ')
+    }
+
+    def 'skips a ppy assignment whose target ent root has a missing or blank type_id as skippedUnregisteredProperty'() {
+        given:
+        mongoTemplate.findById(ENT_ID, Map.class, 'ent') >> Mono.just(existingEntityRoot([type_id: missingTypeId]))
+
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([propertyAssignmentCreateMessage()])).block()
+
+        then:
+        result.materialized == 0
+        result.skippedUnregisteredProperty == 1
+        result.skippedMissingTarget == 0
         result.skippedInvalid == 0
         0 * mongoTemplate.insert(_, _)
+        0 * mongoTemplate.findById(_, _, 'typ')
+
+        where:
+        missingTypeId << [null, '', '   ']
+    }
+
+    def 'skips a ppy assignment whose entity type root does not exist as skippedUnregisteredProperty'() {
+        given:
+        mongoTemplate.findById(ENT_ID, Map.class, 'ent') >> Mono.just(existingEntityRoot())
+        mongoTemplate.findById(ENT_TYPE_ID, Map.class, 'typ') >> Mono.empty()
+
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([propertyAssignmentCreateMessage()])).block()
+
+        then:
+        result.materialized == 0
+        result.skippedUnregisteredProperty == 1
+        result.skippedMissingTarget == 0
+        result.skippedInvalid == 0
+        0 * mongoTemplate.insert(_, _)
+    }
+
+    def 'skips a ppy assignment whose property is not registered on the entity type as skippedUnregisteredProperty'() {
+        given: 'the typ root exists but property_refs does not list the assigned property'
+        mongoTemplate.findById(ENT_ID, Map.class, 'ent') >> Mono.just(existingEntityRoot())
+        mongoTemplate.findById(ENT_TYPE_ID, Map.class, 'typ') >> Mono.just([
+                _id       : ENT_TYPE_ID,
+                id        : ENT_TYPE_ID,
+                collection: 'typ',
+                type_id   : null,
+                properties: typProperties,
+                links     : [:]
+        ])
+
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([propertyAssignmentCreateMessage()])).block()
+
+        then:
+        result.materialized == 0
+        result.skippedUnregisteredProperty == 1
+        result.skippedMissingTarget == 0
+        result.skippedInvalid == 0
+        0 * mongoTemplate.insert(_, _)
+
+        where:
+        typProperties << [
+                [name: 'plate_96'],
+                [name: 'plate_96', property_refs: [:]],
+                [name: 'plate_96', property_refs: ['jade-tipi-org~dev~018fd849-2a42-7222-8b02-bbbbbbbbbbbb~pp~volume': [required: false]]]
+        ]
+    }
+
+    def 'ppy assignment with missing or blank identity fields is counted as skippedInvalid before any Mongo read'() {
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([propertyAssignmentCreateMessage(overrides)])).block()
+
+        then:
+        result.materialized == 0
+        result.skippedInvalid == 1
+        result.skippedMissingTarget == 0
+        result.skippedUnregisteredProperty == 0
+        result.skippedUnsupported == 0
         0 * mongoTemplate.findById(_, _, _)
+        0 * mongoTemplate.insert(_, _)
+
+        where:
+        overrides << [
+                [id: null], [id: ''], [id: '   '],
+                [entity_id: null], [entity_id: ''], [entity_id: '   '],
+                [property_id: null], [property_id: ''], [property_id: '   ']
+        ]
+    }
+
+    def 'ppy assignment whose value is missing or not a JSON object is counted as skippedInvalid'() {
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([propertyAssignmentCreateMessage([value: badValue])])).block()
+
+        then:
+        result.materialized == 0
+        result.skippedInvalid == 1
+        result.skippedMissingTarget == 0
+        result.skippedUnregisteredProperty == 0
+        0 * mongoTemplate.findById(_, _, _)
+        0 * mongoTemplate.insert(_, _)
+
+        where:
+        badValue << [null, 'barcode-1', 42, true, ['a', 'b']]
+    }
+
+    def 'identical-payload ppy assignment duplicate is matching even when materialized_at differs'() {
+        given: 'gates pass and the insert collides with an identical existing assignment root'
+        mongoTemplate.findById(ENT_ID, Map.class, 'ent') >> Mono.just(existingEntityRoot())
+        mongoTemplate.findById(ENT_TYPE_ID, Map.class, 'typ') >> Mono.just(existingEntityTypeRootWithBarcodeRef())
+        Map existing = [
+                _id       : PPY_ASSIGNMENT_ID,
+                id        : PPY_ASSIGNMENT_ID,
+                collection: 'ppy',
+                type_id   : null,
+                properties: [
+                        kind       : 'assignment',
+                        entity_id  : ENT_ID,
+                        property_id: PPY_ID,
+                        value      : [text: 'barcode-1']
+                ],
+                links     : [:],
+                _head     : [
+                        schema_version: 1,
+                        document_kind : 'root',
+                        root_id       : PPY_ASSIGNMENT_ID,
+                        provenance    : [
+                                txn_id         : TXN_ID,
+                                commit_id      : COMMIT_ID,
+                                msg_uuid       : PPY_ASSIGNMENT_MSG_UUID,
+                                collection     : 'ppy',
+                                action         : 'create',
+                                committed_at   : COMMITTED_AT,
+                                materialized_at: Instant.parse('2025-12-31T00:00:01Z')
+                        ]
+                ]
+        ]
+        mongoTemplate.insert(_ as Map, 'ppy') >> { Map doc, String _coll -> Mono.error(springDuplicate()) }
+        mongoTemplate.findById(PPY_ASSIGNMENT_ID, Map.class, 'ppy') >> Mono.just(existing)
+
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([propertyAssignmentCreateMessage()])).block()
+
+        then:
+        result.materialized == 0
+        result.duplicateMatching == 1
+        result.conflictingDuplicate == 0
+        result.skippedUnregisteredProperty == 0
+    }
+
+    def 'differing-payload ppy assignment duplicate is conflicting and not overwritten'() {
+        given: 'gates pass and the insert collides with an existing assignment root carrying a different value'
+        mongoTemplate.findById(ENT_ID, Map.class, 'ent') >> Mono.just(existingEntityRoot())
+        mongoTemplate.findById(ENT_TYPE_ID, Map.class, 'typ') >> Mono.just(existingEntityTypeRootWithBarcodeRef())
+        Map existing = [
+                _id       : PPY_ASSIGNMENT_ID,
+                id        : PPY_ASSIGNMENT_ID,
+                collection: 'ppy',
+                type_id   : null,
+                properties: [
+                        kind       : 'assignment',
+                        entity_id  : ENT_ID,
+                        property_id: PPY_ID,
+                        value      : [text: 'barcode-2']
+                ],
+                links     : [:]
+        ]
+        mongoTemplate.insert(_ as Map, 'ppy') >> { Map doc, String _coll -> Mono.error(springDuplicate()) }
+        mongoTemplate.findById(PPY_ASSIGNMENT_ID, Map.class, 'ppy') >> Mono.just(existing)
+
+        when:
+        MaterializeResult result = materializer.materialize(
+                snapshot([propertyAssignmentCreateMessage()])).block()
+
+        then:
+        result.materialized == 0
+        result.duplicateMatching == 0
+        result.conflictingDuplicate == 1
+        0 * mongoTemplate.updateFirst(_, _, _)
     }
 
     def 'skips a ppy + create with missing or other data.kind as skippedUnsupported'() {
@@ -1877,24 +2149,30 @@ class CommittedTransactionMaterializerSpec extends Specification {
             return Mono.just(doc)
         }
 
-        when: 'snapshot has loc, ppy definition, typ link-type, typ bare entity-type, ent, lnk in that order'
+        and: 'the assignment gate resolves the materialized ent root and its typ root with the registered property'
+        mongoTemplate.findById(ENT_ID, Map.class, 'ent') >> Mono.just(existingEntityRoot())
+        mongoTemplate.findById(ENT_TYPE_ID, Map.class, 'typ') >> Mono.just(existingEntityTypeRootWithBarcodeRef())
+
+        when: 'snapshot has loc, ppy definition, typ link-type, typ bare entity-type, ent, lnk, ppy assignment in that order'
         MaterializeResult result = materializer.materialize(snapshot([
                 locMessage(),
                 propertyDefinitionCreateMessage(),
                 linkTypeMessage(),
                 entityTypeMessage(),
                 entityCreateMessage(),
-                linkMessage()
+                linkMessage(),
+                propertyAssignmentCreateMessage()
         ])).block()
 
         then: 'every supported message materializes once in snapshot order'
-        insertOrder == ['loc', 'ppy', 'typ', 'typ', 'ent', 'lnk']
+        insertOrder == ['loc', 'ppy', 'typ', 'typ', 'ent', 'lnk', 'ppy']
         typInsertIds == [TYP_ID, ENT_TYPE_ID]
-        result.materialized == 6
+        result.materialized == 7
         result.skippedUnsupported == 0
         result.duplicateMatching == 0
         result.conflictingDuplicate == 0
         result.skippedInvalid == 0
+        result.skippedUnregisteredProperty == 0
     }
 
     def 'materialize(txnId) delegates to readService and returns Mono.empty() when not visible'() {

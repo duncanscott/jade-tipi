@@ -27,6 +27,7 @@ class MessageSpec extends Specification {
             '/example/message/03-create-property-definition-numeric.json',
             '/example/message/04-create-entity-type.json',
             '/example/message/05-update-entity-type-add-property.json',
+            '/example/message/05a-update-entity-type-add-property-volume.json',
             '/example/message/06-create-entity.json',
             '/example/message/07-assign-property-value-text.json',
             '/example/message/08-assign-property-value-number.json',
@@ -563,6 +564,70 @@ class MessageSpec extends Specification {
 
         and: 'no other facts leak onto the data root next to id, operation, property_id, and required'
         data.keySet() == ['id', 'operation', 'property_id', 'required'] as Set
+    }
+
+    def "typ + update add_property volume example registers the numeric property-definition with required=false"() {
+        given:
+        String json = readResource('/example/message/05a-update-entity-type-add-property-volume.json')
+
+        when:
+        Message message = JsonMapper.fromJson(json, Message)
+
+        then:
+        message.collection() == Collection.TYPE
+        message.action() == Action.UPDATE
+
+        and: 'data.id targets the same bare entity-type root as 05'
+        Map data = message.data()
+        data.id == 'jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~ty~plate_96'
+
+        and: 'data.operation names the bounded supported variant'
+        data.operation == 'add_property'
+
+        and: 'data.property_id references the numeric property-definition; required carries the wire-shape false'
+        data.property_id == 'jade-tipi-org~dev~018fd849-2a42-7222-8b02-bbbbbbbbbbbb~pp~volume'
+        data.required == false
+
+        and: 'no other facts leak onto the data root next to id, operation, property_id, and required'
+        data.keySet() == ['id', 'operation', 'property_id', 'required'] as Set
+    }
+
+    def "every canonical assignment example targets a property registered on the entity type within the same transaction"() {
+        given: 'the type-update registrations and the assignment examples'
+        Message typUpdateBarcode = JsonMapper.fromJson(
+                readResource('/example/message/05-update-entity-type-add-property.json'), Message)
+        Message typUpdateVolume = JsonMapper.fromJson(
+                readResource('/example/message/05a-update-entity-type-add-property-volume.json'), Message)
+        Message entCreate = JsonMapper.fromJson(
+                readResource('/example/message/06-create-entity.json'), Message)
+        Message assignText = JsonMapper.fromJson(
+                readResource('/example/message/07-assign-property-value-text.json'), Message)
+        Message assignNumber = JsonMapper.fromJson(
+                readResource('/example/message/08-assign-property-value-number.json'), Message)
+
+        expect: 'both registrations target the entity type referenced by the entity the assignments point at'
+        String typeId = entCreate.data().type_id
+        typUpdateBarcode.data().id == typeId
+        typUpdateVolume.data().id == typeId
+
+        and: 'each assignment property_id is registered by one of the type updates'
+        Set registeredPropertyIds = [typUpdateBarcode.data().property_id,
+                                     typUpdateVolume.data().property_id] as Set
+        registeredPropertyIds.contains(assignText.data().property_id)
+        registeredPropertyIds.contains(assignNumber.data().property_id)
+
+        and: 'both assignments target the canonical entity and use the composite assignment id convention'
+        assignText.data().entity_id == entCreate.data().id
+        assignNumber.data().entity_id == entCreate.data().id
+        assignText.data().id == "${entCreate.data().id}~${assignText.data().property_id}"
+        assignNumber.data().id == "${entCreate.data().id}~${assignNumber.data().property_id}"
+
+        and: 'all five share the same transaction uuid'
+        String txnUuid = entCreate.txn().uuid()
+        typUpdateBarcode.txn().uuid() == txnUuid
+        typUpdateVolume.txn().uuid() == txnUuid
+        assignText.txn().uuid() == txnUuid
+        assignNumber.txn().uuid() == txnUuid
     }
 
     def "entity-type-with-property example sequence shares one txn id and the type-update references the property-definition by id"() {

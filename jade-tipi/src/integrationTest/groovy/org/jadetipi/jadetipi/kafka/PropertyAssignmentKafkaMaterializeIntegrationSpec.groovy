@@ -47,22 +47,28 @@ import java.util.function.Predicate
 import java.util.function.Supplier
 
 /**
- * End-to-end integration coverage for the Kafka property-definition
+ * End-to-end integration coverage for the Kafka property-assignment
  * submission path.
  *
- * <p>Publishes one canonical {@code open + ppy + commit} transaction whose
- * single data message is a {@code ppy + create} with
- * {@code data.kind == "definition"}, then waits for
- * {@code TransactionMessageListener} plus the
+ * <p>Publishes one canonical human-readable property-loop transaction —
+ * {@code open}, {@code ppy + create kind=definition}, {@code typ + create},
+ * {@code typ + update add_property}, {@code ent + create},
+ * {@code ppy + create kind=assignment}, plus a second assignment whose
+ * property is intentionally never registered on the type, then
+ * {@code commit} — and waits for {@code TransactionMessageListener} plus
  * {@code CommittedTransactionMaterializer} to land:
  * <ul>
  *   <li>a committed {@code txn} header in the {@code txn} collection,</li>
- *   <li>a root-shaped {@code ppy} document in the {@code ppy} collection,
- *       carrying top-level {@code _id}, {@code id}, {@code collection},
- *       {@code type_id == null}, root {@code properties.kind == "definition"},
- *       {@code properties.name}, {@code properties.value_schema} (verbatim),
- *       empty {@code links}, and {@code _head.provenance} pointing at the
- *       original create message.</li>
+ *   <li>a root-shaped assignment document in the {@code ppy} collection
+ *       whose ID is the composite {@code <entity_id>~<property_id>},
+ *       carrying root {@code properties.kind == "assignment"},
+ *       {@code properties.entity_id}, {@code properties.property_id}, the
+ *       verbatim object-shaped {@code properties.value}, empty
+ *       {@code links}, and {@code _head.provenance} pointing at the
+ *       original assignment message,</li>
+ *   <li>no materialized document for the unregistered assignment — the
+ *       type-registration gate counts it as
+ *       {@code skippedUnregisteredProperty} and never inserts.</li>
  * </ul>
  *
  * <p>Skip / run conditions (deliberately opt-in):
@@ -81,23 +87,25 @@ import java.util.function.Supplier
  * <pre>
  * docker compose -f docker/docker-compose.yml up -d
  * JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest \
- *     --tests '*PropertyDefinitionCreateKafkaMaterializeIntegrationSpec*'
+ *     --tests '*PropertyAssignmentKafkaMaterializeIntegrationSpec*'
  * </pre>
  */
 @Slf4j
 @SpringBootTest
 @ActiveProfiles('test')
-@IgnoreIf({ !PropertyDefinitionCreateKafkaMaterializeIntegrationSpec.kafkaIntegrationGateOpen() })
-class PropertyDefinitionCreateKafkaMaterializeIntegrationSpec extends Specification {
+@IgnoreIf({ !PropertyAssignmentKafkaMaterializeIntegrationSpec.kafkaIntegrationGateOpen() })
+class PropertyAssignmentKafkaMaterializeIntegrationSpec extends Specification {
 
     private static final String BOOTSTRAP_SERVERS =
             System.getenv('KAFKA_BOOTSTRAP_SERVERS') ?: 'localhost:9092'
     private static final String SHORT_UUID =
             UUID.randomUUID().toString().substring(0, 8)
-    private static final String TEST_TOPIC = "jdtp-txn-itest-ppy-${SHORT_UUID}"
-    private static final String CONSUMER_GROUP = "jadetipi-itest-ppy-${SHORT_UUID}"
+    private static final String TEST_TOPIC = "jdtp-txn-itest-ppyasn-${SHORT_UUID}"
+    private static final String CONSUMER_GROUP = "jadetipi-itest-ppyasn-${SHORT_UUID}"
     private static final String TXN_COLLECTION = 'txn'
     private static final String PPY_COLLECTION = 'ppy'
+    private static final String TYP_COLLECTION = 'typ'
+    private static final String ENT_COLLECTION = 'ent'
     private static final Duration AWAIT_TIMEOUT = Duration.ofSeconds(30)
     private static final Duration POLL_INTERVAL = Duration.ofMillis(250)
     private static final Duration MONGO_BLOCK_TIMEOUT = Duration.ofSeconds(5)
@@ -155,7 +163,11 @@ class PropertyDefinitionCreateKafkaMaterializeIntegrationSpec extends Specificat
     Transaction txn
     String txnId
     String propertyDefinitionId
+    String unregisteredPropertyId
+    String entityTypeId
+    String entityId
     String assignmentId
+    String unregisteredAssignmentId
 
     def setupSpec() {
         Properties props = new Properties()
@@ -186,8 +198,12 @@ class PropertyDefinitionCreateKafkaMaterializeIntegrationSpec extends Specificat
         txn = Transaction.newInstance('jade-itest-org', 'kafka', 'jade-itest-cli', 'itest-user')
         txnId = txn.id
         String featureUuid = UUID.randomUUID().toString().substring(0, 8)
-        propertyDefinitionId = "jadetipi-itest-ppy~pp~barcode_${featureUuid}"
-        assignmentId = "jadetipi-itest-ppy~en~plate_${featureUuid}~pp~barcode_${featureUuid}"
+        propertyDefinitionId = "jadetipi-itest-ppyasn~pp~barcode_${featureUuid}"
+        unregisteredPropertyId = "jadetipi-itest-ppyasn~pp~volume_${featureUuid}"
+        entityTypeId = "jadetipi-itest-ppyasn~ty~plate_96_${featureUuid}"
+        entityId = "jadetipi-itest-ppyasn~en~plate_${featureUuid}"
+        assignmentId = "${entityId}~${propertyDefinitionId}"
+        unregisteredAssignmentId = "${entityId}~${unregisteredPropertyId}"
     }
 
     def cleanup() {
@@ -195,48 +211,69 @@ class PropertyDefinitionCreateKafkaMaterializeIntegrationSpec extends Specificat
             mongoTemplate.remove(Query.query(Criteria.where('txn_id').is(txnId)),
                     TXN_COLLECTION).block(Duration.ofSeconds(10))
         }
-        if (propertyDefinitionId != null) {
-            mongoTemplate.remove(Query.query(Criteria.where('_id').is(propertyDefinitionId)),
-                    PPY_COLLECTION).block(Duration.ofSeconds(10))
-        }
-        if (assignmentId != null) {
-            mongoTemplate.remove(Query.query(Criteria.where('_id').is(assignmentId)),
-                    PPY_COLLECTION).block(Duration.ofSeconds(10))
+        [(PPY_COLLECTION): [propertyDefinitionId, unregisteredPropertyId, assignmentId, unregisteredAssignmentId],
+         (TYP_COLLECTION): [entityTypeId],
+         (ENT_COLLECTION): [entityId]].each { String collection, List<String> ids ->
+            ids.findAll { it != null }.each { String id ->
+                mongoTemplate.remove(Query.query(Criteria.where('_id').is(id)),
+                        collection).block(Duration.ofSeconds(10))
+            }
         }
     }
 
-    def 'open + ppy-definition + ppy-assignment + commit materializes the definition root and leaves the assignment skipped'() {
-        given: 'one canonical property-definition transaction with a trailing assignment whose target entity never exists, so the assignment gate skips it'
-        Map<String, Object> wireValueSchema = [
-                type      : 'object',
-                required  : ['text'],
-                properties: [text: [type: 'string']]
-        ]
+    def 'committed property-loop transaction materializes the registered assignment root and gates the unregistered one'() {
+        given: 'one canonical property-loop transaction with a registered and an unregistered assignment'
         Message openMsg = Message.newInstance(txn, JtpCollection.TRANSACTION, Action.OPEN, [
-                hint: 'opened from ppy kafka integration test'
+                hint: 'opened from ppy assignment kafka integration test'
         ])
         Message ppyDefinitionMsg = Message.newInstance(txn, JtpCollection.PROPERTY, Action.CREATE, [
                 kind        : 'definition',
                 id          : propertyDefinitionId,
                 name        : 'barcode',
-                value_schema: wireValueSchema
+                value_schema: [
+                        type      : 'object',
+                        required  : ['text'],
+                        properties: [text: [type: 'string']]
+                ]
         ] as Map<String, Object>)
-        Message ppyAssignmentMsg = Message.newInstance(txn, JtpCollection.PROPERTY, Action.CREATE, [
+        Message typCreateMsg = Message.newInstance(txn, JtpCollection.TYPE, Action.CREATE, [
+                id         : entityTypeId,
+                name       : 'plate_96',
+                description: '96-well sample plate'
+        ] as Map<String, Object>)
+        Message typAddPropertyMsg = Message.newInstance(txn, JtpCollection.TYPE, Action.UPDATE, [
+                id         : entityTypeId,
+                operation  : 'add_property',
+                property_id: propertyDefinitionId,
+                required   : true
+        ] as Map<String, Object>)
+        Message entCreateMsg = Message.newInstance(txn, JtpCollection.ENTITY, Action.CREATE, [
+                id        : entityId,
+                type_id   : entityTypeId,
+                properties: [:],
+                links     : [:]
+        ] as Map<String, Object>)
+        Message assignmentMsg = Message.newInstance(txn, JtpCollection.PROPERTY, Action.CREATE, [
                 kind       : 'assignment',
                 id         : assignmentId,
-                entity_id  : "jadetipi-itest-ppy~en~plate_${UUID.randomUUID().toString().substring(0, 8)}".toString(),
+                entity_id  : entityId,
                 property_id: propertyDefinitionId,
                 value      : [text: 'barcode-1']
         ] as Map<String, Object>)
+        Message unregisteredAssignmentMsg = Message.newInstance(txn, JtpCollection.PROPERTY, Action.CREATE, [
+                kind       : 'assignment',
+                id         : unregisteredAssignmentId,
+                entity_id  : entityId,
+                property_id: unregisteredPropertyId,
+                value      : [number: 10, unit_id: 'jade-tipi-org~dev~liter~milli~ml~SI']
+        ] as Map<String, Object>)
         Message commitMsg = Message.newInstance(txn, JtpCollection.TRANSACTION, Action.COMMIT, [
-                summary: 'one property-definition created; one assignment gated on its missing target entity'
+                summary: 'property loop with one registered and one unregistered assignment'
         ])
 
-        when: 'all four records are produced to the test topic'
-        send(openMsg)
-        send(ppyDefinitionMsg)
-        send(ppyAssignmentMsg)
-        send(commitMsg)
+        when: 'all eight records are produced to the test topic in order'
+        [openMsg, ppyDefinitionMsg, typCreateMsg, typAddPropertyMsg,
+         entCreateMsg, assignmentMsg, unregisteredAssignmentMsg, commitMsg].each { send(it) }
 
         then: 'the transaction header reaches committed state with a backend commit_id'
         Map header = awaitMongo(
@@ -244,50 +281,57 @@ class PropertyDefinitionCreateKafkaMaterializeIntegrationSpec extends Specificat
                 { Map h -> h?.state == 'committed' && h?.commit_id != null },
                 'committed transaction header'
         )
-        header['_id'] == txnId
-        header.record_type == 'transaction'
-        header.txn_id == txnId
         header.state == 'committed'
-        header.commit_id instanceof String
-        ((String) header.commit_id).length() > 0
 
-        and: 'the property-definition ppy document is materialized in root shape with kind, name, and value_schema in root properties'
-        Map ppyDoc = awaitMongo(
-                { mongoTemplate.findById(propertyDefinitionId, Map, PPY_COLLECTION) },
-                { Map d -> d != null },
-                'root-shaped ppy definition document'
+        and: 'the entity type root carries the registered property reference'
+        Map typDoc = awaitMongo(
+                { mongoTemplate.findById(entityTypeId, Map, TYP_COLLECTION) },
+                { Map d -> d != null && ((Map) d.properties)?.property_refs != null },
+                'typ root with property_refs'
         )
-        ppyDoc['_id'] == propertyDefinitionId
-        ppyDoc.id == propertyDefinitionId
-        ppyDoc.collection == 'ppy'
-        ppyDoc.type_id == null
-        Map ppyProperties = ppyDoc.properties as Map
-        ppyProperties.kind == 'definition'
-        ppyProperties.name == 'barcode'
-        ppyProperties.value_schema == wireValueSchema
-        !ppyProperties.containsKey('id')
-        !ppyProperties.containsKey('type_id')
-        ppyDoc.links == [:]
+        Map propertyRefs = (typDoc.properties as Map).property_refs as Map
+        propertyRefs[propertyDefinitionId] == [required: true]
+        !propertyRefs.containsKey(unregisteredPropertyId)
 
-        and: '_head carries projection provenance pointing at this txn and the definition msg uuid'
-        Map head = ppyDoc._head as Map
+        and: 'the registered assignment materializes as its own root-shaped ppy document'
+        Map assignmentDoc = awaitMongo(
+                { mongoTemplate.findById(assignmentId, Map, PPY_COLLECTION) },
+                { Map d -> d != null },
+                'root-shaped ppy assignment document'
+        )
+        assignmentDoc['_id'] == assignmentId
+        assignmentDoc.id == assignmentId
+        assignmentDoc.collection == 'ppy'
+        assignmentDoc.type_id == null
+        Map assignmentProperties = assignmentDoc.properties as Map
+        assignmentProperties.kind == 'assignment'
+        assignmentProperties.entity_id == entityId
+        assignmentProperties.property_id == propertyDefinitionId
+        assignmentProperties.value == [text: 'barcode-1']
+        !assignmentProperties.containsKey('id')
+        assignmentDoc.links == [:]
+
+        and: '_head carries projection provenance pointing at this txn and the assignment msg uuid'
+        Map head = assignmentDoc._head as Map
         head.schema_version == 1
         head.document_kind == 'root'
-        head.root_id == propertyDefinitionId
+        head.root_id == assignmentId
         Map provenance = head.provenance as Map
         provenance.txn_id == txnId
-        provenance.commit_id instanceof String
-        ((String) provenance.commit_id).length() > 0
-        provenance.msg_uuid == ppyDefinitionMsg.uuid()
+        provenance.msg_uuid == assignmentMsg.uuid()
         provenance.collection == 'ppy'
         provenance.action == 'create'
-        provenance.committed_at != null
-        provenance.materialized_at != null
 
-        and: 'the trailing ppy assignment targets a non-existent entity, so the assignment gate skips it and nothing is materialized'
-        Map assignmentDoc = mongoTemplate.findById(assignmentId, Map, PPY_COLLECTION)
+        and: 'the entity root properties map is not rewritten by the assignment'
+        Map entDoc = mongoTemplate.findById(entityId, Map, ENT_COLLECTION)
                 .block(MONGO_BLOCK_TIMEOUT)
-        assignmentDoc == null
+        entDoc != null
+        entDoc.properties == [:]
+
+        and: 'the unregistered assignment is gated and never materialized'
+        Map unregisteredDoc = mongoTemplate.findById(unregisteredAssignmentId, Map, PPY_COLLECTION)
+                .block(MONGO_BLOCK_TIMEOUT)
+        unregisteredDoc == null
     }
 
     private void send(Message message) {
