@@ -11,15 +11,14 @@ Report file: docs/agents/codex-1-changes.md
 
 ## Current Assignment
 
-- Active task: `TASK-013 - Define materialized root document contract`.
-- Current phase: pre-work. Read `DIRECTIVES.md` and the task file, then propose
-  the concrete design plan for the canonical materialized root document
-  contract. This is a research/design task: do not implement production code or
-  tests.
-- Record pre-work in `docs/agents/codex-1-next-step.md`.
-- Use `docs/orchestrator/tasks/TASK-013-materialized-root-document-contract.md`
-  as the task-specific source of truth for source inspection, owned paths, and
-  acceptance criteria.
+- No active task is currently assigned. The previous assignment here,
+  `TASK-013 - Define materialized root document contract`, was accepted on
+  2026-05-01; do not re-plan or re-implement it.
+- Serve as a standby developer for Jade-Tipi: available for second-opinion
+  review, design critique, and bounded pre-work or implementation when the
+  director records an active task in this file.
+- Use `DIRECTIVES.md` as the current source of truth; do not start work until
+  the director assigns an active task here.
 
 ## Owned Paths
 

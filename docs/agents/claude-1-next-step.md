@@ -4,6 +4,14 @@ The developer writes pre-work plans here before implementation begins.
 
 STATUS: PRESENT
 
+> SUPERSEDED 2026-06-12 (human-directed close-out marker): the TASK-031 plan
+> below is retained as history only. TASK-031 was implemented in commit
+> `7ccbf00` and accepted on 2026-06-12, and `ppy + create kind=assignment`
+> materialization is now accepted through TASK-032 — statements below that
+> TASK-031 "is `READY_FOR_PREWORK`" or that assignment materialization is "a
+> separate future task" are historical, not current routing. The next
+> pre-work turn replaces this file with the TASK-033 plan.
+
 ## TASK-031 — Human-readable Kafka property-definition materialization path (pre-work, revision 1)
 
 ### Directive summary

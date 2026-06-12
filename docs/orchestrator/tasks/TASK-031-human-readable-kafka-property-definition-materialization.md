@@ -3,12 +3,14 @@
 ID: TASK-031
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: ACCEPTED
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-030
   - TASK-013
   - TASK-014
+NEXT_TASK:
+  - TASK-032
 PAUSE_SOURCE_TASKS: true
 OWNED_PATHS:
   - DIRECTION.md
@@ -151,3 +153,60 @@ DIRECTOR_PREWORK_REVIEW:
   assignment/type validation, required-property enforcement, value-shape
   validation, permission enforcement, contents-link read changes, endpoint
   projection maintenance, broad ID cleanup, or a nested Kafka operation DSL.
+
+DIRECTOR_IMPLEMENTATION_REVIEW:
+- DATE: 2026-06-12. RESULT: accepted. The implementation landed in claude-1's
+  commit `7ccbf00` and was reported `STATUS: COMPLETED` in
+  `docs/agents/claude-1-changes.md` on 2026-05-03; this acceptance is recorded
+  retroactively: the task file was never advanced past
+  `READY_FOR_IMPLEMENTATION`, and `DIRECTIVES.md` still listed TASK-031 as
+  `READY_FOR_PREWORK`, until the 2026-06-12 close-out.
+- SCOPE_CHECK: passed. The implementation turn changed
+  `docs/agents/claude-1-changes.md`, `docs/OVERVIEW.md`,
+  `docs/architecture/kafka-transaction-message-vocabulary.md`,
+  `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`,
+  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`,
+  `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`,
+  and the new
+  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/PropertyDefinitionCreateKafkaMaterializeIntegrationSpec.groovy`.
+  Every changed path is inside TASK-031 `OWNED_PATHS` plus claude-1's base
+  report path.
+- BEHAVIOR_REVIEW: passed against the `DIRECTOR_PREWORK_REVIEW` rulings.
+  `isSupported()` accepts `ppy + create` only when
+  `data.kind == "definition"`; the existing inline-properties fallback
+  projects `kind`, `name`, and the opaque verbatim `value_schema` under root
+  `properties`; the materialized root carries `_id`/`id == data.id`,
+  `collection == "ppy"`, `type_id == null`, `links == {}`, and standard
+  `_head.provenance`. No new `MaterializeResult` counter, no schema-file
+  change, and no example-resource edit was needed. At that commit,
+  `kind == "assignment"`, missing, blank, and unknown kinds stayed
+  `skippedUnsupported`; the assignment path is now separately accepted
+  through `TASK-032`.
+- ASSERTION_REVIEW: passed. Focused DTO features pin the `02`/`03` definition
+  shapes, the `07` assignment shape, and the `01 + 02 + 04 + 06 + 07 + 09`
+  cross-reference chain. Materializer features cover the positive definition
+  root shape, assignment/missing/unknown-kind skips, missing/blank `data.id`
+  as `skippedInvalid`, idempotent and conflicting duplicates, and the updated
+  mixed-snapshot order/counts. The dedicated opt-in Kafka/Mongo integration
+  spec proves `open + definition + commit` end-to-end.
+- CREDITED_DEVELOPER_VERIFICATION (2026-05-03):
+  `./gradlew :libraries:jade-tipi-dto:test`, `./gradlew :jade-tipi:test`,
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*PropertyDefinitionCreateKafkaMaterializeIntegrationSpec*'`, and the
+  `'*EntityCreateKafkaMaterializeIntegrationSpec*'` regression all reported
+  passing with the local Docker stack healthy.
+- DIRECTOR_VERIFICATION (2026-06-12, develop at `482034a`): full reruns
+  passed with the local Docker stack healthy —
+  `:libraries:jade-tipi-dto:test` (67 tests), `:jade-tipi:test` (223 tests),
+  the PropertyDefinition and PropertyAssignment Kafka integration specs, and
+  the full `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest`
+  (27 tests, 0 failures, 3 skipped under `GroupAdminAuthIntegrationSpec`'s
+  separate opt-in gate). Note: accepted `TASK-032` re-routed the trailing
+  assignment's skip outcome in the materializer (now gated
+  `skippedMissingTarget` rather than counted `skippedUnsupported`, asserted
+  by the materializer unit spec) and updated this task's integration spec
+  comments accordingly; the spec's own assertion — the assignment document is
+  never materialized — is unchanged, and the rerun verifies it as amended.
+- FOLLOW_UP: `TASK-032` (assignment materialization) was implemented
+  human-directed on 2026-06-10 and accepted on 2026-06-12. `TASK-033` was
+  created for entity property-values read-service pre-work.

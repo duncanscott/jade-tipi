@@ -11,9 +11,8 @@ Report file: docs/agents/claude-1-changes.md
 
 ## Current Assignment
 
-- Active task: `TASK-031 - Human-readable Kafka property-definition
-  materialization path`.
-- Current phase: pre-work. Write the TASK-031 plan in
+- Active task: `TASK-033 - Entity property-values read service`.
+- Current phase: pre-work. Write the TASK-033 plan in
   `docs/agents/claude-1-next-step.md`, then stop until the director advances
   the task to implementation.
 - Use `DIRECTIVES.md` as the current source of truth.

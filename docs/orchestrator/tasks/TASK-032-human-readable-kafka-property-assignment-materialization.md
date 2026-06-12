@@ -3,12 +3,14 @@
 ID: TASK-032
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: IMPLEMENTED
-OWNER: human-directed (implemented by Claude Code at Duncan's direction on 2026-06-10; pending director acceptance review)
+STATUS: ACCEPTED
+OWNER: human-directed (implemented by Claude Code at Duncan's direction on 2026-06-10; director acceptance review recorded 2026-06-12)
 SOURCE_TASK:
   - TASK-031
   - TASK-030
   - TASK-014
+NEXT_TASK:
+  - TASK-033
 PAUSE_SOURCE_TASKS: true
 OWNED_PATHS:
   - docs/OVERVIEW.md
@@ -108,13 +110,96 @@ IMPLEMENTATION_SUMMARY:
   reference example list) and `docs/OVERVIEW.md` (next-steps summary).
 
 VERIFICATION:
-- `./gradlew :libraries:jade-tipi-dto:test` — PASSED 2026-06-10.
-- `./gradlew :jade-tipi:test` — PASSED 2026-06-10.
+- `./gradlew :libraries:jade-tipi-dto:test` — PASSED 2026-06-10; rerun
+  PASSED 2026-06-12 (67 tests, 0 failures).
+- `./gradlew :jade-tipi:test` — PASSED 2026-06-10; rerun PASSED 2026-06-12
+  (223 tests, 0 failures, including CommittedTransactionMaterializerSpec at
+  95 tests).
 - `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
-  '*PropertyAssignmentKafkaMaterializeIntegrationSpec*'` — NOT RUN: port
-  9092 on this host is held by another project's Kafka broker
-  (`pps-kafka-connect` stack), so the jade-tipi Kafka container cannot
-  bind and pointing the test at the foreign broker would be wrong. Rerun
-  after freeing 9092 with `docker compose -f docker/docker-compose.yml up -d`.
-  The integration test source set compiles
-  (`./gradlew :jade-tipi:integrationTestClasses`).
+  '*PropertyAssignmentKafkaMaterializeIntegrationSpec*'` — originally NOT RUN
+  on 2026-06-10: port 9092 on this host was held by another project's Kafka
+  broker (`pps-kafka-connect` stack), so the jade-tipi Kafka container could
+  not bind, and pointing the test at the foreign broker would be wrong (only
+  `./gradlew :jade-tipi:integrationTestClasses` was verified then). PASSED
+  2026-06-12 after port 9092 was freed: the stack came up healthy via
+  `docker compose -f docker/docker-compose.yml up -d` (kafka-init exited 0)
+  and the spec ran green against live Kafka on localhost:9092 (1 test,
+  0 failures), proving the registered assignment materializes and the
+  unregistered assignment is gated end-to-end.
+- `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*PropertyDefinitionCreateKafkaMaterializeIntegrationSpec*'` — PASSED
+  2026-06-12 (1 test, 0 failures), covering this task's comment-level
+  amendment (the spec's trailing assignment is now gated by the missing
+  target entity; its never-materialized assertion is unchanged).
+- `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest` (full opt-in
+  suite) — PASSED 2026-06-12: 27 tests, 0 failures, 3 skipped (all three in
+  `GroupAdminAuthIntegrationSpec`, which gates itself behind a separate
+  opt-in flag). Setup note: the jade-tipi `couchdb`/`couchdb-init` containers
+  could not start because another project's container holds 127.0.0.1:5984;
+  no jade-tipi source or test references CouchDB, so the suites above were
+  unaffected.
+
+DIRECTOR_IMPLEMENTATION_REVIEW:
+- DATE: 2026-06-12. RESULT: accepted. Commit `482034a` ("Materialize ppy
+  assignments gated by type registration (TASK-032)") was implemented
+  human-directed (Duncan + Claude Code) rather than through a developer
+  worktree turn.
+- SCOPE_CHECK: passed with one recorded exception. The commit changed
+  `docs/OVERVIEW.md`, `docs/architecture/kafka-transaction-message-vocabulary.md`,
+  this task file,
+  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`,
+  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/MaterializeResult.groovy`,
+  `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`,
+  `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`,
+  the new
+  `libraries/jade-tipi-dto/src/main/resources/example/message/05a-update-entity-type-add-property-volume.json`,
+  the new
+  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/PropertyAssignmentKafkaMaterializeIntegrationSpec.groovy`,
+  and comment updates in
+  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/PropertyDefinitionCreateKafkaMaterializeIntegrationSpec.groovy`
+  — all inside this task's `OWNED_PATHS` — plus `docker/docker-compose.yml`,
+  which is outside them. The docker change (an opt-in `mongo-express` tools
+  profile for browsing materialized collections) was human-directed in the
+  same commit and is ratified as an accepted scope exception; the stricter
+  Orchestrator Protocol Direction in `DIRECTIVES.md` remains in force for
+  developer turns.
+- BEHAVIOR_REVIEW: passed. Every acceptance criterion is satisfied by the
+  committed code, tests, examples, and docs: the materialized assignment root
+  shape (`_id == data.id`, conventionally `<entity_id>~<property_id>` — the
+  composite format is pinned by the DTO example tests, not enforced by the
+  materializer, which copies `data.id` verbatim; `collection ==
+  "ppy"`, `type_id == null`, inline `properties.kind`/`entity_id`/
+  `property_id`, verbatim object-shaped `properties.value`, empty `links`,
+  `_head.provenance`); the type-registration gate ordered
+  ent root → `type_id` → `typ` root → `properties.property_refs.<property_id>`
+  with `skippedMissingTarget` and the new `skippedUnregisteredProperty`
+  counter incremented on the correct branches; missing/blank identity fields
+  and non-object values as `skippedInvalid`; missing/blank/unknown `data.kind`
+  still `skippedUnsupported`; shared idempotent/conflicting duplicate rules
+  via `handleInsertError`/`isSamePayload`. No OUT_OF_SCOPE leak: no HTTP
+  submission endpoint, no value-shape validation against `value_schema`, no
+  semantic `property_id` resolution against `ppy`, and no entity-root
+  rewrite (asserted by the unit spec's zero-update expectations and the
+  integration spec's untouched `ent` root `properties`).
+- ASSERTION_REVIEW: passed. `MessageSpec` pins the `05a` registration shape,
+  the registration invariant (every canonical assignment's `property_id` is
+  registered on the target entity's type within the example transaction), and
+  the `<entity_id>~<property_id>` ID convention. The materializer spec covers
+  the materialized shape, every gate outcome, invalid fields, non-object
+  values, duplicate matching/conflict, and the extended mixed-snapshot
+  order/count expectations. The opt-in integration spec proves one registered
+  and one unregistered assignment end-to-end, including same-transaction
+  registration-then-assignment ordering through the snapshot loop against
+  real Mongo.
+- NON_BLOCKING_NOTE: an assignment message that carried a top-level
+  `data.properties` map would bypass the inline-properties projection in
+  `buildDocument`; the canonical examples and tests do not use that shape.
+  Recorded as a latent shape hazard for a future bounded follow-up, not a
+  defect in this task.
+- VERIFICATION: see the dated entries in the VERIFICATION section above; the
+  deferred Kafka integration spec passed on 2026-06-12 once port 9092 was
+  freed, alongside full dto/unit/integration suite reruns.
+- FOLLOW_UP: `TASK-033` was created for pre-work on the entity
+  property-values read service (the read-side join of an `ent` root with its
+  materialized `ppy` assignment roots), following the accepted
+  TASK-015/TASK-016 read-service and HTTP-adapter pattern.

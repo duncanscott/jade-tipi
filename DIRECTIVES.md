@@ -106,17 +106,49 @@ human-readable `typ + update` `operation: "add_property"` message as a
 reference-only update on an existing root-shaped `typ` document under
 `properties.property_refs.<property_id>`. The accepted behavior does not
 materialize `ppy + create`, does not resolve `data.property_id`, does not
-rewrite `_head.provenance`, and leaves property-value assignments for later
-bounded work.
+rewrite `_head.provenance`, and left property-value assignments for later
+bounded work; `ppy + create` definition and assignment materialization are
+now accepted through `TASK-031` and `TASK-032`.
+
+`TASK-031` is accepted. The Kafka-first domain write path can now materialize a
+human-readable `ppy + create` `data.kind == "definition"` message as a
+root-shaped `ppy` document carrying `properties.kind`, `properties.name`, and a
+verbatim opaque `properties.value_schema`, with `type_id == null` and empty
+`links`. The materializer does not validate assignment values against
+`value_schema`; that remains read-time/validator future work.
+
+`TASK-032` is accepted. Human-readable `ppy + create`
+`data.kind == "assignment"` messages now materialize as root-shaped `ppy`
+records (`_id == data.id`, conventionally `<entity_id>~<property_id>`)
+carrying `kind`, `entity_id`,
+`property_id`, and the verbatim object-shaped `value` under root `properties`,
+gated by the DIRECTION.md type-registration rule: the target `ent` root must
+exist (`skippedMissingTarget`) and its `typ` root must list the property under
+`properties.property_refs` (new `skippedUnregisteredProperty` counter).
+Invalid identity fields and non-object values are `skippedInvalid`; duplicates
+follow the shared idempotent/conflicting rules. Value-shape validation against
+the registered `value_schema`, semantic `property_id` resolution against
+`ppy`, and assignment projection onto `ent` roots remain future work.
 
 ## Active Task
 
+- `TASK-033 - Entity property-values read service` is `READY_FOR_PREWORK`.
+  claude-1 should plan only the bounded read-side increment that answers
+  "what is this entity and which property values are assigned to it?" from
+  the materialized `ent` and `ppy` roots, following the accepted
+  TASK-015/TASK-016 read-service and HTTP-adapter pattern. HTTP reads are
+  established surface; Kafka remains the primary submission route for domain
+  data.
+- `TASK-032 - Human-readable Kafka property-assignment materialization path`
+  is accepted. `ppy + create` `data.kind == "assignment"` messages now
+  materialize as root-shaped assignment records gated by type registration
+  (`properties.property_refs` on the entity's `typ` root), with
+  `skippedMissingTarget`, `skippedUnregisteredProperty`, and `skippedInvalid`
+  outcomes and the shared duplicate rules.
 - `TASK-031 - Human-readable Kafka property-definition materialization path`
-  is `READY_FOR_PREWORK`. claude-1 should plan only the bounded
-  `ppy + create` `data.kind == "definition"` path: determine the smallest
-  root-shaped property-definition materialization, whether assignment
-  `ppy + create` messages should remain skipped for this unit, and the focused
-  DTO/materializer/integration verification.
+  is accepted. `ppy + create` `data.kind == "definition"` messages
+  materialize as root-shaped `ppy` documents with `properties.kind`,
+  `properties.name`, and a verbatim opaque `properties.value_schema`.
 - `TASK-030 - Human-readable Kafka entity-type property-reference update path`
   is accepted. `typ + update add_property` now writes
   `properties.property_refs.<property_id>` on an existing root-shaped `typ`
@@ -133,9 +165,10 @@ bounded work.
   `data.properties` and `data.links`, and the existing `~en~plate_a` /
   `~ty~plate_96` IDs were preserved. Bare entity-type `typ + create` was out
   of scope for TASK-028 and is now accepted through TASK-029; type-property
-  update materialization, semantic type-reference validation, broad
-  ID-abbreviation cleanup, HTTP submission endpoints, property assignment
-  materialization, permission enforcement, contents-link read changes, and a
+  update materialization is now accepted through TASK-030, and property
+  definition/assignment materialization through TASK-031/TASK-032; semantic
+  type-reference validation, broad ID-abbreviation cleanup, HTTP submission
+  endpoints, permission enforcement, contents-link read changes, and a
   nested Kafka operation DSL remain out of scope.
 - `TASK-027 - Human-readable Kafka contents link submission path` is accepted.
   The existing contents examples already express the intended human-readable
@@ -182,7 +215,7 @@ bounded work.
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
-`TASK-031` is the active bounded task. Broader authentication redesign,
+`TASK-033` is the active bounded task. Broader authentication redesign,
 Keycloak changes, admin group-management changes, permission
 evaluation/enforcement semantics, and unrelated product increments remain
 future work unless the human selects one as a later bounded goal.
@@ -193,6 +226,110 @@ future work unless the human selects one as a later bounded goal.
   during implementation. If an upgrade tool or build step requires edits
   outside the active task's `OWNED_PATHS`, report the exact file and reason
   for director review rather than self-expanding the task file.
+
+## TASK-032 Direction
+
+- Director implementation review on 2026-06-12 accepts `TASK-032` with
+  `SIGNAL: REQUEST_NEXT_STEP` and creates `TASK-033` for entity
+  property-values read-service pre-work. `TASK-032` was implemented
+  human-directed (Duncan + Claude Code) in commit `482034a` on 2026-06-10
+  rather than through a developer worktree turn; the acceptance record lives
+  in the task file's `DIRECTOR_IMPLEMENTATION_REVIEW` section.
+- Scope review passed with one recorded exception: every changed path is
+  inside TASK-032 `OWNED_PATHS` except `docker/docker-compose.yml`, whose
+  opt-in `mongo-express` tools profile was human-directed in the same commit
+  and is ratified as an accepted scope exception (mirroring the `TASK-024`
+  tsconfig precedent). The stricter Orchestrator Protocol Direction above
+  remains in force for developer turns.
+- Behavior review accepted the bounded assignment path: root-shaped `ppy`
+  assignment records (`_id == data.id`, conventionally
+  `<entity_id>~<property_id>` — the composite format is pinned by the DTO
+  example tests, not enforced by the materializer,
+  `collection == "ppy"`, `type_id == null`, inline `properties.kind`/
+  `entity_id`/`property_id`, verbatim object-shaped `properties.value`, empty
+  `links`, `_head.provenance`), the type-registration gate ordered
+  ent root -> `type_id` -> `typ` root -> `properties.property_refs.<property_id>`
+  with `skippedMissingTarget` and the new `skippedUnregisteredProperty`
+  counter, `skippedInvalid` for missing/blank identity fields and non-object
+  values, `skippedUnsupported` for missing/blank/unknown `data.kind`, and the
+  shared idempotent/conflicting duplicate rules. No value-shape validation,
+  semantic `property_id` resolution against `ppy`, entity-root rewrite, or
+  HTTP submission endpoint was added.
+- Non-blocking note for future bounded work: an assignment message carrying a
+  top-level `data.properties` map would bypass the inline-properties
+  projection in `buildDocument`; the canonical examples and tests do not use
+  that shape, so this is recorded as a latent shape hazard, not a defect.
+- Director verification on 2026-06-12 with the local Docker stack healthy
+  (port 9092 freed): `./gradlew :libraries:jade-tipi-dto:test` (67 tests),
+  `./gradlew :jade-tipi:test` (223 tests),
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests
+  '*PropertyAssignmentKafkaMaterializeIntegrationSpec*'` (the spec deferred
+  on 2026-06-10), `--tests
+  '*PropertyDefinitionCreateKafkaMaterializeIntegrationSpec*'`, and the full
+  `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest` (27 tests,
+  0 failures, 3 skipped under `GroupAdminAuthIntegrationSpec`'s separate
+  opt-in gate) all passed. The jade-tipi `couchdb` container could not bind
+  127.0.0.1:5984 (held by another project's container); no jade-tipi source
+  or test references CouchDB, so the suites were unaffected.
+- Pre-work direction for `TASK-033`: evaluate only the read-side join of one
+  `ent` root with its `ppy` assignment roots (`properties.kind ==
+  "assignment"` and `properties.entity_id == <id>`), keyed by
+  `properties.property_id`, following the accepted `ContentsLinkReadService`
+  / `ContentsLinkReadController` precedent. Decide the route and response
+  envelope, whether the definition-name join (`ppy` definition roots) is
+  in-scope or deferred, missing-root vs zero-assignment vs blank-id behavior,
+  ordering, and `_head.provenance` mapping.
+- Do not add HTTP write/submission endpoints, materializer changes,
+  assignment projection onto `ent` roots, value-shape validation against
+  `value_schema`, semantic reference enforcement, permission enforcement,
+  pagination/extension pages, plate-shaped contents composition, or frontend
+  UI work in `TASK-033`.
+- Verification proposal should include `./gradlew :jade-tipi:test` and the
+  narrowest practical opt-in integration command when the local stack is
+  available. If local setup blocks verification, report
+  `docker compose -f docker/docker-compose.yml --profile mongodb up -d`,
+  `docker compose -f docker/docker-compose.yml up -d`, `./gradlew --stop`
+  when stale Gradle daemons are implicated, and the exact blocked
+  command/error rather than treating setup as a product blocker.
+
+## TASK-031 Direction
+
+- Director implementation review on 2026-06-12 accepts `TASK-031`. The
+  implementation landed in claude-1's commit `7ccbf00` and was reported
+  `STATUS: COMPLETED` in `docs/agents/claude-1-changes.md` on 2026-05-03; the
+  acceptance is recorded retroactively: the task file was never advanced past
+  `READY_FOR_IMPLEMENTATION`, and this file still listed TASK-031 as
+  `READY_FOR_PREWORK`, until the 2026-06-12 close-out.
+- Scope check passed: the turn changed `docs/agents/claude-1-changes.md`,
+  `docs/OVERVIEW.md`,
+  `docs/architecture/kafka-transaction-message-vocabulary.md`,
+  `libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/MessageSpec.groovy`,
+  `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializer.groovy`,
+  `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/CommittedTransactionMaterializerSpec.groovy`,
+  and the new
+  `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/kafka/PropertyDefinitionCreateKafkaMaterializeIntegrationSpec.groovy`
+  — all inside TASK-031 `OWNED_PATHS` plus the base report path.
+- Behavior review accepted the bounded definition path per the task file's
+  `DIRECTOR_PREWORK_REVIEW` rulings: `isSupported()` accepts `ppy + create`
+  only when `data.kind == "definition"`; the existing inline-properties
+  fallback projects `kind`/`name`/`value_schema` (opaque verbatim) under root
+  `properties`; the root carries `_id`/`id == data.id`,
+  `collection == "ppy"`, `type_id == null`, `links == {}`, and standard
+  `_head.provenance`; no new counter, no schema change, no example edits. At
+  that commit, non-definition kinds stayed `skippedUnsupported`; the
+  assignment path is now separately accepted through `TASK-032`.
+- Credited developer verification (2026-05-03): dto tests,
+  `./gradlew :jade-tipi:test`, the dedicated PropertyDefinition Kafka
+  integration spec, and the EntityCreate regression spec all reported
+  passing with the local Docker stack healthy.
+- Director verification on 2026-06-12 (develop at `482034a`): full suite
+  reruns passed — see the TASK-032 Direction verification record above. Note
+  that accepted `TASK-032` re-routed the definition spec's trailing
+  assignment's skip outcome in the materializer (now gated
+  `skippedMissingTarget` rather than counted `skippedUnsupported`, asserted
+  by the materializer unit spec) and updated the spec's comments accordingly;
+  the spec's own never-materialized assertion is unchanged, and the rerun
+  verifies it as amended.
 
 ## TASK-027 Direction
 
