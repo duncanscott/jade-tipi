@@ -3,7 +3,7 @@
 ID: TASK-033
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_PREWORK
+STATUS: READY_FOR_REVIEW
 OWNER: claude-1
 SOURCE_TASK:
   - TASK-032
@@ -146,3 +146,40 @@ DEPENDENCIES:
 - TASK-028 is accepted and provides materialized `ent` roots.
 - TASK-015 and TASK-016 are accepted and provide the read-service and HTTP
   read-integration pattern this task should follow.
+
+IMPLEMENTATION_SUMMARY:
+- Human approval on 2026-06-22 accepted the TASK-033 pre-work defaults and
+  authorized implementation from the `READY_FOR_PREWORK` plan.
+- Added `EntityPropertyValuesReadService` to read one materialized `ent` root
+  by `_id`, query materialized `ppy` assignment roots by
+  `properties.kind == "assignment"` and `properties.entity_id == <entity_id>`,
+  sort by `properties.property_id` then `_id`, and group assignment values by
+  `properties.property_id`.
+- Added `EntityPropertyValuesRecord` and `EntityPropertyValueRecord` response
+  records. Assignment values preserve duplicate entity/property assignments as
+  lists, copy object-shaped `properties.value` verbatim, map `_head.provenance`,
+  and tolerate dangling property definitions by returning `propertyName ==
+  null`.
+- Added `EntityPropertyValuesReadController` at
+  `GET /api/entities/{id}/property-values`. Missing `ent` roots return HTTP
+  404; existing entities with no assignments return HTTP 200 with
+  `valuesByPropertyId: {}`.
+- Added focused service and controller specs plus an opt-in Kafka/Mongo/
+  Keycloak integration spec that publishes the canonical property loop and
+  verifies the HTTP route for assigned, unassigned, and missing entities.
+- Updated `docs/architecture/kafka-transaction-message-vocabulary.md` with the
+  read-side entity property-values contract and explicit non-goals.
+
+VERIFICATION_RESULTS:
+- `./gradlew :jade-tipi:test --tests '*EntityPropertyValuesReadServiceSpec*' --tests '*EntityPropertyValuesReadControllerSpec*'`
+  initially failed during test compilation because one new Spock feature used
+  an interaction inside an `expect:` block; the spec was corrected to
+  `when:`/`then:` and the command then passed.
+- `./gradlew :jade-tipi:test` passed.
+- `./gradlew :jade-tipi:integrationTest --tests '*EntityPropertyValuesHttpReadIntegrationSpec*'`
+  passed with `JADETIPI_IT_KAFKA` unset, compiling integration-test sources and
+  skipping the opt-in Kafka/Keycloak test.
+- `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*EntityPropertyValuesHttpReadIntegrationSpec*'`
+  passed against the already-running local `jade-tipi-kafka`,
+  `jade-tipi-mongo`, and `jade-tipi-keycloak` containers.
+- `git diff --check` passed.

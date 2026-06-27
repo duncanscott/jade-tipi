@@ -3,6 +3,97 @@
 The developer writes completed work reports here.
 
 STATUS: COMPLETED
+TASK: TASK-033 — Entity property-values read service (implementation)
+DATE: 2026-06-22
+SUMMARY: Implemented the bounded read-side join approved in the TASK-033
+pre-work plan. The new service reads one materialized `ent` root and its
+materialized `ppy` assignment roots without changing the Kafka submission path,
+the committed transaction materializer, or entity root projections.
+
+`EntityPropertyValuesReadService` now fetches the `ent` root by `_id`, queries
+the `ppy` collection for `properties.kind == "assignment"` and
+`properties.entity_id == <entity_id>`, sorts assignments by
+`properties.property_id` ASC then `_id` ASC, and groups every assignment under
+`valuesByPropertyId.<property_id>`. It performs an optional definition-name
+join against `ppy` definition roots (`_id in <property_ids>` and
+`properties.kind == "definition"`) so response entries can carry
+`propertyName`; dangling definitions are tolerated with `propertyName == null`.
+Values are copied from object-shaped `properties.value`, provenance is mapped
+only from `_head.provenance`, and duplicate assignments for the same
+entity/property pair are preserved as list entries.
+
+`EntityPropertyValuesReadController` exposes
+`GET /api/entities/{id}/property-values` as a thin WebFlux adapter. Missing
+entity roots return HTTP 404 with an empty body. Existing entities with zero
+assignments return HTTP 200 with `valuesByPropertyId: {}`. Blank ids surface
+the service `Assert.hasText(...)` failure through the existing
+`GlobalExceptionHandler` 400 path.
+
+Files changed (implementation/reporting):
+
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/EntityPropertyValuesReadService.groovy`
+  — New read service over `ent` and `ppy`, including assignment query,
+  definition-name lookup, deterministic grouping, provenance mapping, and
+  no-write behavior.
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/EntityPropertyValuesRecord.groovy`
+  — New entity-level response record.
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/service/EntityPropertyValueRecord.groovy`
+  — New per-assignment response record.
+- `jade-tipi/src/main/groovy/org/jadetipi/jadetipi/controller/EntityPropertyValuesReadController.groovy`
+  — New `/api/entities/{id}/property-values` route.
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/EntityPropertyValuesReadServiceSpec.groovy`
+  — Focused service coverage for query criteria and sort, mapping,
+  definition-name lookup, missing entity, zero assignments, dangling
+  definition, duplicate entity/property assignments, missing provenance,
+  blank id rejection, and no Mongo writes.
+- `jade-tipi/src/test/groovy/org/jadetipi/jadetipi/controller/EntityPropertyValuesReadControllerSpec.groovy`
+  — Focused controller coverage for route serialization, service delegation,
+  404 empty-body behavior, existing-entity empty map behavior, blank-id error
+  mapping, constructor collaborators, and route pinning.
+- `jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/entity/EntityPropertyValuesHttpReadIntegrationSpec.groovy`
+  — New opt-in Kafka/Mongo/Keycloak integration spec. Publishes a canonical
+  property-loop transaction, waits for materialized `ppy`, `typ`, and `ent`
+  roots, then verifies assigned, unassigned, and missing entity HTTP reads.
+- `docs/architecture/kafka-transaction-message-vocabulary.md`
+  — Added the entity property-values read contract and non-goals.
+- `docs/orchestrator/tasks/TASK-033-entity-property-values-read-service.md`
+  — Marked the task `READY_FOR_REVIEW` and recorded implementation and
+  verification results.
+- `docs/agents/claude-1-next-step.md`
+  — Contains the accepted TASK-033 pre-work plan from the previous handoff and
+  remains part of the working diff.
+
+VERIFICATION:
+Commands run in `/Users/duncanscott/git-hub/duncanscott/jade-tipi`.
+
+- `./gradlew :jade-tipi:test --tests '*EntityPropertyValuesReadServiceSpec*' --tests '*EntityPropertyValuesReadControllerSpec*'`
+  — initial run failed during test compilation because one new Spock feature
+  put an interaction in an `expect:` block; corrected to `when:`/`then:` and
+  reran successfully.
+- `./gradlew :jade-tipi:test --tests '*EntityPropertyValuesReadServiceSpec*' --tests '*EntityPropertyValuesReadControllerSpec*'`
+  — BUILD SUCCESSFUL in 3s after the Spock fix.
+- `./gradlew :jade-tipi:integrationTest --tests '*EntityPropertyValuesHttpReadIntegrationSpec*'`
+  — BUILD SUCCESSFUL in 2s with `JADETIPI_IT_KAFKA` unset; integration sources
+  compiled and the opt-in spec skipped without loading the Kafka-backed flow.
+- `docker ps --format '{{.Names}}\t{{.Status}}' | rg 'jade-tipi|kafka|keycloak|mongo'`
+  — confirmed `jade-tipi-kafka`, `jade-tipi-mongo`, and
+  `jade-tipi-keycloak` were already running locally.
+- `./gradlew :jade-tipi:test` — BUILD SUCCESSFUL in 7s.
+- `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest --tests '*EntityPropertyValuesHttpReadIntegrationSpec*'`
+  — BUILD SUCCESSFUL in 11s against the running local stack; logs showed
+  materialized `ppy` definition, `typ`, `ent`, unassigned `ent`, and `ppy`
+  assignment roots before the three HTTP route assertions.
+- `git diff --check` — passed.
+
+OUT_OF_SCOPE_CONFIRMED:
+No HTTP data submission endpoint, no Kafka message-shape changes, no
+`CommittedTransactionMaterializer` or `MaterializeResult` changes, no
+projection of assignment values onto `ent` roots, no value-schema validation,
+no required-property enforcement, no semantic reference rejection for dangling
+property definitions, no permission enforcement, no pagination, no frontend
+work, and no deployment or git commit.
+
+STATUS: COMPLETED
 TASK: TASK-031 — Human-readable Kafka property-definition materialization path (implementation)
 DATE: 2026-05-03
 SUMMARY: Implemented the bounded `ppy + create` `data.kind == "definition"`

@@ -294,6 +294,33 @@ The service returns one `ContentsLinkRecord` per matching `lnk`, sorted by `_id`
 
 Both routes return a flat JSON array of `ContentsLinkRecord` preserving service order. An empty service result maps to HTTP 200 with body `[]`; the routes do not return 404 for "no matching link" and do not surface materialization timing through the HTTP status. Blank or whitespace-only ids surface the service `Assert.hasText(...)` `IllegalArgumentException` as a 400 `ErrorResponse` through `GlobalExceptionHandler`. The controller has no Mongo, materializer, or write-side collaborators and adds no controller-side authorization, pagination, or endpoint resolution policy.
 
+## Reading Entity Property Values
+
+`EntityPropertyValuesReadService` answers "what is this entity and which
+property values are assigned to it?" over already materialized root documents.
+It reads the `ent` root by `_id`, then queries `ppy` roots with
+`properties.kind == "assignment"` and `properties.entity_id == <entity_id>`,
+sorted by `properties.property_id` ASC and `_id` ASC. Missing entity roots map
+to an empty service result and HTTP 404; existing entities with no assignments
+return the entity record with `valuesByPropertyId: {}`.
+
+Assignment values remain canonical on `ppy` roots. The response groups every
+matching assignment under `valuesByPropertyId.<property_id>` as a list, so
+multiple materialized assignments for the same entity/property pair are
+preserved deterministically rather than overwritten. Each value entry carries
+the assignment root `_id`, `properties.property_id`, the verbatim object-shaped
+`properties.value`, and `_head.provenance`. The service optionally resolves
+human-readable `propertyName` by joining the referenced `ppy` definition roots
+where `_id in <property_ids>` and `properties.kind == "definition"`, but a
+dangling `property_id` is tolerated and leaves `propertyName == null`.
+
+`EntityPropertyValuesReadController` exposes the read as
+`GET /api/entities/{id}/property-values`. This is a thin WebFlux adapter over
+the service only; it does not add HTTP data submission, does not write Mongo,
+does not update entity roots, does not validate assignment values against
+`value_schema`, and does not add permission enforcement or pagination in this
+iteration.
+
 ## Reference Examples
 
 A complete early transaction flow is bundled as resources under `libraries/jade-tipi-dto/src/main/resources/example/message/`:
