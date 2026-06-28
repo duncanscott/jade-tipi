@@ -3,7 +3,7 @@
 ID: TASK-037
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: READY_FOR_REVIEW
 OWNER: direct-codex
 SOURCE_TASK:
   - TASK-036
@@ -84,3 +84,26 @@ be persisted through Kafka into MongoDB. The next useful backend step is not a
 general importer yet; it is a stable read shape that lets a reviewer or UI ask
 for one seeded container/location and see its immediate contained objects with
 the materialized `loc`, `lnk`, and `ent` JSON reconciled into one response.
+
+IMPLEMENTATION_SUMMARY:
+- Added `LocationContentsReadService`, which composes
+  `LocationRootReadService.findLocation(locationId)`,
+  `ContentsLinkReadService.findContents(locationId)`, and child resolution via
+  `LocationRootReadService` / `EntityPropertyValuesReadService`.
+- Added `LocationContentsRecord` and `LocationContentsEntryRecord` for the
+  response shape.
+- Added `LocationContentsReadController` with
+  `GET /api/locations/{id}/contents`, mapping a missing subject `loc` root to
+  HTTP 404 while returning existing empty locations as `contents: []`.
+- Preserved outgoing contents-link order, raw endpoint ids, verbatim
+  object-shaped `properties.position`, link provenance, and unresolved child
+  links.
+- Updated the architecture vocabulary with the location-contents read contract.
+- Addressed review feedback by adding a contents read-surface map documenting
+  route placement and the intentional 200-vs-404 subject-existence asymmetry.
+
+VERIFICATION_RESULTS:
+- `./gradlew :jade-tipi:test --tests '*LocationContentsReadServiceSpec*' --tests '*LocationContentsReadControllerSpec*'`
+  passed.
+- `./gradlew :jade-tipi:test` passed.
+- `git diff --check` passed.

@@ -405,6 +405,63 @@ iteration does not add recursive location-path walking, frontend UI, semantic
 endpoint validation, materializer changes, permission enforcement, pagination,
 or location conflict repair.
 
+## Reading Location Contents
+
+`LocationContentsReadService` answers the forward composed query: "what does
+this container/location contain?" It composes accepted readers rather than
+introducing a new projection or direct all-collection Mongo query. The service
+first resolves the subject with `LocationRootReadService.findLocation(id)`,
+then reads immediate outgoing `contents` links with
+`ContentsLinkReadService.findContents(id)`. Each link's `right` endpoint is
+resolved as a materialized `loc` root when present, otherwise as a materialized
+`ent` root with assigned property values when present.
+
+The HTTP adapter is `GET /api/locations/{id}/contents`. Unlike the flat
+contents routes and the plate-shaped read view, this route requires the subject
+location root to exist: a missing `loc` root returns HTTP 404. An existing
+location with no outgoing `contents` links returns HTTP 200 with the subject
+`location` record and `contents: []`.
+
+The response object carries `locationId`, the resolved subject `location`, and
+a `contents` list preserving `ContentsLinkReadService.findContents` order. Each
+entry carries the source link id, link type id, raw `left` endpoint as
+`containerId`, raw `right` endpoint as `contentId`, verbatim
+`properties.position` when object-shaped, link provenance, and one optional
+resolved child record: `contentLocation` for a child `loc` root or
+`contentEntity` for a child `ent` root with property values. Links remain
+visible when `right` is blank, missing, or not materialized in either `loc` or
+`ent`; unresolved child fields are null.
+
+This iteration is immediate children only. It does not walk nested containers,
+validate endpoint collections against the `contents` link-type declaration,
+repair conflicting locations, write MongoDB, submit Kafka messages, add
+frontend UI, enforce authorization, paginate results, or infer child types
+beyond the accepted `loc` and `ent` read services.
+
+## Contents Read Surface Map
+
+The contents read surface intentionally mixes query-style routes under
+`/api/contents` with resource-style routes under `/api/locations` and
+`/api/entities`. Clients should choose the route by the subject they need to
+prove or query:
+
+| View | Route | Subject lookup | Missing or absent subject |
+| --- | --- | --- | --- |
+| Flat forward links | `GET /api/contents/by-container/{id}` | No `loc` lookup; queries `lnk.left` only | HTTP 200 with `[]` |
+| Flat reverse links | `GET /api/contents/by-content/{id}` | No `ent`/`loc` lookup; queries `lnk.right` only | HTTP 200 with `[]` |
+| Resolved reverse locations | `GET /api/contents/by-content/{id}/locations` | No lookup of the content object's own root | HTTP 200 with `locations: []` |
+| Plate-shaped forward contents | `GET /api/contents/plate/{id}` | No `loc` lookup; treats the id as a plate-shaped query key | HTTP 200 with an empty fixed grid |
+| Generic resolved forward contents | `GET /api/locations/{id}/contents` | Requires the subject `loc` root | HTTP 404 when the `loc` root is missing |
+| Entity property values | `GET /api/entities/{id}/property-values` | Requires the subject `ent` root | HTTP 404 when the `ent` root is missing |
+
+The asymmetry is deliberate. Flat contents routes and the plate-shaped view are
+queries over materialized `lnk` rows and cannot prove that the submitted id
+names an existing object. The generic location-contents and entity
+property-values views are resource reads whose subject is a first-class root
+record, so a missing root is exposed as 404. The plate-shaped route remains
+`200` with an empty grid for a nonexistent id because it intentionally does not
+validate or resolve the container `loc` root in that bounded slice.
+
 ## Reference Examples
 
 A complete early transaction flow is bundled as resources under `libraries/jade-tipi-dto/src/main/resources/example/message/`:
