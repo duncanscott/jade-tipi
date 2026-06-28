@@ -15,7 +15,6 @@ package org.jadetipi.jadetipi.service
 import groovy.util.logging.Slf4j
 import org.springframework.stereotype.Service
 import org.springframework.util.Assert
-import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 
 /**
@@ -36,6 +35,7 @@ class PlateContentsReadService {
     static final Integer COLUMN_COUNT = 12
     static final List<String> ROW_LABELS =
             ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].asImmutable()
+    static final List<Integer> COLUMN_LABELS = (1..COLUMN_COUNT).toList().asImmutable()
 
     static final String POSITION = 'position'
     static final String POSITION_KIND = 'kind'
@@ -61,15 +61,9 @@ class PlateContentsReadService {
     Mono<PlateContentsRecord> findPlateContents(String containerId) {
         Assert.hasText(containerId, 'containerId must not be blank')
         return contentsLinkReadService.findContents(containerId)
+                .concatMap { ContentsLinkRecord link -> resolveEntry(link) }
                 .collectList()
-                .flatMap { List<ContentsLinkRecord> links ->
-                    return Flux.fromIterable(links)
-                            .concatMap { ContentsLinkRecord link -> resolveEntry(link) }
-                            .collectList()
-                            .map { List<PlateContentsEntryRecord> entries ->
-                                buildPlate(containerId, entries)
-                            }
-                } as Mono<PlateContentsRecord>
+                .map { List<PlateContentsEntryRecord> entries -> buildPlate(containerId, entries) } as Mono<PlateContentsRecord>
     }
 
     private Mono<PlateContentsEntryRecord> resolveEntry(ContentsLinkRecord link) {
@@ -91,6 +85,7 @@ class PlateContentsReadService {
                 typeId: link.typeId,
                 objectId: link.right,
                 position: extractPositionMap(link),
+                unplacedReason: null,
                 linkProvenance: link.provenance,
                 entity: entity
         )
@@ -102,24 +97,24 @@ class PlateContentsReadService {
 
         Map<String, List<PlateContentsEntryRecord>> contentsByWell = new LinkedHashMap<>()
         ROW_LABELS.each { String row ->
-            (1..COLUMN_COUNT).each { Integer column ->
+            COLUMN_LABELS.each { Integer column ->
                 contentsByWell["${row}${column}".toString()] = []
             }
         }
 
         List<PlateContentsEntryRecord> unplaced = []
         entries.each { PlateContentsEntryRecord entry ->
-            PlateWellPosition position = extractPlateWellPosition(entry.position)
-            if (position == null || !contentsByWell.containsKey(position.label)) {
-                unplaced << entry
+            PlateWellPlacement placement = extractPlateWellPlacement(entry.position)
+            if (placement.unplacedReason != null) {
+                unplaced << withUnplacedReason(entry, placement.unplacedReason)
                 return
             }
-            contentsByWell[position.label] << entry
+            contentsByWell[placement.position.label] << entry
         }
 
         List<PlateContentsWellRecord> wells = []
         ROW_LABELS.each { String row ->
-            (1..COLUMN_COUNT).each { Integer column ->
+            COLUMN_LABELS.each { Integer column ->
                 String label = "${row}${column}".toString()
                 wells << new PlateContentsWellRecord(
                         label: label,
@@ -135,8 +130,24 @@ class PlateContentsReadService {
                 rowCount: ROW_COUNT,
                 columnCount: COLUMN_COUNT,
                 rowLabels: ROW_LABELS,
+                columnLabels: COLUMN_LABELS,
                 wells: wells,
                 unplacedContents: unplaced
+        )
+    }
+
+    private static PlateContentsEntryRecord withUnplacedReason(
+            PlateContentsEntryRecord entry,
+            PlateContentsUnplacedReason reason) {
+
+        return new PlateContentsEntryRecord(
+                linkId: entry.linkId,
+                typeId: entry.typeId,
+                objectId: entry.objectId,
+                position: entry.position,
+                unplacedReason: reason,
+                linkProvenance: entry.linkProvenance,
+                entity: entry.entity
         )
     }
 
@@ -148,19 +159,37 @@ class PlateContentsReadService {
                 return (Map<String, Object>) position
             }
         }
-        return new LinkedHashMap<String, Object>()
+        return null
     }
 
-    private static PlateWellPosition extractPlateWellPosition(Map<String, Object> position) {
-        if (position == null || position.get(POSITION_KIND) != POSITION_KIND_PLATE_WELL) {
-            return null
+    private static PlateWellPlacement extractPlateWellPlacement(Map<String, Object> position) {
+        if (position == null) {
+            return new PlateWellPlacement(unplacedReason: PlateContentsUnplacedReason.POSITION_MISSING)
         }
-        String row = normalizeRow(position.get(POSITION_ROW))
-        Integer column = normalizeColumn(position.get(POSITION_COLUMN))
-        if (row == null || column == null) {
-            return null
+        if (position.get(POSITION_KIND) != POSITION_KIND_PLATE_WELL) {
+            return new PlateWellPlacement(unplacedReason: PlateContentsUnplacedReason.POSITION_KIND_UNSUPPORTED)
         }
-        return new PlateWellPosition(row: row, column: column, label: "${row}${column}".toString())
+
+        Object rowValue = position.get(POSITION_ROW)
+        if (rowValue == null) {
+            return new PlateWellPlacement(unplacedReason: PlateContentsUnplacedReason.ROW_MISSING)
+        }
+        String row = normalizeRow(rowValue)
+        if (row == null) {
+            return new PlateWellPlacement(unplacedReason: PlateContentsUnplacedReason.ROW_OUT_OF_RANGE)
+        }
+
+        ColumnNormalization column = normalizeColumn(position.get(POSITION_COLUMN))
+        if (column.unplacedReason != null) {
+            return new PlateWellPlacement(unplacedReason: column.unplacedReason)
+        }
+
+        PlateWellPosition wellPosition = new PlateWellPosition(
+                row: row,
+                column: column.column,
+                label: "${row}${column.column}".toString()
+        )
+        return new PlateWellPlacement(position: wellPosition)
     }
 
     private static String normalizeRow(Object value) {
@@ -171,9 +200,9 @@ class PlateContentsReadService {
         return ROW_LABELS.contains(row) ? row : null
     }
 
-    private static Integer normalizeColumn(Object value) {
+    private static ColumnNormalization normalizeColumn(Object value) {
         if (value == null) {
-            return null
+            return new ColumnNormalization(unplacedReason: PlateContentsUnplacedReason.COLUMN_MISSING)
         }
         Integer column
         if (value instanceof Number) {
@@ -182,10 +211,13 @@ class PlateContentsReadService {
             try {
                 column = Integer.valueOf(value.toString().trim())
             } catch (NumberFormatException ignored) {
-                return null
+                return new ColumnNormalization(unplacedReason: PlateContentsUnplacedReason.COLUMN_MALFORMED)
             }
         }
-        return column >= 1 && column <= COLUMN_COUNT ? column : null
+        if (column < 1 || column > COLUMN_COUNT) {
+            return new ColumnNormalization(unplacedReason: PlateContentsUnplacedReason.COLUMN_OUT_OF_RANGE)
+        }
+        return new ColumnNormalization(column: column)
     }
 
     private static boolean hasText(String value) {
@@ -196,5 +228,15 @@ class PlateContentsReadService {
         String label
         String row
         Integer column
+    }
+
+    private static class PlateWellPlacement {
+        PlateWellPosition position
+        PlateContentsUnplacedReason unplacedReason
+    }
+
+    private static class ColumnNormalization {
+        Integer column
+        PlateContentsUnplacedReason unplacedReason
     }
 }

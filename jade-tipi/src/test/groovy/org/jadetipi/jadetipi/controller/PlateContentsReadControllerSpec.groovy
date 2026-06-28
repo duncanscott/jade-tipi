@@ -18,6 +18,7 @@ import org.jadetipi.jadetipi.service.EntityPropertyValuesRecord
 import org.jadetipi.jadetipi.service.PlateContentsEntryRecord
 import org.jadetipi.jadetipi.service.PlateContentsReadService
 import org.jadetipi.jadetipi.service.PlateContentsRecord
+import org.jadetipi.jadetipi.service.PlateContentsUnplacedReason
 import org.jadetipi.jadetipi.service.PlateContentsWellRecord
 import org.springframework.core.ReactiveAdapterRegistry
 import org.springframework.security.web.reactive.result.method.annotation.AuthenticationPrincipalArgumentResolver
@@ -58,6 +59,7 @@ class PlateContentsReadControllerSpec extends Specification {
                 typeId: TYPE_ID,
                 objectId: SAMPLE_ID,
                 position: [kind: 'plate_well', row: 'A', column: 1],
+                unplacedReason: null,
                 linkProvenance: [commit_id: 'COMMIT-LNK'],
                 entity: new EntityPropertyValuesRecord(
                         entityId: SAMPLE_ID,
@@ -76,18 +78,28 @@ class PlateContentsReadControllerSpec extends Specification {
                         ]
                 )
         )
+        PlateContentsEntryRecord unplaced = new PlateContentsEntryRecord(
+                linkId: "${LINK_ID}_unplaced".toString(),
+                typeId: TYPE_ID,
+                objectId: SAMPLE_ID,
+                position: [kind: 'plate_well', row: 'A', column: 'north'],
+                unplacedReason: PlateContentsUnplacedReason.COLUMN_MALFORMED,
+                linkProvenance: [commit_id: 'COMMIT-LNK-UNPLACED'],
+                entity: null
+        )
         return new PlateContentsRecord(
                 containerId: PLATE_ID,
                 rowCount: 8,
                 columnCount: 12,
                 rowLabels: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'],
+                columnLabels: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
                 wells: [new PlateContentsWellRecord(
                         label: 'A1',
                         row: 'A',
                         column: 1,
                         contents: [entry]
                 )],
-                unplacedContents: []
+                unplacedContents: [unplaced]
         )
     }
 
@@ -106,6 +118,9 @@ class PlateContentsReadControllerSpec extends Specification {
                 .jsonPath('$.rowCount').isEqualTo(8)
                 .jsonPath('$.columnCount').isEqualTo(12)
                 .jsonPath('$.rowLabels.length()').isEqualTo(8)
+                .jsonPath('$.columnLabels.length()').isEqualTo(12)
+                .jsonPath('$.columnLabels[0]').isEqualTo(1)
+                .jsonPath('$.columnLabels[11]').isEqualTo(12)
                 .jsonPath('$.wells.length()').isEqualTo(1)
                 .jsonPath('$.wells[0].label').isEqualTo('A1')
                 .jsonPath('$.wells[0].contents.length()').isEqualTo(1)
@@ -116,7 +131,8 @@ class PlateContentsReadControllerSpec extends Specification {
                 .jsonPath('$.wells[0].contents[0].entity.entityId').isEqualTo(SAMPLE_ID)
                 .jsonPath("\$.wells[0].contents[0].entity.valuesByPropertyId['${BARCODE_PROPERTY_ID}'][0].value.text")
                 .isEqualTo('barcode-a1')
-                .jsonPath('$.unplacedContents.length()').isEqualTo(0)
+                .jsonPath('$.unplacedContents.length()').isEqualTo(1)
+                .jsonPath('$.unplacedContents[0].unplacedReason').isEqualTo('COLUMN_MALFORMED')
     }
 
     def 'route delegates to PlateContentsReadService and to no other collaborator'() {

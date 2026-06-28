@@ -41,12 +41,16 @@ class PlateContentsReadServiceSpec extends Specification {
     private static ContentsLinkRecord link(String linkId,
                                            String objectId,
                                            Map position = [kind: 'plate_well', row: 'A', column: 1]) {
+        return linkWithProperties(linkId, objectId, [position: position])
+    }
+
+    private static ContentsLinkRecord linkWithProperties(String linkId, String objectId, Map properties) {
         return new ContentsLinkRecord(
                 linkId: linkId,
                 typeId: TYPE_ID,
                 left: PLATE_ID,
                 right: objectId,
-                properties: [position: position],
+                properties: properties,
                 provenance: [
                         txn_id   : 'aaaaaaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee',
                         commit_id: "COMMIT-${linkId[-2..-1]}".toString(),
@@ -101,6 +105,7 @@ class PlateContentsReadServiceSpec extends Specification {
         record.rowCount == 8
         record.columnCount == 12
         record.rowLabels == ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
+        record.columnLabels == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
         record.wells.size() == 96
         record.wells.first().label == 'A1'
         record.wells.last().label == 'H12'
@@ -115,6 +120,7 @@ class PlateContentsReadServiceSpec extends Specification {
         a1.contents[0].objectId == SAMPLE_A_ID
         a1.contents[0].position.row == 'a'
         a1.contents[0].position.column == '1'
+        a1.contents[0].unplacedReason == null
         a1.contents[0].linkProvenance.commit_id == 'COMMIT-a1'
         a1.contents[0].entity == sampleA
         a1.contents[0].entity.valuesByPropertyId[BARCODE_PROPERTY_ID][0].value == [text: 'barcode-a1']
@@ -139,6 +145,7 @@ class PlateContentsReadServiceSpec extends Specification {
 
         and:
         record.containerId == PLATE_ID
+        record.columnLabels == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
         record.wells.size() == 96
         record.wells.every { PlateContentsWellRecord well -> well.contents.isEmpty() }
         record.unplacedContents == []
@@ -192,7 +199,61 @@ class PlateContentsReadServiceSpec extends Specification {
         and: 'out-of-range positions are not dropped'
         record.unplacedContents.size() == 1
         record.unplacedContents[0].linkId == LINK_B_ID
+        record.unplacedContents[0].unplacedReason == PlateContentsUnplacedReason.ROW_OUT_OF_RANGE
         record.unplacedContents[0].entity.entityId == SAMPLE_B_ID
+    }
+
+    def 'unplaced contents report distinct placement reasons'() {
+        given:
+        List<ContentsLinkRecord> links = [
+                linkWithProperties('link-position-missing', SAMPLE_A_ID, [:]),
+                link('link-kind-unsupported', SAMPLE_A_ID,
+                        [kind: 'rack_slot', row: 'A', column: 1]),
+                link('link-row-missing', SAMPLE_A_ID,
+                        [kind: 'plate_well', column: 1]),
+                link('link-column-out-of-range', SAMPLE_A_ID,
+                        [kind: 'plate_well', row: 'A', column: 13]),
+                link('link-column-missing', SAMPLE_A_ID,
+                        [kind: 'plate_well', row: 'A']),
+                link('link-column-malformed', SAMPLE_A_ID,
+                        [kind: 'plate_well', row: 'A', column: 'north'])
+        ]
+
+        when:
+        PlateContentsRecord record = service.findPlateContents(PLATE_ID).block()
+
+        then:
+        1 * contentsLinkReadService.findContents(PLATE_ID) >> Flux.fromIterable(links)
+        6 * entityPropertyValuesReadService.findPropertyValues(SAMPLE_A_ID) >>
+                Mono.just(entity(SAMPLE_A_ID, 'barcode-a1'))
+        0 * _
+
+        and:
+        record.wells.every { PlateContentsWellRecord well -> well.contents.isEmpty() }
+        record.unplacedContents*.linkId == [
+                'link-position-missing',
+                'link-kind-unsupported',
+                'link-row-missing',
+                'link-column-out-of-range',
+                'link-column-missing',
+                'link-column-malformed'
+        ]
+        record.unplacedContents*.position == [
+                null,
+                [kind: 'rack_slot', row: 'A', column: 1],
+                [kind: 'plate_well', column: 1],
+                [kind: 'plate_well', row: 'A', column: 13],
+                [kind: 'plate_well', row: 'A'],
+                [kind: 'plate_well', row: 'A', column: 'north']
+        ]
+        record.unplacedContents*.unplacedReason == [
+                PlateContentsUnplacedReason.POSITION_MISSING,
+                PlateContentsUnplacedReason.POSITION_KIND_UNSUPPORTED,
+                PlateContentsUnplacedReason.ROW_MISSING,
+                PlateContentsUnplacedReason.COLUMN_OUT_OF_RANGE,
+                PlateContentsUnplacedReason.COLUMN_MISSING,
+                PlateContentsUnplacedReason.COLUMN_MALFORMED
+        ]
     }
 
     def 'links without a right endpoint are not resolved through the entity reader'() {
@@ -210,6 +271,7 @@ class PlateContentsReadServiceSpec extends Specification {
         and:
         well(record, 'A1').contents.size() == 1
         well(record, 'A1').contents[0].objectId == null
+        well(record, 'A1').contents[0].unplacedReason == null
         well(record, 'A1').contents[0].entity == null
     }
 

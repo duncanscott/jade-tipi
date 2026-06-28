@@ -12,18 +12,12 @@
  */
 package org.jadetipi.jadetipi.service
 
-import groovy.transform.Immutable
-
-/**
- * Fixed 96-well plate view built from materialized {@code contents} links.
- */
-@Immutable
-class PlateContentsRecord {
-    String containerId
-    Integer rowCount
-    Integer columnCount
-    List<String> rowLabels
-    List<Integer> columnLabels
-    List<PlateContentsWellRecord> wells
-    List<PlateContentsEntryRecord> unplacedContents
+enum PlateContentsUnplacedReason {
+    POSITION_MISSING,
+    POSITION_KIND_UNSUPPORTED,
+    ROW_MISSING,
+    ROW_OUT_OF_RANGE,
+    COLUMN_MISSING,
+    COLUMN_MALFORMED,
+    COLUMN_OUT_OF_RANGE
 }

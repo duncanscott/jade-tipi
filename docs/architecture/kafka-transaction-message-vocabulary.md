@@ -340,18 +340,26 @@ can include the contained entity's materialized property values.
 
 The response is a fixed 96-well shape: `rowCount == 8`,
 `columnCount == 12`, `rowLabels == ["A", "B", "C", "D", "E", "F", "G",
-"H"]`, and `wells` in row-major order from `A1` through `H12`. A link is
-placed when its `properties.position` is an object with
+"H"]`, `columnLabels == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]`, and
+`wells` in row-major order from `A1` through `H12`. A link is placed when its
+`properties.position` is an object with
 `kind == "plate_well"` plus an in-range row and column. Multiple links in the
 same well are preserved as a `contents` list in service order. Links whose
 position is missing, malformed, or outside the fixed 96-well range are returned
-under `unplacedContents` rather than silently dropped.
+under `unplacedContents` rather than silently dropped. Each unplaced entry
+carries an `unplacedReason` enum value: `POSITION_MISSING`,
+`POSITION_KIND_UNSUPPORTED`, `ROW_MISSING`, `ROW_OUT_OF_RANGE`,
+`COLUMN_MISSING`, `COLUMN_MALFORMED`, or `COLUMN_OUT_OF_RANGE`. Placed entries
+carry `unplacedReason == null`.
 
 Each placed or unplaced entry carries the source link id, link type id, raw
 `right` endpoint id as `objectId`, verbatim position object, link provenance,
 and optional resolved `entity` record. Missing entity roots are tolerated and
 leave `entity == null`; the link itself remains visible. The HTTP adapter is
 `GET /api/contents/plate/{id}` under the existing `/api/contents` read surface.
+The endpoint returns `200` with a fixed empty grid when no matching contents
+links exist, because this view does not look up or validate the container `loc`
+root. Clients must not treat `200` as proof that the plate/location exists.
 This iteration does not add frontend UI, generalized plate geometry, container
 `loc` validation, Kafka submission changes, materializer changes, permission
 enforcement, pagination, or conflict repair for malformed links.

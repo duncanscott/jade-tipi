@@ -23,6 +23,7 @@ class PlateContentsEntryRecord {
     String typeId
     String objectId
     Map<String, Object> position
+    PlateContentsUnplacedReason unplacedReason
     Map<String, Object> linkProvenance
     EntityPropertyValuesRecord entity
 }
