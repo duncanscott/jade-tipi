@@ -110,11 +110,14 @@ the proposed mapping.
    `materialized_at`). For `lnk` roots, `left`, `right`, and instance
    `properties` are top-level. For non-`lnk` roots, all `data` fields
    except `id`/`type_id` are copied to `properties`.
-2. **Materializer surface**. Only `loc + create`,
-   `typ + create` with `data.kind == "link_type"`, and `lnk + create`
-   are materialized. Everything else is `skippedUnsupported`. There is
-   no `ent + create` materialization yet, no update/delete replay, and
-   no semantic reference validation.
+2. **Materializer surface**. At the original `TASK-019` prototype
+   boundary, only `loc + create`, `typ + create` with
+   `data.kind == "link_type"`, and `lnk + create` were materialized.
+   As of `TASK-028`, `TASK-030`, and `TASK-036`, this constraint is
+   superseded for current code: bare entity-type `typ + create`,
+   `typ + update` with `operation == "add_property"`, and
+   `ent + create` also materialize. Update/delete replay and semantic
+   reference validation remain out of scope.
 3. **Contents type resolution** (per `ContentsLinkReadService` and
    canonical `11-create-contents-type.json`). The `contents` link type
    is the `typ` root with `properties.kind == "link_type"` and
@@ -321,6 +324,11 @@ add `ent + create` materialization and then a follow-up sampling pass
 on ESP analyte records, or (b) modeling them as `loc` roots, which
 would distort the model since they are samples, not locations. Both
 are out of scope here.
+
+Supersession note: `TASK-036` deliberately adds one sampled Illumina
+Library item (`LHCPOT`) as an `ent` root in the Kafka review seed.
+The no-`ent` statement above remains true only for the historical
+`TASK-019` prototype.
 
 ### D2 — Plate wells stay as `lnk.properties.position`, not as child `loc` roots
 
