@@ -328,6 +328,34 @@ does not update entity roots, does not validate assignment values against
 `value_schema`, and does not add permission enforcement or pagination in this
 iteration.
 
+## Reading Plate-Shaped Contents
+
+`PlateContentsReadService` answers the first plate-shaped query from
+`DIRECTION.md`: "what are the contents of this 96-well plate?" It composes
+existing read services rather than introducing a new projection. The service
+calls `ContentsLinkReadService.findContents(containerId)` to retrieve
+materialized `contents` links, then resolves each link's `right` endpoint with
+`EntityPropertyValuesReadService.findPropertyValues(rightId)` so placed entries
+can include the contained entity's materialized property values.
+
+The response is a fixed 96-well shape: `rowCount == 8`,
+`columnCount == 12`, `rowLabels == ["A", "B", "C", "D", "E", "F", "G",
+"H"]`, and `wells` in row-major order from `A1` through `H12`. A link is
+placed when its `properties.position` is an object with
+`kind == "plate_well"` plus an in-range row and column. Multiple links in the
+same well are preserved as a `contents` list in service order. Links whose
+position is missing, malformed, or outside the fixed 96-well range are returned
+under `unplacedContents` rather than silently dropped.
+
+Each placed or unplaced entry carries the source link id, link type id, raw
+`right` endpoint id as `objectId`, verbatim position object, link provenance,
+and optional resolved `entity` record. Missing entity roots are tolerated and
+leave `entity == null`; the link itself remains visible. The HTTP adapter is
+`GET /api/contents/plate/{id}` under the existing `/api/contents` read surface.
+This iteration does not add frontend UI, generalized plate geometry, container
+`loc` validation, Kafka submission changes, materializer changes, permission
+enforcement, pagination, or conflict repair for malformed links.
+
 ## Reference Examples
 
 A complete early transaction flow is bundled as resources under `libraries/jade-tipi-dto/src/main/resources/example/message/`:
