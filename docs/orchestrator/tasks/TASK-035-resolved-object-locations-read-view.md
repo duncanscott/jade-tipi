@@ -71,10 +71,14 @@ IMPLEMENTATION_SUMMARY:
   `LocationRootReadService.findLocation(leftId)`.
 - Added `ObjectLocationsRecord` and `ObjectLocationEntryRecord`.
 - Added `ObjectLocationsReadController` with
-  `GET /api/contents/locations/{id}`.
+  `GET /api/contents/by-content/{id}/locations`.
 - Updated the architecture vocabulary with the resolved object-locations
   contract.
 - Marked `TASK-034` accepted and linked this task as its follow-up.
+- Addressed review feedback by renaming the route before client adoption so
+  `{id}` clearly remains the content/object id from the existing flat
+  `/api/contents/by-content/{id}` route, and by documenting why `locations[]`
+  entries expose `containerId` and `container`.
 
 VERIFICATION_RESULTS:
 - `./gradlew :jade-tipi:test --tests '*LocationRootReadServiceSpec*' --tests '*ObjectLocationsReadServiceSpec*' --tests '*ObjectLocationsReadControllerSpec*'`

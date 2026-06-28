@@ -37,7 +37,7 @@ class ObjectLocationsReadController {
         this.readService = readService
     }
 
-    @GetMapping('/locations/{id}')
+    @GetMapping('/by-content/{id}/locations')
     Mono<ObjectLocationsRecord> getObjectLocations(
             @PathVariable('id') String id, @AuthenticationPrincipal Jwt jwt) {
 

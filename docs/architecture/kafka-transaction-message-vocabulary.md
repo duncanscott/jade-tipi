@@ -384,21 +384,23 @@ keeps the same narrow legacy `_jt_provenance` fallback used by the flat
 contents reader for stale pre-root-shape rows. Missing `loc` roots return an
 empty service result.
 
-The HTTP adapter is `GET /api/contents/locations/{id}` under the existing
-`/api/contents` read surface. The response is an object with `objectId` and a
-`locations` list preserving the flat reverse-link service order. Each location
-entry carries the source link id, link type id, the raw `left` endpoint id as
-`containerId`, the verbatim `properties.position` object when present, link
-provenance, and optional resolved `container` root. Links whose `left` endpoint
-is missing, blank, or points at no materialized `loc` root remain visible with
-`container == null`.
+The HTTP adapter is `GET /api/contents/by-content/{id}/locations` under the
+existing `/api/contents` read surface. The route keeps the same subject id as
+the flat reverse route (`by-content/{id}`) and exposes resolved locations as a
+sub-view. The response is an object with `objectId` and a `locations` list
+preserving the flat reverse-link service order. Each list entry is a location
+answer, but the link role remains `container`: entries carry the source link
+id, link type id, the raw `left` endpoint id as `containerId`, the verbatim
+`properties.position` object when present, link provenance, and optional
+resolved `container` root. Links whose `left` endpoint is missing, blank, or
+points at no materialized `loc` root remain visible with `container == null`.
 
 This route is distinct from `GET /api/contents/by-content/{id}`: the existing
 route returns the flat `ContentsLinkRecord` array, while
-`/api/contents/locations/{id}` returns the resolved object-location view. The
-endpoint returns `200` with `locations: []` when no matching contents links
-exist because this view does not look up or validate the content object's own
-root. Clients must not treat `200` as proof that the object exists. This
+`/api/contents/by-content/{id}/locations` returns the resolved object-location
+view. The endpoint returns `200` with `locations: []` when no matching contents
+links exist because this view does not look up or validate the content object's
+own root. Clients must not treat `200` as proof that the object exists. This
 iteration does not add recursive location-path walking, frontend UI, semantic
 endpoint validation, materializer changes, permission enforcement, pagination,
 or location conflict repair.

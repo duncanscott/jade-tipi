@@ -31,7 +31,7 @@ class ObjectLocationsReadControllerSpec extends Specification {
     static final String PLATE_ID = 'jade-tipi-org~dev~lbl_gov~jgi_pps~loc~plate_b1'
     static final String TYPE_ID = 'jade-tipi-org~dev~lbl_gov~jgi_pps~typ~contents'
     static final String LINK_ID = 'jade-tipi-org~dev~lbl_gov~jgi_pps~lnk~plate_b1_sample_a1'
-    static final String OBJECT_LOCATIONS_PATH = '/api/contents/locations/{id}'
+    static final String OBJECT_LOCATIONS_PATH = '/api/contents/by-content/{id}/locations'
 
     ObjectLocationsReadService readService
     ObjectLocationsReadController controller
@@ -133,8 +133,8 @@ class ObjectLocationsReadControllerSpec extends Specification {
         ctor.parameterTypes[0] == ObjectLocationsReadService
     }
 
-    def 'route path binds exactly to /api/contents/locations/{id}'() {
+    def 'route path binds exactly to /api/contents/by-content/{id}/locations'() {
         expect:
-        OBJECT_LOCATIONS_PATH == '/api/contents/locations/{id}'
+        OBJECT_LOCATIONS_PATH == '/api/contents/by-content/{id}/locations'
     }
 }
