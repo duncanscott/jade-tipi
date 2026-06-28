@@ -196,10 +196,10 @@ class PlateContentsReadServiceSpec extends Specification {
         well(record, 'C3').contents[0].linkId == LINK_C_ID
         well(record, 'C3').contents[0].entity == null
 
-        and: 'out-of-range positions are not dropped'
+        and: 'invalid positions are not dropped'
         record.unplacedContents.size() == 1
         record.unplacedContents[0].linkId == LINK_B_ID
-        record.unplacedContents[0].unplacedReason == PlateContentsUnplacedReason.ROW_OUT_OF_RANGE
+        record.unplacedContents[0].unplacedReason == PlateContentsUnplacedReason.ROW_INVALID
         record.unplacedContents[0].entity.entityId == SAMPLE_B_ID
     }
 

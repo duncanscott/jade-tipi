@@ -106,7 +106,7 @@ class PlateContentsReadService {
         entries.each { PlateContentsEntryRecord entry ->
             PlateWellPlacement placement = extractPlateWellPlacement(entry.position)
             if (placement.unplacedReason != null) {
-                unplaced << withUnplacedReason(entry, placement.unplacedReason)
+                unplaced << entry.copyWith(unplacedReason: placement.unplacedReason)
                 return
             }
             contentsByWell[placement.position.label] << entry
@@ -136,21 +136,6 @@ class PlateContentsReadService {
         )
     }
 
-    private static PlateContentsEntryRecord withUnplacedReason(
-            PlateContentsEntryRecord entry,
-            PlateContentsUnplacedReason reason) {
-
-        return new PlateContentsEntryRecord(
-                linkId: entry.linkId,
-                typeId: entry.typeId,
-                objectId: entry.objectId,
-                position: entry.position,
-                unplacedReason: reason,
-                linkProvenance: entry.linkProvenance,
-                entity: entry.entity
-        )
-    }
-
     private static Map<String, Object> extractPositionMap(ContentsLinkRecord link) {
         Object properties = link?.properties
         if (properties instanceof Map) {
@@ -176,7 +161,7 @@ class PlateContentsReadService {
         }
         String row = normalizeRow(rowValue)
         if (row == null) {
-            return new PlateWellPlacement(unplacedReason: PlateContentsUnplacedReason.ROW_OUT_OF_RANGE)
+            return new PlateWellPlacement(unplacedReason: PlateContentsUnplacedReason.ROW_INVALID)
         }
 
         ColumnNormalization column = normalizeColumn(position.get(POSITION_COLUMN))

@@ -12,11 +12,21 @@
  */
 package org.jadetipi.jadetipi.service
 
+/**
+ * Why a {@code contents} link could not be placed into the fixed 96-well grid.
+ *
+ * <p>Columns are numeric, so a column failure distinguishes
+ * {@link #COLUMN_MALFORMED} (not interpretable as a number) from
+ * {@link #COLUMN_OUT_OF_RANGE} (a number outside 1..12). Rows are a fixed label
+ * set ({@code A}..{@code H}); there is no separate parse step, so any present
+ * row value that is not a usable label collapses into the single
+ * {@link #ROW_INVALID}.
+ */
 enum PlateContentsUnplacedReason {
     POSITION_MISSING,
     POSITION_KIND_UNSUPPORTED,
     ROW_MISSING,
-    ROW_OUT_OF_RANGE,
+    ROW_INVALID,
     COLUMN_MISSING,
     COLUMN_MALFORMED,
     COLUMN_OUT_OF_RANGE

@@ -17,7 +17,7 @@ import groovy.transform.Immutable
 /**
  * One contained object in a plate-shaped contents view.
  */
-@Immutable
+@Immutable(copyWith = true)
 class PlateContentsEntryRecord {
     String linkId
     String typeId

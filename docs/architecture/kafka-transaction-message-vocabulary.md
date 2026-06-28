@@ -348,9 +348,12 @@ same well are preserved as a `contents` list in service order. Links whose
 position is missing, malformed, or outside the fixed 96-well range are returned
 under `unplacedContents` rather than silently dropped. Each unplaced entry
 carries an `unplacedReason` enum value: `POSITION_MISSING`,
-`POSITION_KIND_UNSUPPORTED`, `ROW_MISSING`, `ROW_OUT_OF_RANGE`,
-`COLUMN_MISSING`, `COLUMN_MALFORMED`, or `COLUMN_OUT_OF_RANGE`. Placed entries
-carry `unplacedReason == null`.
+`POSITION_KIND_UNSUPPORTED`, `ROW_MISSING`, `ROW_INVALID`,
+`COLUMN_MISSING`, `COLUMN_MALFORMED`, or `COLUMN_OUT_OF_RANGE`. Columns are
+numeric, so `COLUMN_MALFORMED` (not a number) is distinguished from
+`COLUMN_OUT_OF_RANGE` (a number outside 1..12); rows are a fixed `A`..`H` label
+set, so any present-but-unusable row collapses into `ROW_INVALID`. Placed
+entries carry `unplacedReason == null`.
 
 Each placed or unplaced entry carries the source link id, link type id, raw
 `right` endpoint id as `objectId`, verbatim position object, link provenance,
