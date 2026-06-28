@@ -19,6 +19,8 @@ OWNED_PATHS:
   - jade-tipi/src/test/groovy/org/jadetipi/jadetipi/service/
   - jade-tipi/src/integrationTest/groovy/org/jadetipi/jadetipi/
   - libraries/jade-tipi-dto/src/main/resources/example/message/
+  - libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json
+  - libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/
 REQUIRED_CAPABILITIES:
   - code-implementation
   - kafka-integration
@@ -56,15 +58,21 @@ ACCEPTANCE_CRITERIA:
   `object_collection` (initially restricted to `loc` and `ent`), and applies
   the existing gate unchanged: the target root must exist, must have a non-blank
   `type_id`, that `typ` root must exist, and it must list the assignment's
-  `property_id` under `properties.property_refs`. A target in an unsupported
-  collection, a missing target, an untyped target, or a property absent from
-  the type's refs is skipped with a clear log message and counts toward the
-  existing skipped/unsupported tally (no new MaterializeResult fields unless
-  justified in pre-work).
-- The assignment root storage shape is unchanged: a standalone `ppy` root keyed
-  by `data.id`, carrying `properties.kind == "assignment"`, the target
-  reference, `properties.property_id`, and the object-shaped `properties.value`.
-  Do not project values onto the target object root.
+  `property_id` under `properties.property_refs`. Preserve the existing
+  `MaterializeResult` skip-counter mapping rather than collapsing to one tally:
+  an unsupported `object_collection` -> `skippedUnsupported`; a missing target
+  root -> `skippedMissingTarget`; an untyped target or a `property_id` absent
+  from the type's `property_refs` -> `skippedUnregisteredProperty`; missing or
+  blank required fields or a non-object `value` -> `skippedInvalid`. Add no new
+  `MaterializeResult` fields unless justified in pre-work.
+- Storage shape follows the drift note Section 5 decision. The proposed default,
+  pending human/director ratification, is Option A (standalone `ppy` assignment
+  roots, joined at read): a standalone `ppy` root keyed by `data.id`, carrying
+  `properties.kind == "assignment"`, the target reference,
+  `properties.property_id`, and the object-shaped `properties.value`, with no
+  projection onto the target object root. If Option B (projection onto the
+  object root) is ratified instead, this acceptance criterion and the task's
+  storage work must be re-scoped accordingly before implementation.
 - Do not change `loc + create`, `ent + create`, `typ`, link, or definition
   materialization. Do not add HTTP submission. Do not change the read views in
   this task.

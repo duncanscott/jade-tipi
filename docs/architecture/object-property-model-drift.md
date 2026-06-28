@@ -71,7 +71,7 @@ locations carry only the inline bag.
 | `ppy` | Property definitions (name + value schema), referenced by ID as the key of object value maps. | Definitions exist (TASK-031). Assignments exist (TASK-032) but only for entities. No definitions exist for container fields (`name`, `barcode`, `kind`, …). |
 | `ent` | `type_id` + property **values keyed by `ppy` ID**, gated by the type. | Has the typed path (type_id → property_refs → `ppy` assignment), but assignments are standalone roots keyed by `entity_id`, not projected onto the object; root also keeps a name-keyed inline `properties` bag. The TASK-036 seed entity skipped assignments entirely and used the inline bag. |
 | `loc` | `type_id` + property values keyed by `ppy` ID, gated by a location type. | `type_id: null`; `properties` is a plain name-keyed string bag (`name`, `kind`, `barcode`, `format`, `source_*`). No location `typ`, no `ppy` definitions, and the assignment mechanism rejects non-entities. |
-| `lnk` | Instance properties on the link; semantics on the link type. | Matches intent (`properties.position`, type on `typ~contents`). Not a drift. |
+| `lnk` | Instance properties on the link; assignable set and semantics on the link type. | Follows the link-specific direction (position-on-link, semantics on `typ~contents`) — intentional. But instance `properties.position` is name-keyed and the link type's `assignable_properties` is an unenforced name list, not `ppy`-keyed `property_refs`, so `lnk` is sanctioned first-pass / deferred, **not fully aligned**. |
 
 Read layer: `EntityPropertyValuesReadService` reconstructs the `ppy`-keyed
 view (`valuesByPropertyId`) at read time via a join — so the target shape
@@ -209,3 +209,8 @@ TASK-031/032/033) until the final cleanup.
   values suggest per-kind, but that multiplies type/definition setup.
 - Whether the inline root `properties` bag is retired for domain values or kept
   for source-provenance fields (`source_system`, `source_id`, …).
+- Whether and when to align `lnk` with the typed/`ppy`-keyed model — i.e. move
+  link instance properties (e.g. `position`) to `ppy`-keyed values gated by the
+  link type's `property_refs` instead of the current name-keyed
+  `properties.position` + unenforced `assignable_properties` list. This is
+  currently deferred and unscheduled (no task), not declared aligned.
