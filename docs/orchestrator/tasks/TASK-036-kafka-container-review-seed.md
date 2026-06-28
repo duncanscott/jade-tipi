@@ -11,6 +11,8 @@ SOURCE_TASK:
   - TASK-027
   - TASK-028
   - TASK-035
+NEXT_TASK:
+  - TASK-037
 PAUSE_SOURCE_TASKS: true
 OWNED_PATHS:
   - docs/architecture/clarity-esp-container-mapping.md
