@@ -313,6 +313,13 @@ the assignment root `_id`, `properties.property_id`, the verbatim object-shaped
 human-readable `propertyName` by joining the referenced `ppy` definition roots
 where `_id in <property_ids>` and `properties.kind == "definition"`, but a
 dangling `property_id` is tolerated and leaves `propertyName == null`.
+Assignment rows with missing or blank `properties.property_id` cannot be keyed
+under `valuesByPropertyId` and are ignored by this reader; the current
+materializer already treats newly submitted assignments with missing or blank
+`data.property_id` as invalid, so this is tolerance for stale or drifted rows.
+The reader expects the materializer's object-shaped `properties.value`; if a
+stale or drifted row contains a non-object value, that value is returned as an
+empty map rather than failing the whole entity read.
 
 `EntityPropertyValuesReadController` exposes the read as
 `GET /api/entities/{id}/property-values`. This is a thin WebFlux adapter over

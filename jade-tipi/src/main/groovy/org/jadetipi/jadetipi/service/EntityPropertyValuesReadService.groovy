@@ -47,7 +47,6 @@ class EntityPropertyValuesReadService {
     static final String FIELD_PROPERTIES_ENTITY_ID = 'properties.entity_id'
     static final String FIELD_PROPERTIES_PROPERTY_ID = 'properties.property_id'
 
-    static final String PROP_KIND = 'kind'
     static final String PROP_NAME = 'name'
     static final String PROP_PROPERTY_ID = 'property_id'
     static final String PROP_VALUE = 'value'
@@ -138,6 +137,8 @@ class EntityPropertyValuesReadService {
         assignmentRows.each { Map row ->
             String propertyId = extractPropertyId(row)
             if (propertyId == null) {
+                // New assignment rows with missing property_id are invalid at
+                // materialization time; this tolerates stale/drifted rows.
                 return
             }
             if (!values.containsKey(propertyId)) {
@@ -148,11 +149,18 @@ class EntityPropertyValuesReadService {
                     assignmentId: row.get(FIELD_ID) as String,
                     propertyId: propertyId,
                     propertyName: propertyNamesById[propertyId],
-                    value: mapOrEmpty(properties.get(PROP_VALUE)),
+                    value: extractAssignmentValue(properties),
                     provenance: extractProvenance(row)
             )
         }
         return values
+    }
+
+    private static Map<String, Object> extractAssignmentValue(Map properties) {
+        // Assignment materialization only writes object-shaped values. If an
+        // older or drifted row is not object-shaped, keep the entity read
+        // tolerant and return an empty map rather than failing the response.
+        return mapOrEmpty(properties.get(PROP_VALUE))
     }
 
     private static String extractPropertyId(Map row) {
