@@ -13,7 +13,7 @@ Modern labs capture torrents of contextual data, yet that knowledge often hides 
 - **Reuse becomes routine**: machine-actionable JSON descriptions flow into downstream tools, lakehouses, or analytics stacks.
 - **Adaptability is built in**: new data shapes are welcomed without disruptive schema rewrites or vendor lock-in.
 
-These objectives are explored in depth inside `docs/`, especially the living narrative in `docs/Jade-Tipi.md`, the concise restatement in `docs/README.md`, and the current snapshot in `docs/OVERVIEW.md`.
+These objectives are explored in depth inside `docs/`, especially the living narrative in `docs/Jade-Tipi.md`, the concise restatement in `docs/README.md`, the current snapshot in `docs/OVERVIEW.md`, and the development roadmap in `docs/ROADMAP.md`.
 
 ## What You’ll Find Here
 
@@ -22,7 +22,7 @@ This repository gathers everything needed to experiment with the idea and share 
 - **Reference services (`jade-tipi/`)** show how a reactive backend, identity, and storage layers can uphold Jade-Tipi’s guarantees.
 - **A lightweight UI (`frontend/`)** previews how curators might browse and enrich documents created with the protocol.
 - **Early CLI prototypes (`clients/`)** illustrate scripted workflows for data engineers and lab teams.
-- **Guides and reviews (`docs/` and `PROJECT_REVIEW.md`)** capture the long-term vision, principles, and roadmap questions.
+- **Guides and reviews (`docs/` and `PROJECT_REVIEW.md`)** capture the long-term vision, principles, roadmap, and review questions.
 
 Think of the code as a conversation starter: it evolves quickly and exists to demonstrate how the broader ideas can come together in practice.
 
@@ -31,7 +31,7 @@ Think of the code as a conversation starter: it evolves quickly and exists to de
 If you are new to the project, we recommend this path:
 
 1. Read `docs/Jade-Tipi.md` for the manifesto, terminology, and design motivations.
-2. Skim `docs/README.md` and `docs/OVERVIEW.md` to understand the current scope of the reference stack.
+2. Skim `docs/README.md`, `docs/OVERVIEW.md`, and `docs/ROADMAP.md` to understand the current scope and development direction of the reference stack.
 3. Explore the services, UI, or clients that align with your interests; each reinforces the same guiding objective of portable, mergeable metadata.
 
 For hands-on setup instructions, architecture diagrams, and API details, follow the pointers in the documents above. They stay authoritative so this README can remain focused on the “why.”

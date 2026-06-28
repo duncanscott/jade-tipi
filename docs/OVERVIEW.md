@@ -3,6 +3,7 @@
 An open scientific metadata framework and reference implementation focused on flexible, machine-actionable JSON documents.
 
 > Looking for the broader protocol vision and long-term roadmap? Read the living design document in [`docs/Jade-Tipi.md`](docs/Jade-Tipi.md).
+> The active development roadmap is maintained in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Project Status
 
@@ -13,6 +14,8 @@ An open scientific metadata framework and reference implementation focused on fl
 - Extension/page documents for very large property or link maps are planned as
   a future storage strategy, not as part of the first materializer.
 - MongoDB is the only persistence backend wired in today; FoundationDB profiles and integration layers are actively being explored.
+- Kafka is the current local submission/delivery path, but JDTP should remain
+  independent of any one queue, stream, database, or search product.
 - Frontend scaffolding exists for a document manager and will evolve towards richer curation and visualization flows.
 - Expect breaking changes while the API surface, storage models, and protocol language are refined.
 
@@ -50,7 +53,9 @@ An open scientific metadata framework and reference implementation focused on fl
 - Default developer profile targets the bundled MongoDB container (port 27017).
 - Keycloak container provides authentication services (port 8484).
 - FoundationDB support is experimental; configuration scaffolding lives under `jade-tipi/src/main/resources/application-foundationdb.yml`.
-- Future adapters (Kafka/Flink sinks, lakehouse integration) are tracked in the architecture document.
+- Future adapters (Kafka/Flink sinks, lakehouse integration, cloud-native
+  delivery, search, graph, vector, and archive sidecars) are tracked in the
+  architecture documents and [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 **Docker Services:**
 ```bash

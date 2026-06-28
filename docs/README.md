@@ -18,6 +18,12 @@ Jade-Tipi offers a flexible, extensible standard suitable for any domain, scient
 
 The broad vision for Jade-Tipi is to have it adopted by various systems seeking to follow FAIR guidelines. This adoption could involve translating existing systems into Jade-Tipi or developing new systems based on the protocol. Widespread adoption could foster shared vocabularies, canonical properties, and the development of general-purpose parsers, visualizers, and extensions.
 
+The active development roadmap is maintained in [`ROADMAP.md`](ROADMAP.md). It
+keeps near-term implementation work tied to the longer-range goal of a
+FAIR-native, AI-ready scientific data platform while preserving JDTP as a
+technology-agnostic protocol rather than a wrapper around one database, stream,
+or search product.
+
 ## Key Benefits
 
 - **Flexible, Rapid Evolution:** Metadata is stored as JSON so new data types and properties can be added without disruptive migrations or schema changes.
@@ -156,6 +162,8 @@ This repository contains a **proof-of-concept reference implementation** of the 
 - Graph queries with JanusGraph
 - Full-text search, aggregations, and geospatial queries with Elasticsearch
 - Data submission endpoints to streamline message creation
+- Pluggable search, graph, vector, and archive providers derived from the
+  canonical JDTP transaction log and materialized repository
 
 ## Technical Architecture
 
@@ -192,16 +200,24 @@ The system stores timestamps as Java `Instant` objects, which MongoDB persists a
 
 The project is evolving toward the full vision outlined in [`Jade-Tipi.md`](Jade-Tipi.md). Near-term priorities include:
 
+- Follow the staged development roadmap in [`ROADMAP.md`](ROADMAP.md).
+- Keep representing local `clarity` and `esp-entity` CouchDB container/sample
+  data in Jade-Tipi through Kafka-backed messages until the resulting MongoDB
+  JSON structures and read APIs are reviewable.
 - Define the canonical materialized object document shape: root document,
   explicit property map, denormalized link map, and reserved `_head` metadata.
 - Keep the first materializer root-document-only, while documenting extension
   pages for future high-cardinality properties and links.
+- Preserve adapter boundaries so Kafka is one delivery mechanism and MongoDB,
+  FoundationDB, DynamoDB, or other stores can act as repository implementations
+  without changing JDTP.
 - Complete FoundationDB adapter and transaction log streaming
 - Implement full transaction protocol with submission and commit streams
 - Develop richer metadata type system with validation support
 - Build link management capabilities for entity relationships
 - Enhance CLI clients for scripted interactions
-- Expand API to support advanced queries (graph, geospatial, full-text)
+- Expand API to support advanced queries through pluggable search, graph,
+  geospatial, full-text, and vector providers
 
 ## Documentation
 

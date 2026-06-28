@@ -14,7 +14,7 @@ Jade-Tipi (JDTP) is designed to be a domain-agnostic, technology-agnostic founda
 * **Mergeability:** Jade-Tipi metadata repositories are designed to facilitate merging data from different groups and institutions into common repositories.  
 * **Granular Collaboration:** Fine-grained permission controls let multiple teams and collaborators safely annotate and enrich metadata, with clear ownership tracking.  
 * **Development of Common Vocabulary:** Widespread use will help establish shared vocabularies and canonical properties.  Combining data into common repositories provides the opportunity to translate type and property names to facilitate the evolution of common nomenclature.  
-* **Proven Technology Stack:** Leverages established, scalable technologies (Kafka, Flink, FoundationDB, etc.) for reliability and future integrations.  
+* **Portable Reference Architecture:** Leverages established, scalable technologies (Kafka, Flink, FoundationDB, MongoDB, and future adapters) while keeping JDTP independent of any one database, stream, queue, or search engine.
 * **Enables Full FAIR Compliance:** Adopting Jade-Tipi as a LIMS (Laboratory Information Management System) with integrated electronic notebooks would provide the detailed provenance of data.  
 * **Seamless Lakehouse Integration:** Publishes all metadata changes to a transaction stream, allowing flexible loading and transformation into one or more lakehouses for analysis and experimentation.  See: [Jade-Tipi Architectural Diagram](#jade-tipi-architectural-diagram)  
 * **Extendible Query API: T**he API can be extended to support advanced graph, geospatial, and full-text search, as well as aggregations.
@@ -38,6 +38,12 @@ The ID naming conventions allow metadata from one repository to be imported into
 Jade-Tipi is intended as a generic implementation of the FAIR data principles outlined in the Nature article "The FAIR Guiding Principles for Scientific Data Management and Stewardship" ([https://www.nature.com/articles/sdata201618](https://www.nature.com/articles/sdata201618)) and summarized here: [https://www.go-fair.org/fair-principles/](https://www.go-fair.org/fair-principles/).  FAIR guidelines aim to make data sharing and machine access more efficient.  The original paper stresses that while adherence to FAIR principles is a step in the right direction, current FAIR systems suffer shortcomings that are a source of significant friction.  The primary problem is the proliferation of bespoke systems, which require myriad complex custom parsers.  Jade-Tipi offers a flexible, extensible standard suitable for any domain, scientific or otherwise. It promotes a transparent and navigable data ecosystem.
 
 The broad vision for Jade-Tipi is to have it adopted by various systems seeking to follow FAIR guidelines. This adoption could involve translating existing systems into Jade-Tipi or developing new systems based on the protocol. Widespread adoption could foster shared vocabularies, canonical properties, and the development of general-purpose parsers, visualizers, and extensions.
+
+The staged development roadmap is maintained in [`ROADMAP.md`](ROADMAP.md).
+That roadmap keeps the current implementation work tied to a longer-range
+research program: a compelling MVP, a durable JDTP specification, real
+container/sample examples from JGI systems, AI-ready search and retrieval
+surfaces, and proposal-ready architecture artifacts.
 
 A great challenge in fulfilling FAIR guidelines is describing the provenance of data:
 
@@ -154,6 +160,14 @@ A Jade-Tipi service reads the submission stream, verifies that messages are auth
 
 The transaction stream is the definitive record, the “source of truth” of the system state.  The history of the system is preserved in the transaction stream. Transaction stream messages can be compressed, saved in the filesystem, and written to tape.  The system can be recovered at any point in time from the transaction record.  Clients (e.g. Flink clients pushing changes to a data lake) may listen to the transaction stream without interacting with the Jade-Tipi repository.
 
+In the reference implementation, Kafka is the current local delivery mechanism
+for submission and committed transaction messages. It is not part of the
+protocol definition. JDTP should also be mappable onto other delivery and
+storage arrangements, such as DynamoDB Streams, Kinesis, EventBridge, SQS/SNS,
+HTTP submission adapters, MongoDB, DynamoDB, FoundationDB, Postgres, or
+S3/Iceberg archives, provided the deployment preserves the transaction,
+provenance, idempotency, and replay semantics required by the protocol.
+
 The commit ID is just another new ID issued by the transaction ID generator for the system.  These IDs are sequential and the order of the commits performed on the system is preserved in the ASCII sort order of the commit IDs.
 
 All Jade-Tipi objects have **world-**unique IDs so the metadata from one repository can be loaded into another without conflict.  The transaction stream of one Jade-Tipi can be fed into the submission stream of another to replicate the data in the first repository in the second.  Disparate Jade-Tipi repositories can be combined into an aggregating repository.
@@ -208,6 +222,14 @@ The specification is technology agnostic.  The storage and retrieval of JSON obj
   * graph queries with JanusGraph backed by ScyllaDB  
   * text searches, aggregations, and geospatial queries with Elasticsearch  
   * data submission endpoints to streamline creating messages in the submission stream
+
+Advanced search, graph, vector, and archive services should be projections from
+the canonical transaction log and materialized repository, not competing
+sources of truth. The roadmap tracks this as a set of provider seams such as
+`SearchProvider`, `GraphProvider`, `VectorProvider`, and `ArchiveProvider`, with
+OpenSearch, Elasticsearch, MongoDB Atlas Search, Postgres full-text search,
+Lucene, Neo4j, JanusGraph, pgvector, and S3/Iceberg treated as possible
+implementations rather than protocol dependencies.
 
 # 
 
