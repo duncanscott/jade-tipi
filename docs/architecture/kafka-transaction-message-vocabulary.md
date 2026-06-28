@@ -367,6 +367,42 @@ This iteration does not add frontend UI, generalized plate geometry, container
 `loc` validation, Kafka submission changes, materializer changes, permission
 enforcement, pagination, or conflict repair for malformed links.
 
+## Reading Resolved Object Locations
+
+`ObjectLocationsReadService` answers the reverse composed query from
+`DIRECTION.md`: "where is this sample/object located?" It composes existing
+read-side pieces rather than introducing a projection. The service calls
+`ContentsLinkReadService.findLocations(objectId)` to retrieve materialized
+`contents` links whose `right` endpoint is the object, then resolves each
+link's `left` endpoint with `LocationRootReadService.findLocation(locationId)`
+so entries can include the containing `loc` root when present.
+
+`LocationRootReadService` is the narrow reusable reader for materialized `loc`
+roots. It reads one row by `_id` from the `loc` collection and maps `type_id`,
+root `properties`, root `links`, and provenance from `_head.provenance`. It
+keeps the same narrow legacy `_jt_provenance` fallback used by the flat
+contents reader for stale pre-root-shape rows. Missing `loc` roots return an
+empty service result.
+
+The HTTP adapter is `GET /api/contents/locations/{id}` under the existing
+`/api/contents` read surface. The response is an object with `objectId` and a
+`locations` list preserving the flat reverse-link service order. Each location
+entry carries the source link id, link type id, the raw `left` endpoint id as
+`containerId`, the verbatim `properties.position` object when present, link
+provenance, and optional resolved `container` root. Links whose `left` endpoint
+is missing, blank, or points at no materialized `loc` root remain visible with
+`container == null`.
+
+This route is distinct from `GET /api/contents/by-content/{id}`: the existing
+route returns the flat `ContentsLinkRecord` array, while
+`/api/contents/locations/{id}` returns the resolved object-location view. The
+endpoint returns `200` with `locations: []` when no matching contents links
+exist because this view does not look up or validate the content object's own
+root. Clients must not treat `200` as proof that the object exists. This
+iteration does not add recursive location-path walking, frontend UI, semantic
+endpoint validation, materializer changes, permission enforcement, pagination,
+or location conflict repair.
+
 ## Reference Examples
 
 A complete early transaction flow is bundled as resources under `libraries/jade-tipi-dto/src/main/resources/example/message/`:

@@ -3,13 +3,15 @@
 ID: TASK-034
 TYPE: implementation
 ARTIFACT_INTENT: implementation
-STATUS: READY_FOR_REVIEW
+STATUS: ACCEPTED
 OWNER: direct-codex
 SOURCE_TASK:
   - TASK-033
   - TASK-016
   - TASK-015
   - TASK-027
+NEXT_TASK:
+  - TASK-035
 PAUSE_SOURCE_TASKS: true
 OWNED_PATHS:
   - docs/architecture/kafka-transaction-message-vocabulary.md
@@ -81,3 +83,12 @@ VERIFICATION_RESULTS:
   passed.
 - `./gradlew :jade-tipi:test` passed.
 - `git diff --check` passed.
+
+REVIEW_ACCEPTANCE:
+- Accepted after review of commit `28d9377` ("Refine plate contents
+  unplaced-reason contract"). The review found no blockers or regressions:
+  `ROW_INVALID`, `columnLabels`, `unplacedReason`, and the no-`loc`-lookup
+  `200` semantics are now documented and covered.
+- `TASK-035` was created as the next bounded reverse-query slice: resolve
+  `contents` links where the object is the `right` endpoint into containing
+  `loc` root records.
