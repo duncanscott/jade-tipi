@@ -12,6 +12,64 @@ contemplated by `TASK-019` would add only test-only artifacts that
 exercise the existing `CommittedTransactionMaterializer` against the
 canonical messages shown below.
 
+## TASK-036 review seed update
+
+`TASK-019` remains the historical design/prototype baseline for the
+container mapping. `TASK-036` adds the next practical review point:
+an opt-in Kafka-backed seed that writes the representative roots into
+local MongoDB so their JSON shapes can be inspected directly.
+
+The review seed intentionally remains narrow:
+
+- It publishes canonical Kafka `Message` DTOs through the existing
+  listener, transaction WAL, and committed materializer path.
+- It reuses the documented ESP freezer/bin/plate chain and Clarity
+  tube from this note.
+- It extends the `TASK-019` shape with one sampled ESP Illumina
+  Library item from plate well `A2` as an `ent` root, now that
+  `ent + create` materialization exists.
+- It writes stable review root IDs and deletes only those seed roots
+  plus the stable seed transaction WAL rows before each run; the
+  fresh `loc`, `lnk`, `ent`, and `typ` roots are left in MongoDB for
+  review.
+- It is not a production CouchDB importer, synchronizer, HTTP
+  submission path, or UI.
+
+Run the seed locally with:
+
+```sh
+docker compose -f docker/docker-compose.yml up -d
+JADETIPI_IT_KAFKA=1 JADETIPI_REVIEW_SEED=1 ./gradlew :jade-tipi:integrationTest \
+  --tests '*ClarityEspContainerReviewSeedKafkaIntegrationSpec*'
+docker compose -f docker/docker-compose.yml --profile tools up -d
+```
+
+Then inspect database `jdtp` in Mongo Express at
+`http://localhost:8081`. The seed targets `jdtp` by default even
+though it runs under the Spring `test` profile; set
+`JADETIPI_REVIEW_SEED_MONGO_DATABASE` only if a different local
+database is needed. The review roots all begin with:
+
+```text
+jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e501
+```
+
+Expected review roots:
+
+| Collection | Review roots |
+|------------|--------------|
+| `loc` | ESP freezer `Illumina 130-32`, ESP bin `PP050`, ESP plate `27-474501`, Clarity tube `27-170230`. |
+| `typ` | Transaction-local `contents` link type, `illumina_library` entity type. |
+| `ent` | ESP Illumina Library `LHCPOT` from plate `27-474501` well `A2`. |
+| `lnk` | Freezer -> bin, bin -> plate, plate -> library `contents` links with position properties. |
+
+This seed gives the first MongoDB inspection point for the longer
+goal of representing local `clarity` and `esp-entity` CouchDB
+container/sample information in Jade-Tipi. After review, the next
+decision is whether to deepen this into a real CouchDB import loop,
+add richer property-definition/property-assignment modeling, or move
+to UI work over the seeded roots.
+
 This revision responds to
 `docs/architecture/jade-tipi-object-model-design-brief.md`, which is
 the authoritative human direction. Where the brief and earlier text

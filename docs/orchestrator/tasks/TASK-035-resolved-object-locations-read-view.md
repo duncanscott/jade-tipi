@@ -10,6 +10,8 @@ SOURCE_TASK:
   - TASK-016
   - TASK-015
   - TASK-026
+NEXT_TASK:
+  - TASK-036
 PAUSE_SOURCE_TASKS: true
 OWNED_PATHS:
   - docs/architecture/kafka-transaction-message-vocabulary.md
