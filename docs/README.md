@@ -84,6 +84,10 @@ User records live in `usr` as local Jade-Tipi identity/audit objects. ORCID and
 Keycloak can authenticate a person, but Jade-Tipi should persist a local `usr`
 record plus a writer snapshot on each durable transaction so historical
 transactions remain explainable without querying an external identity provider.
+One reserved `usr`, `jdtp-admin`, should exist as a bootstrap audit identity so
+genesis transactions can create the first normal users, groups, types,
+properties, and policies without a circular user/transaction dependency. It is
+not a human login account or an external identity-provider user.
 
 Group records live in `grp` as normal Jade-Tipi objects with world-unique IDs,
 properties, and possible links. The first permission model should be simple:

@@ -43,6 +43,9 @@ Keycloak's Device Authorization Grant) and publishes messages to Kafka topics.
 The target audit model persists those authenticated identities into local
 Jade-Tipi `usr` records and records the writer on durable transactions, so
 historical provenance does not depend on querying an external identity provider.
+A reserved local `usr` named `jdtp-admin` is planned as the bootstrap audit
+identity for initial setup transactions; it is not a human login account or an
+external identity-provider user.
 
 ### Prerequisites
 

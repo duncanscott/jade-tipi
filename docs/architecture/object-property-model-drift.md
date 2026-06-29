@@ -58,7 +58,7 @@ the inline bag.
 |---|---|---|
 | `txn` | Durable transaction objects that last forever. A transaction records who submitted/wrote, the local `usr` writer, a writer snapshot, commit state, commit identity, timestamps, and materialization state. | The collection currently stores both transaction headers and message records. This was a useful first pass, but conflates permanent transaction facts with transient payload staging. Current headers do not yet persist a local `user_id` / writer snapshot. |
 | `msg` | Transient transaction-message staging collection. Holds submitted object/property/link messages while they are open, committed-but-unapplied, or being applied. Once all messages for a transaction have been written to object documents, the staged messages are cleared. | Does not exist yet. Current message records live in `txn`. |
-| `usr` | Local Jade-Tipi identity/audit records for people and service identities. A `usr` record should hold stable local identity plus external identity keys such as ORCID and OIDC issuer/subject. | Not implemented. Current message examples carry `txn.user` as an ORCID-style string, but there is no local user collection and no durable transaction header `user_id`. |
+| `usr` | Local Jade-Tipi identity/audit records for people and service identities. A `usr` record should hold stable local identity plus external identity keys such as ORCID and OIDC issuer/subject. One reserved bootstrap user (`jdtp-admin`) exists as a genesis storage fact so initial transactions can be audited. | Not implemented. Current message examples carry `txn.user` as an ORCID-style string, but there is no local user collection, no durable transaction header `user_id`, and no bootstrap user. |
 | `typ` | Declares assignable properties for its objects as property references keyed by `ppy` ID. | Entity types do this for entity properties via `properties.property_refs.<ppy_id>` (TASK-030). No location type exists; link types carry an unenforced `assignable_properties` list. |
 | `ppy` | Property definitions and policy: name, value schema, owner, and write policy. It defines who owns the property and who can write values for it. It is not the assignment-value store. | Definitions exist (TASK-031). Assignment values also exist as root-shaped `ppy` records (TASK-032), but only for entities. Treat those assignment roots as transitional, not target architecture. No definitions exist for container fields (`name`, `barcode`, `kind`, `format`, source facts). |
 | `ent` | `type_id` plus property values keyed by `ppy` ID on the object document, gated by the type. Each property-value write carries transaction provenance. | Has a typed path, but assignments are standalone `ppy` roots keyed by `entity_id`, not projected onto the entity root; the root also keeps a name-keyed inline `properties` bag. The TASK-036 seed entity skipped assignments entirely and used the inline bag. |
@@ -177,6 +177,15 @@ available, and provenance describing how the identity was observed. A `txn`
 should point to the `usr` record with `user_id`, while also preserving a writer
 snapshot so old transactions remain meaningful if the `usr` record changes.
 
+One reserved bootstrap `usr` is needed to avoid a circular dependency between
+user creation and transaction creation. Working name: `jdtp-admin`, with a
+stable world-unique ID such as `...~usr~jdtp-admin`. It is a system/audit
+identity, not a human login account. Its own existence is a genesis storage
+fact, and it may author the first durable transactions that create the initial
+`usr`, `grp`, `typ`, `ppy`, policy, and membership records. After that, normal
+transactions should use real local `usr` records projected from ORCID/Keycloak
+or another authentication source.
+
 `grp` remains the group/ownership/permission object. It is not a list of ORCID
 IDs. Group membership should become local Jade-Tipi state, represented by `usr`
 properties, `lnk` relationships, or a later membership projection, possibly
@@ -269,7 +278,8 @@ behavior working until a deliberate cleanup.
    materialized property-value entry shape, the read overlay boundary, and the
    implementation task breakdown. Stop before code changes.
 3. **Introduce local user/audit records.** Add `usr` as a first-class local
-   identity collection, define how ORCID/OIDC identities are projected into
+   identity collection, define the reserved `jdtp-admin` bootstrap user and
+   genesis provenance rule, define how ORCID/OIDC identities are projected into
    `usr`, and persist `txn.user_id` plus immutable writer snapshots on durable
    transaction records.
 4. **Split durable transaction state from message staging.** Introduce `msg`
@@ -310,6 +320,9 @@ behavior working until a deliberate cleanup.
 - Define the minimal `usr` root shape and the transaction writer snapshot:
   whether ORCID is the primary external key, whether OIDC issuer/subject are
   required, and how service accounts are represented.
+- Define the `jdtp-admin` bootstrap identity: exact stable ID convention,
+  reserved/system markers, genesis creation rule, and allowed use for initial
+  transactions.
 - Decide how group membership is represented locally: `usr` properties,
   membership `lnk` records, or a later dedicated projection. Avoid making
   `grp` a list of ORCID IDs.

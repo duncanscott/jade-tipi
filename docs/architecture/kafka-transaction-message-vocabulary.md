@@ -135,6 +135,32 @@ The `user_id` reference supports current joins to richer local identity data.
 The writer snapshot preserves audit meaning if the `usr` record is later
 renamed, merged, disabled, or enriched.
 
+### Bootstrap `usr`
+
+The local `usr` model needs one reserved bootstrap identity so the first normal
+transactions can be represented without a circular dependency. Working name:
+`jdtp-admin`, with a stable world-unique ID such as `...~usr~jdtp-admin`.
+
+`jdtp-admin` is a system/audit identity, not a login account. It should be
+created as a genesis storage fact before ordinary transaction validation
+requires `txn.user_id`. It may author genesis transactions that create the
+initial local users, groups, types, properties, policies, and membership facts.
+Those transactions should still carry a normal durable writer shape:
+
+```json
+{
+  "user_id": "...~usr~jdtp-admin",
+  "writer": {
+    "kind": "system",
+    "name": "JDTP Bootstrap Admin",
+    "source": "bootstrap"
+  }
+}
+```
+
+After bootstrap, new transactions should use real `usr` records projected from
+ORCID/Keycloak or another configured authentication source.
+
 ## Property Definitions
 
 Properties are first-class documents in `ppy`. A property definition names the

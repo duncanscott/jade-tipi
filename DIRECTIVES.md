@@ -143,22 +143,24 @@ and standalone `ppy` assignment roots should not become the generic long-term
 model. The current target is documented in `DIRECTION.md` and
 `docs/architecture/object-property-model-drift.md`: `txn` holds durable
 transaction objects, transient transaction-message payloads move to `msg`,
-`usr` provides local user/audit identity, `ppy` defines properties and write
-policy, and object documents hold materialized property values keyed by `ppy`
-ID with transaction provenance. `grp` remains the group/permission object, not
-a collection of ORCID IDs. The next bounded item is TASK-038 prework to plan
-that corrected transaction-staged object-property projection path.
+`usr` provides local user/audit identity, including a reserved `jdtp-admin`
+bootstrap identity for genesis setup, `ppy` defines properties and write policy,
+and object documents hold materialized property values keyed by `ppy` ID with
+transaction provenance. `grp` remains the group/permission object, not a
+collection of ORCID IDs. The next bounded item is TASK-038 prework to plan that
+corrected transaction-staged object-property projection path.
 
 ## Active Task
 
 - `TASK-038 - Transaction-staged object property projection prework` is
   `READY_FOR_PREWORK`. Plan only the corrected architecture and implementation
   sequence: split durable `txn` transaction objects from transient `msg`
-  message staging, introduce local `usr` audit identity and durable transaction
-  writer snapshots, define the materialized object property-value entry keyed
-  by `ppy` ID, define read overlay semantics for committed-but-unapplied
-  messages, and produce follow-on implementation tasks. Stop after prework; do
-  not implement production code in TASK-038.
+  message staging, introduce local `usr` audit identity including the reserved
+  `jdtp-admin` bootstrap user, define durable transaction writer snapshots,
+  define the materialized object property-value entry keyed by `ppy` ID, define
+  read overlay semantics for committed-but-unapplied messages, and produce
+  follow-on implementation tasks. Stop after prework; do not implement
+  production code in TASK-038.
 - `TASK-037 - Location contents read view` is accepted. The read side can now
   answer the contents of a location by composing accepted contents-link and
   root/property read services.

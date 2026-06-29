@@ -56,6 +56,15 @@ client, and authentication source. The snapshot preserves the audit meaning of
 the transaction even if the `usr` record is later merged, renamed, disabled, or
 enriched.
 
+The system needs one reserved bootstrap user so the first normal transactions
+can be audited without a user/transaction creation cycle. Working name:
+`jdtp-admin`, with a stable `usr` ID such as `...~usr~jdtp-admin`. This is a
+system/bootstrap identity, not a login account and not an external identity
+provider user. It may author genesis transactions that create the first local
+`usr`, `grp`, `typ`, `ppy`, and policy records. The creation of the bootstrap
+`usr` itself is a genesis storage fact, not a normal user-authored
+transaction.
+
 `grp` records are first-class Jade-Tipi objects. They should have world-unique
 IDs, `type_id`, explicit properties, possible links, and the same root-document
 storage shape as other long-term collection objects.

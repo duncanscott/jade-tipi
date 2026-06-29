@@ -104,6 +104,37 @@ The `user_id` reference supports current joins to richer local identity data.
 The writer snapshot protects the audit trail if the `usr` record is later
 renamed, merged, disabled, or enriched.
 
+### Bootstrap user
+
+Jade-Tipi needs one reserved local bootstrap user to break the cycle where a
+transaction requires a `usr`, but creating the first `usr` would otherwise
+require a transaction. Working name: `jdtp-admin`.
+
+The bootstrap identity should be created as a genesis storage fact before
+normal transaction validation is enforced. It is a system/audit identity, not a
+human login account and not an external identity-provider account. It should
+not store passwords or bearer tokens.
+
+The bootstrap `usr` should have a stable, well-known ID such as
+`...~usr~jdtp-admin` and properties that mark it as reserved/system/bootstrap.
+It may author the first durable transactions that create the initial `usr`,
+`grp`, `typ`, `ppy`, policy, and membership records. Those transactions should
+still carry a normal transaction writer shape, for example:
+
+```json
+{
+  "user_id": "...~usr~jdtp-admin",
+  "writer": {
+    "kind": "system",
+    "name": "JDTP Bootstrap Admin",
+    "source": "bootstrap"
+  }
+}
+```
+
+After the initial records exist, normal transactions should use real local
+`usr` records projected from ORCID/Keycloak or another authentication source.
+
 ## Group Permission Direction
 
 Jade-Tipi authorization should be based on group membership before it attempts

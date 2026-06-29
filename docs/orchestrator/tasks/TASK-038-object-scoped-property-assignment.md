@@ -86,6 +86,11 @@ ACCEPTANCE_CRITERIA:
   display facts, service-account representation, `txn.user_id`, and immutable
   `txn.writer` snapshot. The design must make transaction audit possible
   without querying Keycloak, ORCID, or another identity provider.
+- Define the bootstrap identity needed to avoid a user/transaction creation
+  cycle. The expected direction is a reserved local `usr` named `jdtp-admin`,
+  created as a genesis storage fact before normal transaction validation, used
+  only as a system/audit identity for initial transactions, and not treated as
+  a human login account or external identity-provider user.
 - Define the local membership boundary. `grp` records are group/permission
   objects, not collections of ORCID IDs. Group membership should be planned as
   local Jade-Tipi state, such as `usr` properties, membership `lnk` records, or
@@ -104,11 +109,11 @@ ACCEPTANCE_CRITERIA:
   implementation: whether staged messages are deleted before or after marking
   the durable transaction applied, and what guard prevents payload loss.
 - Produce a follow-on task list with implementation order. At minimum it must
-  include `usr` materialization/projection, durable transaction writer
-  persistence, splitting `txn`/`msg`, object-targeted property assignment
-  messages, projection to object roots, typed location definitions, container
-  seed migration, generic object property reads, and cleanup of transitional
-  shapes.
+  include bootstrap `usr~jdtp-admin` genesis setup, `usr`
+  materialization/projection, durable transaction writer persistence, splitting
+  `txn`/`msg`, object-targeted property assignment messages, projection to
+  object roots, typed location definitions, container seed migration, generic
+  object property reads, and cleanup of transitional shapes.
 - Stop after prework. Do not implement production code in this task.
 
 OUT_OF_SCOPE:
@@ -120,6 +125,7 @@ OUT_OF_SCOPE:
   and `txn` records who wrote a value.
 - No full user-administration workflow, password handling, external identity
   provider administration, or production account lifecycle implementation.
+- No login support for `jdtp-admin`; it is a bootstrap audit identity only.
 - No full payload archive design beyond identifying whether one is required.
 
 PREWORK_REQUIREMENTS:
