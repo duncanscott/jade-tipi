@@ -2,7 +2,13 @@
 
 ## Overview
 
-A command-line client authenticates users via their ORCID iD using the OAuth 2.0 Device Authorization Grant (RFC 8628). The CLI extracts the verified ORCID iD from the resulting token and includes it in messages published to a Kafka topic. The backend trusts the CLI and does not independently verify the identity.
+A command-line client authenticates users via their ORCID iD using the OAuth
+2.0 Device Authorization Grant (RFC 8628). The CLI extracts the verified ORCID
+iD from the resulting token and includes it in messages published to a Kafka
+topic. Jade-Tipi should use that authenticated external identity to create or
+resolve a local `usr` record, then persist `user_id` and an immutable writer
+snapshot on durable transaction records. This keeps transaction audit readable
+without querying Keycloak or ORCID later.
 
 ## Components
 
@@ -10,7 +16,9 @@ A command-line client authenticates users via their ORCID iD using the OAuth 2.0
 2. **ORCID** — External OIDC identity provider, configured in Keycloak as an identity broker.
 3. **CLI client** — Authenticates via Keycloak device flow. Extracts the ORCID iD from the token. Publishes messages to Kafka containing the ORCID iD and payload data.
 4. **Kafka** — Message broker between the CLI and the backend.
-5. **Spring Boot backend** — Kafka consumer. Trusts the ORCID iD in the message as verified.
+5. **Spring Boot backend** — Kafka consumer. Trusts the ORCID iD in the message
+   as verified, resolves or creates the corresponding local `usr` identity, and
+   persists writer identity on the durable transaction record.
 
 ## Keycloak Configuration
 
@@ -63,15 +71,49 @@ No tokens are included in the message. The ORCID iD is a plain string.
 
 1. Backend consumes a message from the Kafka topic.
 2. Backend reads the ORCID iD and payload from the message.
-3. Backend processes the data, trusting that the CLI verified the ORCID iD via Keycloak/ORCID authentication.
+3. Backend resolves the ORCID iD to a local `usr` record, creating a minimal
+   record when no match exists.
+4. Backend processes the data, trusting that the CLI verified the ORCID iD via
+   Keycloak/ORCID authentication, and stores `user_id` plus a writer snapshot on
+   the durable transaction record.
+
+## Local User Records
+
+Jade-Tipi should have a first-class `usr` collection for local identity and
+audit. `usr` records are not an authentication provider and do not store
+passwords or access tokens. They are local Jade-Tipi objects that preserve the
+identity needed to explain historical transactions and property writes.
+
+A minimal `usr` record should carry:
+
+- A world-unique `usr` ID.
+- One or more external identity keys, such as ORCID iD, OIDC issuer, and OIDC
+  subject.
+- Human-readable display facts when available, such as display name and email.
+- Status/provenance fields needed to explain whether the record was imported,
+  self-asserted, or projected from a verified login.
+
+Each durable `txn` record should store:
+
+- `user_id`: the local `usr` ID for the writer.
+- `writer`: an immutable snapshot of the identity observed at transaction time,
+  such as ORCID iD, issuer, subject, display name, client, and authentication
+  source.
+
+The `user_id` reference supports current joins to richer local identity data.
+The writer snapshot protects the audit trail if the `usr` record is later
+renamed, merged, disabled, or enriched.
 
 ## Group Permission Direction
 
 Jade-Tipi authorization should be based on group membership before it attempts
-finer-grained exceptions. Users are members of one or more groups through
-Keycloak claims or a future membership service. Objects and property assignments
-are owned by groups. Members of the owning group have read/write access to the
-objects and properties owned by that group.
+finer-grained exceptions. Users are represented locally by `usr` records and
+are members of one or more groups through local membership facts. Those facts
+may initially be projected from Keycloak claims or another identity-provider
+source, but authorization and audit reads should not require a live
+identity-provider query. Objects and property assignments are owned by groups.
+Members of the owning group have read/write access to the objects and
+properties owned by that group.
 
 Each `grp` record should be a normal Jade-Tipi object with a world-unique ID,
 properties, possible links, and a permissions map for other groups. The initial
@@ -85,9 +127,18 @@ needs to be evaluated at property scope. Object-level permission overrides and
 property-value-level overrides may be useful later, but they should not be part
 of the first implementation unless a concrete use case requires them.
 
+`grp` records are not collections of ORCID IDs. They define groups and
+group-to-group grants. Membership can be represented locally as `usr`
+properties, `lnk` relationships, or a later dedicated membership projection.
+
 ## Trust Model
 
-The backend trusts the CLI. The verification of the ORCID iD happens at the CLI layer during the Keycloak device flow. The ORCID iD in Kafka messages is not independently validated by the backend. This is appropriate when:
+The backend trusts the CLI. The verification of the ORCID iD happens at the CLI
+layer during the Keycloak device flow. The ORCID iD in Kafka messages is not
+independently validated by the backend. The backend's responsibility is to
+persist the observed identity locally in `usr`/`txn` so later audit does not
+depend on a live external identity provider. This trust model is appropriate
+when:
 - The CLI is a known, controlled application (not arbitrary third-party code)
 - The Kafka topic is restricted to authorized producers
 - The threat model does not include a compromised or spoofed CLI
@@ -109,6 +160,7 @@ The backend trusts the CLI. The verification of the ORCID iD happens at the CLI 
 | Message broker | Apache Kafka |
 | Backend | Spring Boot (Groovy) with Kafka consumer |
 | Identity in messages | ORCID iD as a plain string, verified at CLI auth time |
+| Local identity store | `usr` collection, used for durable audit and later membership joins |
 
 ## Local Admin Group Management (TASK-021)
 
@@ -145,7 +197,9 @@ The Spring backend reads the user's JWT and pulls roles from
 `realm_access.roles`. There is no dependency on the Keycloak `master` realm
 admin user; the application authorizes from the user's own JWT only. There is
 no Keycloak group synchronization, no general permission evaluation, and no
-property-level enforcement in this path.
+property-level enforcement in this path. This local admin path does not yet
+materialize `usr` records; that remains follow-up work for transaction audit
+and membership modeling.
 
 ### Realm users
 

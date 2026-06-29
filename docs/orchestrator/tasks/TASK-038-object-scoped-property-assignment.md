@@ -1,8 +1,8 @@
-# TASK-038 - Object-scoped property-value assignment
+# TASK-038 - Transaction-staged object property projection prework
 
 ID: TASK-038
 TYPE: implementation
-ARTIFACT_INTENT: implementation
+ARTIFACT_INTENT: implementation-plan
 STATUS: READY_FOR_PREWORK
 OWNER: unassigned
 SOURCE_TASK:
@@ -10,8 +10,13 @@ SOURCE_TASK:
   - TASK-031
   - TASK-030
   - TASK-026
+  - TASK-036
 PAUSE_SOURCE_TASKS: true
 OWNED_PATHS:
+  - DIRECTION.md
+  - README.md
+  - docs/README.md
+  - docs/user-authentication.md
   - docs/architecture/object-property-model-drift.md
   - docs/architecture/kafka-transaction-message-vocabulary.md
   - docs/orchestrator/tasks/TASK-038-object-scoped-property-assignment.md
@@ -22,105 +27,137 @@ OWNED_PATHS:
   - libraries/jade-tipi-dto/src/main/resources/schema/message.schema.json
   - libraries/jade-tipi-dto/src/test/groovy/org/jadetipi/dto/message/
 REQUIRED_CAPABILITIES:
-  - code-implementation
+  - architecture-prework
   - kafka-integration
+  - mongo-materialization
   - gradle-verification
 
 GOAL:
-Generalize `ppy + create` property-value assignment from entity-scoped to
-object-scoped, so any supported domain object (starting with `loc` and `ent`)
-can hold type-gated property values. This is the keystone step of the
-`object-property-model-drift.md` migration: `DIRECTION.md` specifies that
-"each object" is a typed collection of property-value assignments, but the
-current materializer hard-wires assignment to `data.entity_id` and an `ent`
-root, so locations cannot have property values at all.
+Turn the object-property-model drift note into an implementation plan for the
+corrected target architecture: durable transaction records in `txn`, transient
+transaction-message staging in `msg`, local writer identities in `usr`,
+property definitions and write policy in `ppy`, and materialized object
+property values keyed by `ppy` ID on object documents (`ent`, `loc`, and later
+`lnk`/others).
+
+This task intentionally replaces the prior TASK-038 direction. The rejected
+direction was to generalize the current standalone `ppy` assignment-root model
+from entities to all objects. That would make the current drift generic instead
+of returning to the foundation model.
 
 CONTEXT:
-- See `docs/architecture/object-property-model-drift.md` Section 4 (blast
-  radius) and Section 6 (migration order). This task is migration step 2 and
-  depends on the Section 5 storage-shape ratification (Option A — keep
-  standalone `ppy` assignment roots, join at read).
-- The entity assignment path already gates correctly on the target's
-  `type_id` -> `typ.properties.property_refs`
-  (`CommittedTransactionMaterializer.groovy:320-410`). The only entity-specific
-  pieces are the `entity_id` field name and the hard-coded
-  `findById(entityId, Map, COLLECTION_ENT)` lookup. This task makes the target
-  collection-agnostic; it does not change the gating rule or the storage shape.
+- `DIRECTION.md` says each object is a typed collection of explicit
+  property-value assignments, and that property maps should be keyed by the IDs
+  of property objects.
+- `docs/architecture/object-property-model-drift.md` now states the corrected
+  target: `txn` is permanent transaction metadata; `msg` is transient message
+  staging; `usr` is local identity/audit state; `ppy` is definitions/policy;
+  object roots hold materialized property values keyed by `ppy` ID with
+  transaction provenance.
+- The current code stores transaction headers and message records in `txn`, and
+  stores entity property assignments as standalone `ppy` roots. Those are
+  transitional implementation details, not the long-term model.
+- The current message envelope allows `txn.user`, but durable transaction
+  headers do not yet persist a local `user_id` or immutable writer snapshot.
+  TASK-038 should plan that gap before property-value provenance depends on
+  transaction records.
+- The near-term product goal is still to publish Kafka messages that represent
+  Clarity/ESP container and sample data, then inspect the resulting MongoDB
+  JSON. This prework protects that goal from entrenching the wrong storage
+  shape.
 
 ACCEPTANCE_CRITERIA:
-- Accept a generic target reference on `ppy + create` assignment `data`. The
-  assignment carries `object_id` plus an explicit `object_collection`
-  (recommended) naming the target collection. Continue to accept legacy
-  `entity_id` as an alias for `object_id` with `object_collection == "ent"` so
-  existing TASK-031/032/033 examples, tests, and the `07`/`08` canonical
-  messages keep passing unchanged.
-- The materializer resolves the target root by `object_id` in the named
-  `object_collection` (initially restricted to `loc` and `ent`), and applies
-  the existing gate unchanged: the target root must exist, must have a non-blank
-  `type_id`, that `typ` root must exist, and it must list the assignment's
-  `property_id` under `properties.property_refs`. Preserve the existing
-  `MaterializeResult` skip-counter mapping rather than collapsing to one tally:
-  an unsupported `object_collection` -> `skippedUnsupported`; a missing target
-  root -> `skippedMissingTarget`; an untyped target or a `property_id` absent
-  from the type's `property_refs` -> `skippedUnregisteredProperty`; missing or
-  blank required fields or a non-object `value` -> `skippedInvalid`. Add no new
-  `MaterializeResult` fields unless justified in pre-work.
-- Storage shape follows the drift note Section 5 decision. The proposed default,
-  pending human/director ratification, is Option A (standalone `ppy` assignment
-  roots, joined at read): a standalone `ppy` root keyed by `data.id`, carrying
-  `properties.kind == "assignment"`, the target reference,
-  `properties.property_id`, and the object-shaped `properties.value`, with no
-  projection onto the target object root. If Option B (projection onto the
-  object root) is ratified instead, this acceptance criterion and the task's
-  storage work must be re-scoped accordingly before implementation.
-- Do not change `loc + create`, `ent + create`, `typ`, link, or definition
-  materialization. Do not add HTTP submission. Do not change the read views in
-  this task.
-- Update `message.schema.json` only as needed to permit the new
-  `object_id` / `object_collection` assignment fields while preserving the
-  existing `entity_id` form.
-- Update `docs/architecture/kafka-transaction-message-vocabulary.md`
-  "Property Value Assignment" to document the object-scoped form and the
-  retained `entity_id` alias.
+- Document the intended collection responsibilities in enough detail for the
+  next implementer:
+  - `txn`: durable transaction object/header that remains forever and records
+    local `user_id`, immutable writer snapshot, ownership/group, commit state,
+    commit identity, timestamps, and materialization state.
+  - `msg`: transient transaction-message staging records keyed by
+    `txn_id` plus message UUID, cleared only after all messages in a committed
+    transaction have been projected to object documents.
+  - `usr`: local identity/audit records for people and service identities,
+    usually projected from ORCID/Keycloak or another authentication source.
+  - `ppy`: property definitions, value schema, owner, and write policy; not
+    long-lived assignment-value records.
+  - object collections: current materialized object state with property values
+    keyed by `ppy` ID and carrying transaction provenance.
+- Define the minimal `usr` root shape and transaction writer contract:
+  external identity keys (for example ORCID iD, OIDC issuer, and OIDC subject),
+  display facts, service-account representation, `txn.user_id`, and immutable
+  `txn.writer` snapshot. The design must make transaction audit possible
+  without querying Keycloak, ORCID, or another identity provider.
+- Define the local membership boundary. `grp` records are group/permission
+  objects, not collections of ORCID IDs. Group membership should be planned as
+  local Jade-Tipi state, such as `usr` properties, membership `lnk` records, or
+  a later dedicated membership projection.
+- Propose the minimal object property-value entry shape, including where
+  `value`, `txn_id`, `commit_id`, `msg_uuid`, and `applied_at` live. Identify
+  any fields that must remain open for human/director decision.
+- Define the materialization lifecycle at the design level:
+  submit messages -> stage in `msg` -> commit transaction in `txn` -> project
+  committed messages onto object roots -> mark the durable transaction applied
+  -> clear staged messages from `msg`.
+- Define the read-overlay boundary: readers should eventually overlay
+  committed-but-unapplied `msg` records on top of materialized object roots,
+  with optional read-your-own-open-transaction support deferred.
+- Identify the idempotency/crash-safety decision that must be made before
+  implementation: whether staged messages are deleted before or after marking
+  the durable transaction applied, and what guard prevents payload loss.
+- Produce a follow-on task list with implementation order. At minimum it must
+  include `usr` materialization/projection, durable transaction writer
+  persistence, splitting `txn`/`msg`, object-targeted property assignment
+  messages, projection to object roots, typed location definitions, container
+  seed migration, generic object property reads, and cleanup of transitional
+  shapes.
+- Stop after prework. Do not implement production code in this task.
 
 OUT_OF_SCOPE:
-- No location types or location property definitions (that is TASK-039); this
-  task only makes the mechanism object-generic. Location assignments become
-  usable once TASK-039 supplies typed locations, but this task is verifiable
-  now with a test location that is given a `type_id` and a location `typ` with
-  `property_refs` inside the test fixture.
-- No migration of existing inline name-keyed `loc`/`ent` root properties to
-  assignments (that is TASK-040).
-- No generic object property-values read view (that is TASK-041).
-- No projection of values onto object roots, no required/default properties,
-  no permission enforcement, no value-shape validation against `value_schema`.
+- No production code changes.
+- No MongoDB migration of existing local data.
+- No deletion of existing standalone `ppy` assignment-root behavior.
+- No UI work.
+- No permission enforcement beyond documenting that `ppy` owns property policy
+  and `txn` records who wrote a value.
+- No full user-administration workflow, password handling, external identity
+  provider administration, or production account lifecycle implementation.
+- No full payload archive design beyond identifying whether one is required.
 
 PREWORK_REQUIREMENTS:
-- Confirm the target-resolution mechanism: explicit `object_collection` field
-  (recommended) vs. probing supported collections by `object_id`. The
-  materializer must not parse IDs to infer collection.
-- Identify the exact materializer changes (field constant, target lookup,
-  alias handling) and the minimal schema change.
-- Identify the test matrix: entity-assignment regression (unchanged behavior),
-  new loc-assignment happy path (typed location + property in refs), and gate
-  rejections (untyped target, property not in refs, unsupported collection,
-  missing target).
-- Stop after pre-work. Do not implement until the director advances this task to
-  READY_FOR_IMPLEMENTATION and Section 5 of the drift note is ratified.
+- Re-read `DIRECTION.md`, `docs/architecture/jade-tipi-object-model-design-brief.md`,
+  and `docs/architecture/kafka-transaction-message-vocabulary.md` before
+  finalizing the plan.
+- Compare the plan against current materializer behavior so the follow-on tasks
+  are grounded in real code boundaries, especially transaction persistence,
+  committed transaction reads, `ppy + create` assignment materialization, and
+  root document construction.
+- Inspect the existing `Transaction` DTO and transaction-message persistence
+  behavior so the plan distinguishes current `txn.user` envelope metadata from
+  the target durable `txn.user_id` / `txn.writer` audit fields.
+- Keep backward compatibility explicit. Existing TASK-031/032/033 examples and
+  tests should continue to work until a later cleanup task deliberately removes
+  transitional shapes.
+- Call out any terminology changes needed in docs and schemas. In particular,
+  `msg` must be introduced as a staging collection without making it sound like
+  a permanent domain collection, and `usr` must be introduced as local audit
+  identity without making it the authentication provider.
 
 VERIFICATION:
-- `./gradlew :jade-tipi:test` (service specs: object-generic resolution,
-  entity regression, gate rejections, legacy `entity_id` alias).
-- The narrowest opt-in Kafka/Mongo integration check that publishes a typed
-  location plus a `ppy` assignment to it and confirms the materialized
-  assignment root, if local Docker is available
-  (`JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest`).
-- `git diff --check`.
+- `git diff --check`
+- No Gradle test run is required for docs-only prework. If the prework edits
+  schema examples or production code despite this task's scope, run the
+  narrowest affected Gradle tasks and document why the scope changed.
 
 DESIGN_NOTES:
-- Keystone for the drift migration: TASK-039 (type locations) and TASK-040
-  (migrate container fields to assignments) both depend on this mechanism
-  existing.
-- Keep the change additive. The legacy `entity_id` alias means no existing
-  artifact has to change in this task; the cleanup of `entity_id` usage can be
-  a later, separate task once all producers emit `object_id`.
+- The immediate review point the project is heading toward is still Kafka-backed
+  persistence of container/sample data into MongoDB so the JSON structures can
+  be reviewed.
+- This task exists because that review point should inspect the intended object
+  property model, not a generalized version of the first-pass string-property
+  shape.
+- The same review point should also show durable transaction writer identity.
+  `txn.user` in messages is not enough if the eventual staged `msg` rows are
+  cleared after materialization.
+- The implementation sequence should stay additive. First introduce the new
+  staging/projection path beside the current path; remove or migrate the
+  transitional standalone `ppy` assignment roots only after typed location data
+  is represented and reviewed.

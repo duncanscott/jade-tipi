@@ -76,14 +76,22 @@ This naming scheme ensures:
 - Metadata can be merged seamlessly between institutions
 - All IDs work directly as keys in popular databases (MongoDB, PostgreSQL, Redis, etc.)
 
-### Groups and Permissions
+### Users, Groups, and Permissions
 
 All objects belong to a **group**, which defines ownership and read/write permissions. Members of one group may add properties to objects owned by another group. For example, a QC group may analyze a DNA assembly owned by the assembly group and assign a quality score. Properties are owned by the group that added them, enabling fine-grained permission control.
+
+User records live in `usr` as local Jade-Tipi identity/audit objects. ORCID and
+Keycloak can authenticate a person, but Jade-Tipi should persist a local `usr`
+record plus a writer snapshot on each durable transaction so historical
+transactions remain explainable without querying an external identity provider.
 
 Group records live in `grp` as normal Jade-Tipi objects with world-unique IDs,
 properties, and possible links. The first permission model should be simple:
 members of the owning group have read/write access, and a group may grant other
 groups either `rw` or `r` access through a permissions map on the `grp` record.
+`grp` records are groups, not lists of ORCID IDs; membership should be local
+Jade-Tipi state, projected from identity-provider claims or maintained by a
+future membership workflow.
 Object-level and property-value-level overrides are possible future extensions,
 but should wait for concrete use cases.
 
@@ -184,6 +192,8 @@ Transaction IDs are generated using a timestamp-based format with sequence numbe
 Documents in MongoDB include:
 - **Entities**: Stored as flexible JSON documents with dynamic properties
 - **Transactions**: Include metadata about opens and commits with proper BSON Date types for timestamp fields (`opened`, `committed`)
+- **Users**: Local `usr` records identify transaction writers and preserve audit
+  identity without requiring external identity-provider lookups
 - **Groups**: Organization and group identifiers embedded in transaction records
 
 The system stores timestamps as Java `Instant` objects, which MongoDB persists as BSON Date types. This enables proper date-based queries and indexing.
@@ -191,10 +201,12 @@ The system stores timestamps as Java `Instant` objects, which MongoDB persists a
 ### Authentication Flow
 
 1. Client requests JWT token from Keycloak
-2. Keycloak validates credentials and issues token with custom claims (`tipi_org`, `tipi_group`)
+2. Keycloak validates credentials and issues token with user and group claims
 3. Client includes Bearer token in API requests
-4. Backend validates token and extracts group membership
-5. Group information controls document access and transaction permissions
+4. Backend validates token, resolves the local `usr` record, and extracts or
+   projects group membership
+5. Local user and group information controls document access, transaction
+   permissions, and audit
 
 ## Next Steps
 

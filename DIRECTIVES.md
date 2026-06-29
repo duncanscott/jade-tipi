@@ -130,15 +130,46 @@ follow the shared idempotent/conflicting rules. Value-shape validation against
 the registered `value_schema`, semantic `property_id` resolution against
 `ppy`, and assignment projection onto `ent` roots remain future work.
 
+`TASK-033` through `TASK-037` are accepted. The read side now has an entity
+property-values service, a fixed 96-well plate contents view, a resolved
+object-locations view, a Kafka-backed Clarity/ESP container review seed, and a
+location-contents view. These slices provide useful inspection surfaces, but
+the container data they expose still rests on the first-pass name-keyed
+`loc.properties` shape.
+
+Human review on 2026-06-28 identified a foundational object-property drift:
+domain property values should not remain plain strings under `loc.properties`,
+and standalone `ppy` assignment roots should not become the generic long-term
+model. The current target is documented in `DIRECTION.md` and
+`docs/architecture/object-property-model-drift.md`: `txn` holds durable
+transaction objects, transient transaction-message payloads move to `msg`,
+`usr` provides local user/audit identity, `ppy` defines properties and write
+policy, and object documents hold materialized property values keyed by `ppy`
+ID with transaction provenance. `grp` remains the group/permission object, not
+a collection of ORCID IDs. The next bounded item is TASK-038 prework to plan
+that corrected transaction-staged object-property projection path.
+
 ## Active Task
 
-- `TASK-033 - Entity property-values read service` is `READY_FOR_PREWORK`.
-  claude-1 should plan only the bounded read-side increment that answers
-  "what is this entity and which property values are assigned to it?" from
-  the materialized `ent` and `ppy` roots, following the accepted
-  TASK-015/TASK-016 read-service and HTTP-adapter pattern. HTTP reads are
-  established surface; Kafka remains the primary submission route for domain
-  data.
+- `TASK-038 - Transaction-staged object property projection prework` is
+  `READY_FOR_PREWORK`. Plan only the corrected architecture and implementation
+  sequence: split durable `txn` transaction objects from transient `msg`
+  message staging, introduce local `usr` audit identity and durable transaction
+  writer snapshots, define the materialized object property-value entry keyed
+  by `ppy` ID, define read overlay semantics for committed-but-unapplied
+  messages, and produce follow-on implementation tasks. Stop after prework; do
+  not implement production code in TASK-038.
+- `TASK-037 - Location contents read view` is accepted. The read side can now
+  answer the contents of a location by composing accepted contents-link and
+  root/property read services.
+- `TASK-036 - Kafka container review seed` is accepted. It remains the first
+  MongoDB inspection point for Clarity/ESP container/sample data, but its
+  name-keyed `loc.properties` shape is now explicitly transitional.
+- `TASK-035 - Resolved object locations read view` is accepted.
+- `TASK-034 - Plate-shaped contents read view` is accepted.
+- `TASK-033 - Entity property-values read service` is accepted. It documents
+  the current transitional entity read path over standalone `ppy` assignment
+  roots, not the final storage contract.
 - `TASK-032 - Human-readable Kafka property-assignment materialization path`
   is accepted. `ppy + create` `data.kind == "assignment"` messages now
   materialize as root-shaped assignment records gated by type registration
@@ -215,10 +246,10 @@ the registered `value_schema`, semantic `property_id` resolution against
 - `TASK-012 - Plan contents HTTP read integration coverage` is accepted
   historical context only. Do not implement `TASK-012` as-is.
 
-`TASK-033` is the active bounded task. Broader authentication redesign,
+`TASK-038` is the active bounded task. Broader authentication redesign,
 Keycloak changes, admin group-management changes, permission
-evaluation/enforcement semantics, and unrelated product increments remain
-future work unless the human selects one as a later bounded goal.
+evaluation/enforcement semantics, UI work, and unrelated product increments
+remain future work unless the human selects one as a later bounded goal.
 
 ## Orchestrator Protocol Direction
 

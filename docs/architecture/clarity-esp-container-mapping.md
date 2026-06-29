@@ -66,9 +66,14 @@ Expected review roots:
 This seed gives the first MongoDB inspection point for the longer
 goal of representing local `clarity` and `esp-entity` CouchDB
 container/sample information in Jade-Tipi. After review, the next
-decision is whether to deepen this into a real CouchDB import loop,
-add richer property-definition/property-assignment modeling, or move
-to UI work over the seeded roots.
+decision is no longer whether to add richer property modeling at all;
+the object-property model drift note has made that a prerequisite for
+the next durable data-shape review. This document's current
+`loc.properties` mapping is therefore first-pass/prototype only. The
+target follow-on is to define location `typ` records, `ppy` property
+definitions, transient `msg` staging, and materialized `loc` property
+values keyed by `ppy` ID before deepening this into a real CouchDB
+import loop or UI work over the seeded roots.
 
 This revision responds to
 `docs/architecture/jade-tipi-object-model-design-brief.md`, which is

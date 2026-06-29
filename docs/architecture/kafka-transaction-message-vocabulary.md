@@ -16,7 +16,14 @@ Every submitted message uses the DTO `Message` envelope and carries a first-clas
 }
 ```
 
-`collection` is the Jade-Tipi collection abbreviation: `ent`, `ppy`, `lnk`, `loc`, `uni`, `grp`, `typ`, `vdn`, or `txn`. The backend stores it explicitly in `txn` message documents.
+Current schema note: `collection` is one of the Jade-Tipi collection
+abbreviations currently accepted by `message.schema.json`: `ent`, `ppy`,
+`lnk`, `loc`, `uni`, `grp`, `typ`, `vdn`, or `txn`. The backend stores it
+explicitly in transaction message documents.
+
+Target direction: `usr` should be added as the local user/identity collection,
+and `msg` should be added as transient transaction-message staging. `txn`
+remains special durable transaction metadata, not a normal domain collection.
 
 `txn`, `uuid`, `collection`, and `action` are all required by `message.schema.json`. The schema also enforces action/collection compatibility:
 
@@ -69,16 +76,78 @@ The early materializer may also tolerate older examples that put `name` and
 
 ## Transaction Records
 
-The `txn` MongoDB collection should contain two record kinds:
+Current implementation note: the first materializer stores two record kinds in
+the `txn` MongoDB collection:
 
 - Transaction header: `_id = txn_id`, `record_type = "transaction"`.
-- Message record: `_id = txn_id + "~" + msg_uuid`, `record_type = "message"`. Each message record stores the submitted envelope, including `collection`, so materializers and readers do not have to infer the target collection from payload fields.
+- Message record: `_id = txn_id + "~" + msg_uuid`, `record_type = "message"`.
+  Each message record stores the submitted envelope, including `collection`, so
+  materializers and readers do not have to infer the target collection from
+  payload fields.
 
-The header is the authoritative source for commit state. Once the header has a `commit_id`, the transaction is committed. Message-level `commit_id` may be added later as a read optimization, but readers must be able to resolve visibility through the header.
+That shape is transitional. The target direction is to split durable
+transaction metadata from transient message staging:
+
+- `txn` contains durable transaction objects that last forever. The transaction
+  is the authoritative source for commit state and for who wrote a property
+  value. It should carry `user_id` plus an immutable writer snapshot, not only
+  a group/client identifier.
+- `msg` contains transient transaction-message payloads while they are open,
+  committed-but-unapplied, or being applied. Once every message in a committed
+  transaction has been written to the target object documents, the staged
+  messages for that transaction are cleared from `msg`.
+
+Once the durable `txn` header has a `commit_id`, the transaction is committed.
+Readers must be able to resolve visibility through the durable transaction
+record. A later object-property reader should overlay committed `msg` records
+that have not yet been projected onto object roots; after projection and
+message cleanup, the object roots plus transaction provenance on the value
+entries are sufficient for ordinary reads.
+
+## User Records And Writer Audit
+
+Current implementation note: the `Transaction` envelope allows a `user` field,
+and canonical examples use an ORCID-style identifier there. That field is
+message metadata today. Durable transaction headers do not yet persist a local
+`user_id` or immutable writer snapshot.
+
+Target direction: Jade-Tipi should add a first-class `usr` collection for local
+identity and audit. ORCID and Keycloak remain authentication sources, but
+Jade-Tipi must persist enough identity locally to explain transactions without
+querying an external identity provider. A `usr` record is not a password store
+or token store; it is a local object for a person or service identity known to
+Jade-Tipi.
+
+A minimal `usr` record should carry:
+
+- a world-unique `usr` ID;
+- external identity keys such as ORCID iD, OIDC issuer, and OIDC subject;
+- display facts such as display name and email when available;
+- provenance for how the identity was observed or verified.
+
+A durable `txn` record should carry both:
+
+- `user_id`: the local `usr` ID for the writer;
+- `writer`: an immutable transaction-time snapshot, such as ORCID iD, issuer,
+  subject, display name, client, and authentication source.
+
+The `user_id` reference supports current joins to richer local identity data.
+The writer snapshot preserves audit meaning if the `usr` record is later
+renamed, merged, disabled, or enriched.
 
 ## Property Definitions
 
-Properties are first-class documents in `ppy`. A property definition names the property and defines the JSON object shape expected for assigned values. Definitions and assignments share `collection: "ppy"` and are distinguished by `data.kind` (`definition` vs. `assignment`); a separate assignment collection is intentionally not introduced in this vocabulary.
+Properties are first-class documents in `ppy`. A property definition names the
+property and defines the JSON object shape expected for assigned values. In the
+target model, `ppy` also owns property policy: the owning group and the rules
+for who may write values for that property.
+
+Current implementation note: definitions and entity assignments currently share
+`collection: "ppy"` and are distinguished by `data.kind` (`definition` vs.
+`assignment`). Assignment records materialized as root-shaped `ppy` documents
+are transitional. The target model keeps `ppy` for definitions/policy, stages
+property-value writes as transaction messages in `msg`, and materializes the
+current values onto the target object document keyed by `ppy` ID.
 
 ```json
 {
@@ -101,7 +170,16 @@ Properties are first-class documents in `ppy`. A property definition names the p
 
 All property values are JSON objects. Scalar values are wrapped, for example `{ "text": "barcode-1" }`, `{ "number": 10, "unit_id": "..." }`, or `{ "boolean": true }`. The envelope schema does not yet validate the wrapper shape against the registered `value_schema`; that lookup belongs to the transaction snapshot/read layer.
 
-The committed materializer projects `ppy + create` messages whose `data.kind == "definition"` into the `ppy` MongoDB collection using the same root-document shape as the other supported roots: top-level `_id == data.id`, `id == data.id`, `collection: "ppy"`, `type_id: null` (a property definition has no parent type), inline `properties.kind`, `properties.name`, and `properties.value_schema` (copied verbatim as an opaque JSON object), an empty `links` map, and the reserved `_head` block with `provenance.collection == "ppy"` and `provenance.action == "create"`. The materializer does not validate `value_schema` against future assignment values; that lookup remains a future read-time validator concern.
+The committed materializer projects `ppy + create` messages whose
+`data.kind == "definition"` into the `ppy` MongoDB collection using the same
+root-document shape as the other supported roots: top-level `_id == data.id`,
+`id == data.id`, `collection: "ppy"`, `type_id: null` (a property definition
+has no parent type), inline `properties.kind`, `properties.name`, and
+`properties.value_schema` (copied verbatim as an opaque JSON object), an empty
+`links` map, and the reserved `_head` block with
+`provenance.collection == "ppy"` and `provenance.action == "create"`. The
+materializer does not validate `value_schema` against future assignment values;
+that lookup remains a future read-time validator concern.
 
 ## Types And Properties
 
@@ -139,7 +217,9 @@ Entities live in `ent` and reference a type.
 
 ## Property Value Assignment
 
-A property assignment is stored as a property record whose ID is the entity ID plus the property ID. The assignment payload references both sides and stores the value object.
+Current implementation note: a property assignment is stored as a property
+record whose ID is the entity ID plus the property ID. The assignment payload
+references both sides and stores the value object.
 
 ```json
 {
@@ -157,9 +237,19 @@ A property assignment is stored as a property record whose ID is the entity ID p
 }
 ```
 
-Early backend validation should verify required envelope fields, known collection/action pairs, and object-shaped property values. Value-shape validation against the registered property `value_schema` remains a future read-time validator concern.
+Early backend validation should verify required envelope fields, known
+collection/action pairs, and object-shaped property values. Value-shape
+validation against the registered property `value_schema` remains a future
+read-time validator concern.
 
-The committed materializer projects `ppy + create` messages whose `data.kind == "assignment"` into the `ppy` MongoDB collection as their own root-shaped records, gated by type registration. The materialized root uses `_id == data.id` (conventionally `<entity_id>~<property_id>`), `collection: "ppy"`, `type_id: null`, inline `properties.kind`, `properties.entity_id`, `properties.property_id`, and the verbatim object-shaped `properties.value`, plus an empty `links` map and `_head.provenance` pointing at the assignment message.
+The current committed materializer projects `ppy + create` messages whose
+`data.kind == "assignment"` into the `ppy` MongoDB collection as their own
+root-shaped records, gated by type registration. The materialized root uses
+`_id == data.id` (conventionally `<entity_id>~<property_id>`),
+`collection: "ppy"`, `type_id: null`, inline `properties.kind`,
+`properties.entity_id`, `properties.property_id`, and the verbatim
+object-shaped `properties.value`, plus an empty `links` map and
+`_head.provenance` pointing at the assignment message.
 
 Before inserting, the materializer enforces the rule from `DIRECTION.md` that a property must be added to the type before clients may assign it to an object of that type:
 
@@ -167,7 +257,40 @@ Before inserting, the materializer enforces the rule from `DIRECTION.md` that a 
 - The entity root must carry a non-blank `type_id`, the referenced `typ` root must exist, and that `typ` root must list `data.property_id` under `properties.property_refs`. Any of those failing counts as `skippedUnregisteredProperty`.
 - Missing or blank `data.id`, `data.entity_id`, or `data.property_id`, and a missing or non-object `data.value`, count as `skippedInvalid`.
 
-Duplicate assignment inserts follow the shared root rules: identical payloads are idempotent (`duplicateMatching`); differing payloads are `conflictingDuplicate` and never overwritten. The materializer does not resolve `data.property_id` against the `ppy` collection, does not validate `data.value` against the registered `value_schema`, and does not rewrite the entity root's own `properties` map — assignment projection onto entity roots remains future work, like `lnk` endpoint projections. `ppy + create` messages with missing, blank, or unknown `data.kind` values remain `skippedUnsupported`.
+Duplicate assignment inserts follow the shared root rules: identical payloads
+are idempotent (`duplicateMatching`); differing payloads are
+`conflictingDuplicate` and never overwritten. The materializer does not resolve
+`data.property_id` against the `ppy` collection, does not validate `data.value`
+against the registered `value_schema`, and does not rewrite the entity root's
+own `properties` map. `ppy + create` messages with missing, blank, or unknown
+`data.kind` values remain `skippedUnsupported`.
+
+Target direction: property-value writes should be transaction messages staged
+in `msg`, associated with a durable `txn_id`, checked against the target
+object's `type_id` and the referenced `ppy` definition/policy, and projected
+onto the target object root as a value keyed by `ppy` ID. The materialized
+value entry should preserve enough transaction provenance to answer who wrote
+the value after the transient `msg` payload has been cleared. A working shape
+is:
+
+```json
+{
+  "properties": {
+    "lbl_gov~jgi_pps~...~ppy~barcode": {
+      "value": { "text": "barcode-1" },
+      "txn_id": "lbl_gov~jgi_pps~...~txn~example",
+      "commit_id": "commit-001",
+      "msg_uuid": "018fd849-2a47-7777-8f01-aaaaaaaaaaaa",
+      "applied_at": "2026-06-28T00:00:00Z"
+    }
+  }
+}
+```
+
+The future object-targeted assignment message should avoid the entity-specific
+`entity_id` field as its primary form. A likely shape is explicit
+`object_collection` plus `object_id`, with `entity_id` retained only as a
+backward-compatible alias while legacy examples and tests exist.
 
 ## Link Types And Concrete Links
 
@@ -227,6 +350,10 @@ canonical wire payload carries `id`, `name`, an optional `description`, and an
 optional `permissions` map keyed by world-unique grp IDs. Each permission value
 is exactly `"rw"` (read/write) or `"r"` (read-only). The map names other
 groups; ownership-group access is implicit and not represented as a self-entry.
+`grp` records are group/permission objects, not collections of ORCID IDs.
+Membership should be represented locally as `usr` properties, membership `lnk`
+records, or a later dedicated membership projection, possibly seeded from
+Keycloak/ORCID claims.
 
 ```json
 {
@@ -263,12 +390,13 @@ payloads with missing or blank `data.id` are skipped without error.
 
 This iteration intentionally does not enforce read or write permissions on
 HTTP, Kafka, materializer, or read-service paths, does not synchronize group
-membership from Keycloak or any other identity provider, and does not
-introduce object-level or property-value-level permission overrides.
+membership from Keycloak or any other identity provider, does not materialize
+`usr`, and does not introduce object-level or property-value-level permission
+overrides.
 
 ## Committed Materialization Of Locations And Links
 
-Once a transaction commits in `txn`, a post-commit projection currently materializes `loc + create`, `typ + create` (both link-type records where `data.kind == "link_type"` and bare entity-type records where `data.kind` is absent), `typ + update` messages whose `data.operation == "add_property"`, `lnk + create`, `ent + create`, `grp + create`, and `ppy + create` messages whose `data.kind` is `"definition"` or `"assignment"` (assignments gated by type registration as described above) into their long-term collections (`loc`, `typ`, `lnk`, `ent`, `grp`, `ppy`). The projection is a read-after-commit step over the existing committed-snapshot read service; the `txn` write-ahead log remains the durable, authoritative record. Other collections and other actions — including every `typ + update` whose `data.operation` is not `add_property`, every `ppy + create` whose `data.kind` is neither `"definition"` nor `"assignment"`, every `*+ delete`, and other update actions — are intentionally not materialized in this iteration and are counted as `skippedUnsupported` without raising an error.
+Once a transaction commits in `txn`, a post-commit projection currently materializes `loc + create`, `typ + create` (both link-type records where `data.kind == "link_type"` and bare entity-type records where `data.kind` is absent), `typ + update` messages whose `data.operation == "add_property"`, `lnk + create`, `ent + create`, `grp + create`, and `ppy + create` messages whose `data.kind` is `"definition"` or `"assignment"` (assignments gated by type registration as described above) into their long-term collections (`loc`, `typ`, `lnk`, `ent`, `grp`, `ppy`). The projection is a read-after-commit step over the existing committed-snapshot read service; current code uses `txn` for both durable transaction facts and staged message payloads. The target split is described above: durable transaction facts stay in `txn`, while transient message payloads move to `msg`. Other collections and other actions — including every `typ + update` whose `data.operation` is not `add_property`, every `ppy + create` whose `data.kind` is neither `"definition"` nor `"assignment"`, every `*+ delete`, and other update actions — are intentionally not materialized in this iteration and are counted as `skippedUnsupported` without raising an error.
 
 The current materializer writes the accepted root-document shape from `DIRECTION.md`: one logical Jade-Tipi object normally stored as one root document with top-level `_id`, `id`, `collection`, `type_id`, explicit `properties`, denormalized `links`, and reserved `_head.provenance` metadata. Duplicate `_id` writes with an identical payload are idempotent successes; differing-payload duplicates are logged and counted but not overwritten, and missing or blank `data.id` is logged and skipped without synthesizing an id. Semantic reference validation (`type_id`, `left`, `right`, and `allowed_*_collections`) is still not enforced; that remains a follow-up reader/validator concern.
 
@@ -304,15 +432,16 @@ sorted by `properties.property_id` ASC and `_id` ASC. Missing entity roots map
 to an empty service result and HTTP 404; existing entities with no assignments
 return the entity record with `valuesByPropertyId: {}`.
 
-Assignment values remain canonical on `ppy` roots. The response groups every
-matching assignment under `valuesByPropertyId.<property_id>` as a list, so
-multiple materialized assignments for the same entity/property pair are
-preserved deterministically rather than overwritten. Each value entry carries
-the assignment root `_id`, `properties.property_id`, the verbatim object-shaped
-`properties.value`, and `_head.provenance`. The service optionally resolves
-human-readable `propertyName` by joining the referenced `ppy` definition roots
-where `_id in <property_ids>` and `properties.kind == "definition"`, but a
-dangling `property_id` is tolerated and leaves `propertyName == null`.
+In the current implementation, assignment values remain on standalone `ppy`
+roots. The response groups every matching assignment under
+`valuesByPropertyId.<property_id>` as a list, so multiple materialized
+assignments for the same entity/property pair are preserved deterministically
+rather than overwritten. Each value entry carries the assignment root `_id`,
+`properties.property_id`, the verbatim object-shaped `properties.value`, and
+`_head.provenance`. The service optionally resolves human-readable
+`propertyName` by joining the referenced `ppy` definition roots where
+`_id in <property_ids>` and `properties.kind == "definition"`, but a dangling
+`property_id` is tolerated and leaves `propertyName == null`.
 Assignment rows with missing or blank `properties.property_id` cannot be keyed
 under `valuesByPropertyId` and are ignored by this reader; the current
 materializer already treats newly submitted assignments with missing or blank
@@ -320,6 +449,11 @@ materializer already treats newly submitted assignments with missing or blank
 The reader expects the materializer's object-shaped `properties.value`; if a
 stale or drifted row contains a non-object value, that value is returned as an
 empty map rather than failing the whole entity read.
+
+Target direction: a generic object property-values reader should read the
+materialized object-root values keyed by `ppy` ID, with an overlay of
+committed-but-unapplied `msg` records. This entity-only reader documents the
+current transitional storage shape, not the final property-value contract.
 
 `EntityPropertyValuesReadController` exposes the read as
 `GET /api/entities/{id}/property-values`. This is a thin WebFlux adapter over

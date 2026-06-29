@@ -11,15 +11,17 @@ locations. In a biology laboratory this includes buildings, rooms, freezers,
 freezer shelves, racks, boxes, tubes, plates, and possibly individual wells.
 
 `loc` is a long-term materialized collection alongside `ent`, `ppy`, `lnk`,
-`uni`, `grp`, `typ`, and `vdn`. The `txn` collection remains special: it is the
-durable transaction log and staging collection, not a normal domain collection.
+`uni`, `grp`, `usr`, `typ`, and `vdn`. The `txn` collection remains special:
+it stores durable transaction objects, not normal domain objects.
+Transaction-message payloads may use a separate transient staging collection,
+tentatively `msg`, until they have been applied to the domain object documents.
 
 ## Objects, Types, And Properties
 
 A member of a long-term collection is a Jade-Tipi object, not necessarily an
-`ent` entity. `ent`, `loc`, `lnk`, `ppy`, `typ`, `uni`, `grp`, and `vdn` are
-peer domain collections. `txn` contains transaction records rather than normal
-domain objects.
+`ent` entity. `ent`, `loc`, `lnk`, `ppy`, `typ`, `uni`, `grp`, `usr`, and
+`vdn` are peer domain collections. `txn` contains transaction records rather
+than normal domain objects.
 
 For initial implementation, model each object as a typed collection of explicit
 property-value assignments. The object's `type_id` points to a `typ` record that
@@ -31,7 +33,28 @@ Do not implement required properties or default values yet. If a property value
 is not explicitly assigned in a create or update message, it is absent. The
 materializer should not invent property values.
 
-## Groups And Permissions
+Property definitions live in `ppy`; object property values live on the object
+document, keyed by `ppy` ID, once their transaction messages are materialized.
+Each property-value write is associated with a durable `txn` record so the
+system can explain who wrote the value even after transient staged messages are
+cleared. Any standalone `ppy` assignment records are a transitional
+implementation detail, not the target storage model.
+
+## Users, Groups, And Permissions
+
+`usr` records are first-class Jade-Tipi identity/audit objects. They represent
+people or service identities known to Jade-Tipi, usually projected from an
+external authentication source such as ORCID through Keycloak. A `usr` record
+is not the authentication provider and should not store passwords or bearer
+tokens. It is the local, durable record that lets Jade-Tipi explain who
+performed work without querying an external identity provider later.
+
+Every durable `txn` record should be associated with a `usr` record. The `txn`
+record should store both a stable `user_id` reference and an immutable writer
+snapshot, such as the ORCID iD, OIDC issuer/subject, display name when known,
+client, and authentication source. The snapshot preserves the audit meaning of
+the transaction even if the `usr` record is later merged, renamed, disabled, or
+enriched.
 
 `grp` records are first-class Jade-Tipi objects. They should have world-unique
 IDs, `type_id`, explicit properties, possible links, and the same root-document
@@ -39,7 +62,8 @@ storage shape as other long-term collection objects.
 
 The initial permission model should be group-owned and deliberately simple:
 
-- Users are members of one or more groups through the identity provider.
+- Users are members of one or more groups through local Jade-Tipi membership
+  facts, which may initially be projected from identity-provider claims.
 - A group has read/write permission on objects and property assignments owned by
   that group.
 - A `grp` record may carry a permissions map for other groups. Each entry grants
@@ -48,6 +72,13 @@ The initial permission model should be group-owned and deliberately simple:
 - Properties and property-value assignments are owned by groups, so permission
   checks must eventually operate at property scope, not only at whole-object
   scope.
+
+`grp` records are not collections of ORCID IDs. They describe groups and
+group-to-group access. User membership in groups should be represented locally,
+either as `usr` properties, `lnk` relationships, or a later dedicated
+membership projection. Authentication providers can establish or refresh those
+facts, but durable audit and authorization reads should not depend on a live
+identity-provider query.
 
 Avoid implementing finer-grained overrides in the first pass. Individual objects
 may eventually carry a group-permissions override map, and individual
@@ -96,9 +127,11 @@ materializer work should reconcile that with the `_head` direction rather than
 mixing implementation metadata into `properties` or `links`.
 
 Read semantics should eventually layer data from the root document, extension
-pages, pending pages, and committed transaction records that have not yet been
-materialized. That overlay model is future work; the first implementation should
-make the root-only case correct and easy to replace.
+pages, pending pages, and committed transaction messages that have not yet been
+materialized. Committed-but-unapplied messages are expected to live in transient
+message staging (`msg`), while durable transaction facts remain in `txn`. That
+overlay model is future work; the first implementation should make the
+root-only case correct and easy to replace.
 
 ## Human-Readable Kafka Submission
 
@@ -135,6 +168,10 @@ by property name for the initial human-authored path; stricter property-ID-keyed
 maps and property-definition validation can be layered in after the submission
 route is proven. `data.links` should normally be empty on create because
 canonical relationships are submitted as separate `lnk` messages.
+
+That plain `data.properties` form is first-pass only. The intended follow-on is
+to submit property-value writes as transaction messages, validate them against
+`typ`/`ppy`, and project them onto object documents keyed by `ppy` ID.
 
 ## Link-Centric Relationships
 

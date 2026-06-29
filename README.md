@@ -38,7 +38,11 @@ For hands-on setup instructions, architecture diagrams, and API details, follow 
 
 ## Kli — Kafka CLI (work in progress)
 
-Kli is a command-line client that authenticates users via ORCID (through Keycloak's Device Authorization Grant) and publishes messages to Kafka topics.
+Kli is a command-line client that authenticates users via ORCID (through
+Keycloak's Device Authorization Grant) and publishes messages to Kafka topics.
+The target audit model persists those authenticated identities into local
+Jade-Tipi `usr` records and records the writer on durable transactions, so
+historical provenance does not depend on querying an external identity provider.
 
 ### Prerequisites
 
