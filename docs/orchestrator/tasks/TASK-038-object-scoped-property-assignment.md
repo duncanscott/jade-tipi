@@ -3,8 +3,8 @@
 ID: TASK-038
 TYPE: implementation
 ARTIFACT_INTENT: implementation-plan
-STATUS: READY_FOR_PREWORK
-OWNER: unassigned
+STATUS: READY_FOR_REVIEW
+OWNER: claude (interactive session with director, 2026-07-03)
 SOURCE_TASK:
   - TASK-032
   - TASK-031
@@ -167,3 +167,30 @@ DESIGN_NOTES:
   staging/projection path beside the current path; remove or migrate the
   transitional standalone `ppy` assignment roots only after typed location data
   is represented and reviewed.
+
+PREWORK_RESULT (2026-07-03):
+- Artifact: `docs/architecture/object-property-model-drift.md` section 8,
+  "TASK-038 implementation plan". Sections 1-7 of that note are unchanged.
+- The plan covers every acceptance criterion: collection responsibilities
+  with target document shapes grounded in current code (8.1-8.2), the minimal
+  `usr` root and writer contract (8.2.3-8.2.4), the `jdtp-admin` genesis
+  contract (8.2.5), the membership boundary (8.2.8), the property-value entry
+  shape (8.2.6), the materialization lifecycle with the crash-safety ordering
+  identified and resolved as a recommendation (8.3), the read-overlay
+  boundary (8.4), and a twelve-task follow-on breakdown A-L with dependencies
+  and acceptance sketches (8.5).
+- Open items reserved for director decision are consolidated in the 8.6
+  table, keyed to section 7's numbering, each with a recommendation. Decision
+  7 (payload archive) is flagged as a hard gate before the `msg` cleanup task
+  ships deletion.
+- Notable grounding facts surfaced during prework: `openHeader` currently
+  discards `message.txn().user()` entirely, so writer identity today exists
+  only on the Kafka wire; `appendDataMessage` performs no header-state check;
+  MongoDB permits `~` in field names, so `ppy`-ID-keyed dotted `$set` writes
+  are safe; the object-targeted assignment message requires no
+  `message.schema.json` change because its new fields are snake_case.
+- Scope respected: no production code, no schema/example edits, no MongoDB
+  migration, no new task files minted (follow-on tasks are proposed in 8.5
+  for the director to number and create).
+- VERIFICATION: `git diff --check` clean (docs-only change; no Gradle run
+  required per task scope).
