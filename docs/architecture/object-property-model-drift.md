@@ -1,11 +1,13 @@
 # Object property model - drift analysis and migration plan
 
-Status: analysis / proposal with TASK-038 implementation plan. Not accepted.
-Sections 1-7 were written 2026-06-28 in response to a human observation that
-`loc` records store domain properties as plain strings instead of as
-type-gated, `ppy`-keyed property values. Section 8 was added 2026-07-03 as the
-TASK-038 prework artifact and awaits director review; sections 1-7 are
-unchanged from the reviewed analysis.
+Status: TASK-038 implementation plan, ratified by director review 2026-07-03
+with one amendment: the durable transaction header carries a single `writer`
+sub-document that contains `user_id`, rather than separate top-level
+`user_id` and `writer` fields. Sections 1-7 were written 2026-06-28 in
+response to a human observation that `loc` records store domain properties as
+plain strings instead of as type-gated, `ppy`-keyed property values. Section 8
+was added 2026-07-03 as the TASK-038 prework artifact; implementation
+proceeds in the section 8.5 order.
 
 This note (1) confirms the intended model against the foundation documents,
 (2) states target vs. current state per collection, (3) maps the blast radius
@@ -155,9 +157,10 @@ the source for who wrote a value and when the write became committed/applied.
 A transaction object should carry, at minimum:
 
 - `txn_id`
-- `user_id`, referencing a local `usr` record
-- immutable `writer` snapshot, such as ORCID iD, OIDC issuer/subject, display
-  name when known, client, and authentication source
+- `writer`: a sub-document that carries `user_id` (the reference to a local
+  `usr` record) together with an immutable transaction-time identity
+  snapshot, such as ORCID iD, OIDC issuer/subject, display name when known,
+  client, and authentication source
 - submitting client and owning/writing group
 - open/commit/rollback/applied state
 - `commit_id`
@@ -178,8 +181,9 @@ provider and should not store passwords or bearer tokens.
 A minimal `usr` root should carry a stable local ID plus external identity keys
 such as ORCID iD, OIDC issuer, OIDC subject, display name, email when
 available, and provenance describing how the identity was observed. A `txn`
-should point to the `usr` record with `user_id`, while also preserving a writer
-snapshot so old transactions remain meaningful if the `usr` record changes.
+should point to the `usr` record with `writer.user_id`, while the other
+`writer` fields preserve a snapshot so old transactions remain meaningful if
+the `usr` record changes.
 
 One reserved bootstrap `usr` is needed to avoid a circular dependency between
 user creation and transaction creation. Working name: `jdtp-admin`, with a
@@ -419,8 +423,8 @@ noted in parentheses; all others already exist.
   "org": "lbl_gov",
   "grp": "jgi_pps",
   "client": "kafka-kli",
-  "user_id": "...~usr~...",
   "writer": {
+    "user_id": "...~usr~...",
     "kind": "person",
     "orcid": "0000-0002-1825-0097",
     "oidc_issuer": "http://localhost:8484/realms/jade-tipi",
@@ -438,9 +442,13 @@ noted in parentheses; all others already exist.
 }
 ```
 
-- `org`, `grp`, `client`, `user_id`, `writer` (new: Task C) are set once at
-  open and never mutated. `writer` is the immutable snapshot; `user_id` is the
-  join key to `usr`.
+- `org`, `grp`, `client`, and `writer` (new: Task C) are set once at open.
+  `writer` is a single sub-document answering who wrote the transaction:
+  `writer.user_id` is the join reference to a local `usr` record, and every
+  other `writer` field is an immutable transaction-time snapshot. Backfilling
+  `writer.user_id` on an `unresolved` writer once the person's `usr` record
+  exists later is the one permitted amendment; the snapshot fields are never
+  mutated.
 - `message_count` (new: Task D) is the count of staged messages observed at
   commit time and is the completeness denominator for `applied`.
 - `state = "applied"`, `applied_at`, and `apply_counts` (new: Task F) form the
@@ -513,11 +521,11 @@ submitted-but-never-applied payloads.
 At `openHeader` time (Task C), the envelope identity resolves to local state:
 
 1. `message.txn().user()` non-blank → treat as ORCID iD (the `kli` device
-   flow verifies it) → `UsrIdentityService.resolveOrCreate` → set `user_id`
-   and a full `writer` snapshot with `auth_source` describing how the
-   identity was observed.
-2. `message.txn().user()` blank/absent → `user_id: null`,
-   `writer: { "kind": "unresolved", "client": <client>, "auth_source": "envelope_missing_user" }`,
+   flow verifies it) → `UsrIdentityService.resolveOrCreate` → set a full
+   `writer` sub-document (`user_id` plus the identity snapshot) with
+   `auth_source` describing how the identity was observed.
+2. `message.txn().user()` blank/absent →
+   `writer: { "kind": "unresolved", "user_id": null, "client": <client>, "auth_source": "envelope_missing_user" }`,
    log a warning. Rejection of user-less opens is a later enforcement flag,
    after `kli` and all examples reliably send `txn.user`.
 
@@ -539,8 +547,8 @@ paths) that explicitly declare it.
 - Properties mark it reserved: `kind: "system"`, `status: "reserved"`,
   `identity_provenance.source: "bootstrap"`. It has no external identity keys
   and never matches identity resolution. It is not a login account.
-- It may be named as `user_id` (with
-  `writer: { "kind": "system", "name": "JDTP Bootstrap Admin", "source": "bootstrap" }`)
+- It may be named as the transaction writer
+  (`writer: { "user_id": "...~usr~jdtp-admin", "kind": "system", "name": "JDTP Bootstrap Admin", "source": "bootstrap" }`)
   by genesis/system transactions that create initial `usr`, `grp`, `typ`,
   `ppy`, policy, and membership records, and by the container review seed
   until real users author it.
@@ -735,13 +743,13 @@ and tests passing; nothing deletes or migrates existing data before Task L.
   ORCID resolves to one root under concurrent calls; system kind requires no
   external key.
 - **C - Durable transaction writer persistence.** `openHeader` gains the
-  8.2.4 resolution: `setOnInsert` `user_id`, `writer`, `org`, `grp`,
-  `client`. `CommittedTransactionSnapshot`/read service surface the new
-  fields additively. Confirm `kli` sends `txn.user` from the session ORCID;
-  update `01-open-transaction.json` to carry `user` (schema already allows
-  it). Acceptance: open with user → resolved `user_id` + snapshot; open
-  without user → null `user_id`, `unresolved` writer, warning logged;
-  existing headers without the fields still read.
+  8.2.4 resolution: `setOnInsert` `writer` (containing `user_id`), `org`,
+  `grp`, `client`. `CommittedTransactionSnapshot`/read service surface the
+  new fields additively. Confirm `kli` sends `txn.user` from the session
+  ORCID; update `01-open-transaction.json` to carry `user` (schema already
+  allows it). Acceptance: open with user → `writer.user_id` resolved plus
+  snapshot; open without user → `unresolved` writer with null `user_id`,
+  warning logged; existing headers without the fields still read.
 - **D - Split `txn`/`msg`.** `appendDataMessage` writes to new `msg`
   collection (new constant); `CommittedTransactionReadService` reads the
   union of `msg` rows and legacy `txn` message rows (same sort, `msg`
@@ -810,6 +818,9 @@ and tests passing; nothing deletes or migrates existing data before Task L.
 
 Numbers match section 7's open decisions. "Recommended" means the plan
 proceeds with this answer unless the director overrides at task creation.
+Director review on 2026-07-03 ratified the table as written; the only review
+amendment was structural (nest `user_id` inside `writer`, reflected in 8.2.1
+and 8.2.4).
 
 | # | Decision | Recommendation | Consumed by |
 |---|---|---|---|

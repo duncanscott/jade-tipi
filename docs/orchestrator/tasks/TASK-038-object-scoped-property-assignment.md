@@ -3,7 +3,7 @@
 ID: TASK-038
 TYPE: implementation
 ARTIFACT_INTENT: implementation-plan
-STATUS: READY_FOR_REVIEW
+STATUS: ACCEPTED
 OWNER: claude (interactive session with director, 2026-07-03)
 SOURCE_TASK:
   - TASK-032
@@ -194,3 +194,16 @@ PREWORK_RESULT (2026-07-03):
   for the director to number and create).
 - VERIFICATION: `git diff --check` clean (docs-only change; no Gradle run
   required per task scope).
+
+DIRECTOR_REVIEW_CLOSURE (2026-07-03):
+- Plan ratified with one amendment: the durable `txn` header stores a single
+  `writer` sub-document containing `user_id` plus the immutable identity
+  snapshot, instead of separate top-level `user_id` and `writer` fields.
+  `writer.user_id` is the join reference to the local `usr` record; every
+  other `writer` field is an immutable transaction-time snapshot. The
+  amendment is applied consistently across `DIRECTION.md`,
+  `docs/user-authentication.md`,
+  `docs/architecture/kafka-transaction-message-vocabulary.md`, and section 8
+  of `docs/architecture/object-property-model-drift.md`.
+- TASK-038 is ACCEPTED. Development proceeds with plan task A as TASK-039
+  (bootstrap `usr~jdtp-admin` genesis ensure).

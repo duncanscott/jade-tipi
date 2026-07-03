@@ -50,11 +50,11 @@ tokens. It is the local, durable record that lets Jade-Tipi explain who
 performed work without querying an external identity provider later.
 
 Every durable `txn` record should be associated with a `usr` record. The `txn`
-record should store both a stable `user_id` reference and an immutable writer
-snapshot, such as the ORCID iD, OIDC issuer/subject, display name when known,
-client, and authentication source. The snapshot preserves the audit meaning of
-the transaction even if the `usr` record is later merged, renamed, disabled, or
-enriched.
+record should store one `writer` sub-document that carries a stable `user_id`
+reference together with an immutable identity snapshot, such as the ORCID iD,
+OIDC issuer/subject, display name when known, client, and authentication
+source. The snapshot fields preserve the audit meaning of the transaction even
+if the `usr` record is later merged, renamed, disabled, or enriched.
 
 The system needs one reserved bootstrap user so the first normal transactions
 can be audited without a user/transaction creation cycle. Working name:
