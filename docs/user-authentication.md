@@ -6,9 +6,10 @@ A command-line client authenticates users via their ORCID iD using the OAuth
 2.0 Device Authorization Grant (RFC 8628). The CLI extracts the verified ORCID
 iD from the resulting token and includes it in messages published to a Kafka
 topic. Jade-Tipi should use that authenticated external identity to create or
-resolve a local `usr` record, then persist `user_id` and an immutable writer
-snapshot on durable transaction records. This keeps transaction audit readable
-without querying Keycloak or ORCID later.
+resolve a local `usr` record, then persist a `writer` record — the local
+`user_id` reference plus an immutable identity snapshot — on durable
+transaction records. This keeps transaction audit readable without querying
+Keycloak or ORCID later.
 
 ## Components
 
@@ -74,8 +75,8 @@ No tokens are included in the message. The ORCID iD is a plain string.
 3. Backend resolves the ORCID iD to a local `usr` record, creating a minimal
    record when no match exists.
 4. Backend processes the data, trusting that the CLI verified the ORCID iD via
-   Keycloak/ORCID authentication, and stores `user_id` plus a writer snapshot on
-   the durable transaction record.
+   Keycloak/ORCID authentication, and stores a `writer` record (`user_id` plus
+   identity snapshot) on the durable transaction record.
 
 ## Local User Records
 
@@ -93,15 +94,14 @@ A minimal `usr` record should carry:
 - Status/provenance fields needed to explain whether the record was imported,
   self-asserted, or projected from a verified login.
 
-Each durable `txn` record should store:
+Each durable `txn` record should store one `writer` sub-document containing:
 
 - `user_id`: the local `usr` ID for the writer.
-- `writer`: an immutable snapshot of the identity observed at transaction time,
-  such as ORCID iD, issuer, subject, display name, client, and authentication
-  source.
+- An immutable snapshot of the identity observed at transaction time, such as
+  ORCID iD, issuer, subject, display name, client, and authentication source.
 
-The `user_id` reference supports current joins to richer local identity data.
-The writer snapshot protects the audit trail if the `usr` record is later
+The `writer.user_id` reference supports current joins to richer local identity
+data. The snapshot fields protect the audit trail if the `usr` record is later
 renamed, merged, disabled, or enriched.
 
 ### Bootstrap user
@@ -123,8 +123,8 @@ still carry a normal transaction writer shape, for example:
 
 ```json
 {
-  "user_id": "...~usr~jdtp-admin",
   "writer": {
+    "user_id": "...~usr~jdtp-admin",
     "kind": "system",
     "name": "JDTP Bootstrap Admin",
     "source": "bootstrap"
@@ -134,6 +134,17 @@ still carry a normal transaction writer shape, for example:
 
 After the initial records exist, normal transactions should use real local
 `usr` records projected from ORCID/Keycloak or another authentication source.
+
+Current implementation (TASK-039): the backend ensures the bootstrap `usr`
+root at startup as an idempotent insert-if-absent (`UsrGenesisService`,
+gated by `jadetipi.genesis.enabled`, default `true`). The ID is
+`<org>~<grp>~genesis~usr~jdtp-admin`, with org/grp from
+`jadetipi.instance.org` / `jadetipi.instance.grp` (local development
+default: `jade-tipi-org~dev~genesis~usr~jdtp-admin`). The root is written
+directly with the `genesis~jdtp-admin` provenance sentinel under
+`_head.provenance.txn_id`/`commit_id`, mirroring the accepted
+`admin~<uuid>` sentinel pattern; its creation is a genesis storage fact,
+not a Kafka transaction.
 
 ## Group Permission Direction
 

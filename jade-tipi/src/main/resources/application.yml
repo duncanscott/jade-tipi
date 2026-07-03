@@ -25,6 +25,14 @@ jadetipi:
     txn-topic-pattern: \${KAFKA_TXN_TOPIC_PATTERN:jdtp-txn-.*|jdtp_cli_kli}
     enabled: \${KAFKA_INGEST_ENABLED:true}
     persist-timeout-seconds: \${KAFKA_PERSIST_TIMEOUT_SECONDS:30}
+  # This Jade-Tipi instance's owning org/grp, used for locally synthesized
+  # world-unique IDs such as the genesis bootstrap usr (TASK-039).
+  instance:
+    org: \${JADETIPI_INSTANCE_ORG:jade-tipi-org}
+    grp: \${JADETIPI_INSTANCE_GRP:dev}
+  # Startup ensure for the reserved bootstrap usr root (usr~jdtp-admin).
+  genesis:
+    enabled: \${JADETIPI_GENESIS_ENABLED:true}
 
 server:
   port: ${backendPort}

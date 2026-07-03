@@ -90,8 +90,9 @@ transaction metadata from transient message staging:
 
 - `txn` contains durable transaction objects that last forever. The transaction
   is the authoritative source for commit state and for who wrote a property
-  value. It should carry `user_id` plus an immutable writer snapshot, not only
-  a group/client identifier.
+  value. It should carry a `writer` sub-document — the local `user_id`
+  reference plus an immutable identity snapshot — not only a group/client
+  identifier.
 - `msg` contains transient transaction-message payloads while they are open,
   committed-but-unapplied, or being applied. Once every message in a committed
   transaction has been written to the target object documents, the staged
@@ -125,15 +126,15 @@ A minimal `usr` record should carry:
 - display facts such as display name and email when available;
 - provenance for how the identity was observed or verified.
 
-A durable `txn` record should carry both:
+A durable `txn` record should carry one `writer` sub-document that contains:
 
 - `user_id`: the local `usr` ID for the writer;
-- `writer`: an immutable transaction-time snapshot, such as ORCID iD, issuer,
-  subject, display name, client, and authentication source.
+- an immutable transaction-time snapshot, such as ORCID iD, issuer, subject,
+  display name, client, and authentication source.
 
-The `user_id` reference supports current joins to richer local identity data.
-The writer snapshot preserves audit meaning if the `usr` record is later
-renamed, merged, disabled, or enriched.
+The `writer.user_id` reference supports current joins to richer local
+identity data. The snapshot fields preserve audit meaning if the `usr` record
+is later renamed, merged, disabled, or enriched; they are never mutated.
 
 ### Bootstrap `usr`
 
@@ -143,14 +144,14 @@ transactions can be represented without a circular dependency. Working name:
 
 `jdtp-admin` is a system/audit identity, not a login account. It should be
 created as a genesis storage fact before ordinary transaction validation
-requires `txn.user_id`. It may author genesis transactions that create the
+requires `txn.writer.user_id`. It may author genesis transactions that create the
 initial local users, groups, types, properties, policies, and membership facts.
 Those transactions should still carry a normal durable writer shape:
 
 ```json
 {
-  "user_id": "...~usr~jdtp-admin",
   "writer": {
+    "user_id": "...~usr~jdtp-admin",
     "kind": "system",
     "name": "JDTP Bootstrap Admin",
     "source": "bootstrap"
@@ -160,6 +161,16 @@ Those transactions should still carry a normal durable writer shape:
 
 After bootstrap, new transactions should use real `usr` records projected from
 ORCID/Keycloak or another configured authentication source.
+
+Current implementation note (TASK-039): the backend ensures this root at
+startup with an idempotent insert-if-absent (`UsrGenesisService`, gated by
+`jadetipi.genesis.enabled`, default `true`). The ID is
+`<jadetipi.instance.org>~<jadetipi.instance.grp>~genesis~usr~jdtp-admin`
+(local development default `jade-tipi-org~dev~genesis~usr~jdtp-admin`), and
+`_head.provenance.txn_id`/`commit_id` carry the `genesis~jdtp-admin`
+sentinel, mirroring the accepted `admin~<uuid>` sentinel. The bootstrap root
+carries no external identity keys, so identity resolution can never match
+it. `usr` remains outside the wire `Collection` enum.
 
 ## Property Definitions
 
