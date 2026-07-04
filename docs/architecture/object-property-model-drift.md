@@ -720,6 +720,17 @@ walks the chain, bounded and cycle-safe). Tasks A (TASK-039) and E (TASK-040)
 are done; tasks B-D (usr resolution, writer persistence, txn/msg split) are
 deferred, not canceled; F-L remain in the stated order.
 
+Director resequencing (2026-07-04): the first slice of task L landed as
+TASK-045 — the standalone `ppy` assignment-root write path and the
+entity-only reader are retired, all assignments project onto object roots
+(`entity_id` remains a deprecated wire alias for `ent` targets), and
+canonical examples 07/08 use the object-targeted form. Remaining task-L
+items: the inline-`properties`-bag endgame (decision 8.6/10), `lnk`
+alignment (8.6/11), legacy message rows still in `txn`, hard `data.id`
+schema validation with the remaining TASK-030-era fixture-ID
+normalization, and eventual deletion/migration of historical standalone
+assignment roots.
+
 | # | Task | Depends on |
 |---|---|---|
 | A | Bootstrap `usr~jdtp-admin` genesis ensure | — |

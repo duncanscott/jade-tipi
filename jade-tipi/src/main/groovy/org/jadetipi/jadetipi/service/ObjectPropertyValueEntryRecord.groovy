@@ -12,6 +12,10 @@
  */
 package org.jadetipi.jadetipi.service
 
+import groovy.transform.Immutable
+
+import java.time.Instant
+
 /**
  * One materialized {@code property_values} entry on an object root
  * (TASK-040 contract): the verbatim object-shaped value plus the transaction
@@ -20,6 +24,7 @@ package org.jadetipi.jadetipi.service
  * definition root when present and is {@code null} for a dangling
  * {@code property_id}.
  */
+@Immutable
 class ObjectPropertyValueEntryRecord {
     String propertyId
     String propertyName
@@ -27,5 +32,5 @@ class ObjectPropertyValueEntryRecord {
     String txnId
     String commitId
     String msgUuid
-    Object appliedAt
+    Instant appliedAt
 }

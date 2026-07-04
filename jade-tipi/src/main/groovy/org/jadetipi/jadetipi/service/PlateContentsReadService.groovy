@@ -23,7 +23,7 @@ import reactor.core.publisher.Mono
  * <p>The service composes existing read services only: it reads
  * {@link ContentsLinkRecord} values through {@link ContentsLinkReadService}
  * and resolves each link's right endpoint through
- * {@link EntityPropertyValuesReadService}. It performs no Mongo writes, adds
+ * {@link ObjectPropertyValuesReadService}. It performs no Mongo writes, adds
  * no materializer projection, and does not validate domain semantics beyond
  * placing well-positioned links into a fixed 96-well grid.
  */
@@ -44,14 +44,14 @@ class PlateContentsReadService {
     static final String POSITION_COLUMN = 'column'
 
     private final ContentsLinkReadService contentsLinkReadService
-    private final EntityPropertyValuesReadService entityPropertyValuesReadService
+    private final ObjectPropertyValuesReadService objectPropertyValuesReadService
 
     PlateContentsReadService(
             ContentsLinkReadService contentsLinkReadService,
-            EntityPropertyValuesReadService entityPropertyValuesReadService) {
+            ObjectPropertyValuesReadService objectPropertyValuesReadService) {
 
         this.contentsLinkReadService = contentsLinkReadService
-        this.entityPropertyValuesReadService = entityPropertyValuesReadService
+        this.objectPropertyValuesReadService = objectPropertyValuesReadService
     }
 
     /**
@@ -71,14 +71,14 @@ class PlateContentsReadService {
         if (!hasText(link.right)) {
             return Mono.just(unresolved)
         }
-        return entityPropertyValuesReadService.findPropertyValues(link.right)
-                .map { EntityPropertyValuesRecord entity -> toEntry(link, entity) }
+        return objectPropertyValuesReadService.findPropertyValues('ent', link.right)
+                .map { ObjectPropertyValuesRecord entity -> toEntry(link, entity) }
                 .defaultIfEmpty(unresolved)
     }
 
     private static PlateContentsEntryRecord toEntry(
             ContentsLinkRecord link,
-            EntityPropertyValuesRecord entity) {
+            ObjectPropertyValuesRecord entity) {
 
         return new PlateContentsEntryRecord(
                 linkId: link.linkId,

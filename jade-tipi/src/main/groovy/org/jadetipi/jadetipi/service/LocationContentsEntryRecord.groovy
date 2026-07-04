@@ -26,5 +26,5 @@ class LocationContentsEntryRecord {
     Map<String, Object> position
     Map<String, Object> linkProvenance
     LocationRootRecord contentLocation
-    EntityPropertyValuesRecord contentEntity
+    ObjectPropertyValuesRecord contentEntity
 }

@@ -13,7 +13,7 @@
 package org.jadetipi.jadetipi.controller
 
 import org.jadetipi.jadetipi.exception.GlobalExceptionHandler
-import org.jadetipi.jadetipi.service.EntityPropertyValuesRecord
+import org.jadetipi.jadetipi.service.ObjectPropertyValuesRecord
 import org.jadetipi.jadetipi.service.LocationContentsEntryRecord
 import org.jadetipi.jadetipi.service.LocationContentsReadService
 import org.jadetipi.jadetipi.service.LocationContentsRecord
@@ -87,13 +87,14 @@ class LocationContentsReadControllerSpec extends Specification {
                                 position: [kind: 'plate_well', label: 'A2', row: 'A', column: 2],
                                 linkProvenance: [commit_id: 'COMMIT-LNK-ENT'],
                                 contentLocation: null,
-                                contentEntity: new EntityPropertyValuesRecord(
-                                        entityId: CHILD_ENT_ID,
+                                contentEntity: new ObjectPropertyValuesRecord(
+                                        objectId: CHILD_ENT_ID,
+                                        collection: 'ent',
                                         typeId: 'jade-tipi-org~dev~lbl_gov~jgi_pps~typ~sample',
                                         properties: [name: 'Sample A2'],
                                         links: [:],
                                         provenance: [commit_id: 'COMMIT-ENT'],
-                                        valuesByPropertyId: [:]
+                                        propertyValues: [:]
                                 )
                         )
                 ]
@@ -128,7 +129,7 @@ class LocationContentsReadControllerSpec extends Specification {
                 .jsonPath('$.contents[1].linkId').isEqualTo(LINK_ENT_ID)
                 .jsonPath('$.contents[1].contentId').isEqualTo(CHILD_ENT_ID)
                 .jsonPath('$.contents[1].position.label').isEqualTo('A2')
-                .jsonPath('$.contents[1].contentEntity.entityId').isEqualTo(CHILD_ENT_ID)
+                .jsonPath('$.contents[1].contentEntity.objectId').isEqualTo(CHILD_ENT_ID)
                 .jsonPath('$.contents[1].contentEntity.properties.name').isEqualTo('Sample A2')
     }
 

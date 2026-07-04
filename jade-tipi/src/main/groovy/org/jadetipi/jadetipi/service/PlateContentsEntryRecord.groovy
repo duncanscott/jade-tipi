@@ -25,5 +25,5 @@ class PlateContentsEntryRecord {
     Map<String, Object> position
     PlateContentsUnplacedReason unplacedReason
     Map<String, Object> linkProvenance
-    EntityPropertyValuesRecord entity
+    ObjectPropertyValuesRecord entity
 }

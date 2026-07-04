@@ -28,17 +28,17 @@ class LocationContentsReadServiceSpec extends Specification {
 
     LocationRootReadService locationRootReadService
     ContentsLinkReadService contentsLinkReadService
-    EntityPropertyValuesReadService entityPropertyValuesReadService
+    ObjectPropertyValuesReadService objectPropertyValuesReadService
     LocationContentsReadService service
 
     def setup() {
         locationRootReadService = Mock(LocationRootReadService)
         contentsLinkReadService = Mock(ContentsLinkReadService)
-        entityPropertyValuesReadService = Mock(EntityPropertyValuesReadService)
+        objectPropertyValuesReadService = Mock(ObjectPropertyValuesReadService)
         service = new LocationContentsReadService(
                 locationRootReadService,
                 contentsLinkReadService,
-                entityPropertyValuesReadService)
+                objectPropertyValuesReadService)
     }
 
     private static LocationRootRecord location(String id, String name) {
@@ -51,14 +51,15 @@ class LocationContentsReadServiceSpec extends Specification {
         )
     }
 
-    private static EntityPropertyValuesRecord entity(String id, String name) {
-        return new EntityPropertyValuesRecord(
-                entityId: id,
+    private static ObjectPropertyValuesRecord entity(String id, String name) {
+        return new ObjectPropertyValuesRecord(
+                objectId: id,
+                collection: 'ent',
                 typeId: 'jade-tipi-org~dev~lbl_gov~jgi_pps~typ~sample',
                 properties: [name: name],
                 links: [:],
                 provenance: [commit_id: "COMMIT-${name}".toString()],
-                valuesByPropertyId: [:]
+                propertyValues: [:]
         )
     }
 
@@ -90,7 +91,7 @@ class LocationContentsReadServiceSpec extends Specification {
         given:
         LocationRootRecord subject = location(LOCATION_ID, 'Plate B1')
         LocationRootRecord childLocation = location(CHILD_LOC_ID, 'Tube A1')
-        EntityPropertyValuesRecord childEntity = entity(CHILD_ENT_ID, 'Sample A2')
+        ObjectPropertyValuesRecord childEntity = entity(CHILD_ENT_ID, 'Sample A2')
         ContentsLinkRecord locLink = link(LINK_LOC_ID, CHILD_LOC_ID,
                 [position: [kind: 'plate_well', label: 'A1', row: 'A', column: 1]])
         ContentsLinkRecord entLink = link(LINK_ENT_ID, CHILD_ENT_ID,
@@ -104,7 +105,7 @@ class LocationContentsReadServiceSpec extends Specification {
         1 * contentsLinkReadService.findContents(LOCATION_ID) >> Flux.just(locLink, entLink)
         1 * locationRootReadService.findLocation(CHILD_LOC_ID) >> Mono.just(childLocation)
         1 * locationRootReadService.findLocation(CHILD_ENT_ID) >> Mono.empty()
-        1 * entityPropertyValuesReadService.findPropertyValues(CHILD_ENT_ID) >> Mono.just(childEntity)
+        1 * objectPropertyValuesReadService.findPropertyValues('ent', CHILD_ENT_ID) >> Mono.just(childEntity)
         0 * _
 
         and:
@@ -130,7 +131,7 @@ class LocationContentsReadServiceSpec extends Specification {
         then:
         1 * locationRootReadService.findLocation(LOCATION_ID) >> Mono.empty()
         0 * contentsLinkReadService._
-        0 * entityPropertyValuesReadService._
+        0 * objectPropertyValuesReadService._
 
         and:
         record == null
@@ -166,7 +167,7 @@ class LocationContentsReadServiceSpec extends Specification {
         1 * locationRootReadService.findLocation(LOCATION_ID) >> Mono.just(subject)
         1 * contentsLinkReadService.findContents(LOCATION_ID) >> Flux.just(unresolvedLink)
         1 * locationRootReadService.findLocation(CHILD_ENT_ID) >> Mono.empty()
-        1 * entityPropertyValuesReadService.findPropertyValues(CHILD_ENT_ID) >> Mono.empty()
+        1 * objectPropertyValuesReadService.findPropertyValues('ent', CHILD_ENT_ID) >> Mono.empty()
         0 * _
 
         and:
@@ -188,7 +189,7 @@ class LocationContentsReadServiceSpec extends Specification {
         then:
         1 * locationRootReadService.findLocation(LOCATION_ID) >> Mono.just(subject)
         1 * contentsLinkReadService.findContents(LOCATION_ID) >> Flux.just(blankRight)
-        0 * entityPropertyValuesReadService._
+        0 * objectPropertyValuesReadService._
         0 * _
 
         and:
@@ -224,7 +225,7 @@ class LocationContentsReadServiceSpec extends Specification {
         thrown(IllegalArgumentException)
         0 * locationRootReadService._
         0 * contentsLinkReadService._
-        0 * entityPropertyValuesReadService._
+        0 * objectPropertyValuesReadService._
 
         where:
         input << [null, '', '   ']

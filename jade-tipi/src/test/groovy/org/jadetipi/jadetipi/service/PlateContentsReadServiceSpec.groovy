@@ -29,13 +29,13 @@ class PlateContentsReadServiceSpec extends Specification {
     static final String BARCODE_PROPERTY_ID = 'jade-tipi-org~dev~lbl_gov~jgi_pps~pp~barcode'
 
     ContentsLinkReadService contentsLinkReadService
-    EntityPropertyValuesReadService entityPropertyValuesReadService
+    ObjectPropertyValuesReadService objectPropertyValuesReadService
     PlateContentsReadService service
 
     def setup() {
         contentsLinkReadService = Mock(ContentsLinkReadService)
-        entityPropertyValuesReadService = Mock(EntityPropertyValuesReadService)
-        service = new PlateContentsReadService(contentsLinkReadService, entityPropertyValuesReadService)
+        objectPropertyValuesReadService = Mock(ObjectPropertyValuesReadService)
+        service = new PlateContentsReadService(contentsLinkReadService, objectPropertyValuesReadService)
     }
 
     private static ContentsLinkRecord link(String linkId,
@@ -59,21 +59,24 @@ class PlateContentsReadServiceSpec extends Specification {
         )
     }
 
-    private static EntityPropertyValuesRecord entity(String entityId, String barcode) {
-        return new EntityPropertyValuesRecord(
-                entityId: entityId,
+    private static ObjectPropertyValuesRecord entity(String entityId, String barcode) {
+        return new ObjectPropertyValuesRecord(
+                objectId: entityId,
+                collection: 'ent',
                 typeId: 'jade-tipi-org~dev~lbl_gov~jgi_pps~typ~sample',
                 properties: [label: barcode],
                 links: [:],
                 provenance: [commit_id: "COMMIT-${barcode}".toString()],
-                valuesByPropertyId: [
-                        (BARCODE_PROPERTY_ID): [new EntityPropertyValueRecord(
-                                assignmentId: "${entityId}~${BARCODE_PROPERTY_ID}".toString(),
+                propertyValues: [
+                        (BARCODE_PROPERTY_ID): new ObjectPropertyValueEntryRecord(
                                 propertyId: BARCODE_PROPERTY_ID,
                                 propertyName: 'barcode',
                                 value: [text: barcode],
-                                provenance: [commit_id: "COMMIT-${barcode}-ASSIGNMENT".toString()]
-                        )]
+                                txnId: 'aaaaaaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee',
+                                commitId: "COMMIT-${barcode}-ASSIGNMENT".toString(),
+                                msgUuid: 'msg-assignment',
+                                appliedAt: java.time.Instant.parse('2026-07-04T00:00:00Z')
+                        )
                 ]
         )
     }
@@ -88,16 +91,16 @@ class PlateContentsReadServiceSpec extends Specification {
                 [kind: 'plate_well', row: 'a', column: '1'])
         ContentsLinkRecord linkB12 = link(LINK_B_ID, SAMPLE_B_ID,
                 [kind: 'plate_well', row: 'B', column: 12])
-        EntityPropertyValuesRecord sampleA = entity(SAMPLE_A_ID, 'barcode-a1')
-        EntityPropertyValuesRecord sampleB = entity(SAMPLE_B_ID, 'barcode-b12')
+        ObjectPropertyValuesRecord sampleA = entity(SAMPLE_A_ID, 'barcode-a1')
+        ObjectPropertyValuesRecord sampleB = entity(SAMPLE_B_ID, 'barcode-b12')
 
         when:
         PlateContentsRecord record = service.findPlateContents(PLATE_ID).block()
 
         then:
         1 * contentsLinkReadService.findContents(PLATE_ID) >> Flux.just(linkA1, linkB12)
-        1 * entityPropertyValuesReadService.findPropertyValues(SAMPLE_A_ID) >> Mono.just(sampleA)
-        1 * entityPropertyValuesReadService.findPropertyValues(SAMPLE_B_ID) >> Mono.just(sampleB)
+        1 * objectPropertyValuesReadService.findPropertyValues('ent', SAMPLE_A_ID) >> Mono.just(sampleA)
+        1 * objectPropertyValuesReadService.findPropertyValues('ent', SAMPLE_B_ID) >> Mono.just(sampleB)
         0 * _
 
         and:
@@ -123,7 +126,7 @@ class PlateContentsReadServiceSpec extends Specification {
         a1.contents[0].unplacedReason == null
         a1.contents[0].linkProvenance.commit_id == 'COMMIT-a1'
         a1.contents[0].entity == sampleA
-        a1.contents[0].entity.valuesByPropertyId[BARCODE_PROPERTY_ID][0].value == [text: 'barcode-a1']
+        a1.contents[0].entity.propertyValues[BARCODE_PROPERTY_ID].value == [text: 'barcode-a1']
 
         and:
         PlateContentsWellRecord b12 = well(record, 'B12')
@@ -141,7 +144,7 @@ class PlateContentsReadServiceSpec extends Specification {
 
         then:
         1 * contentsLinkReadService.findContents(PLATE_ID) >> Flux.empty()
-        0 * entityPropertyValuesReadService._
+        0 * objectPropertyValuesReadService._
 
         and:
         record.containerId == PLATE_ID
@@ -163,9 +166,9 @@ class PlateContentsReadServiceSpec extends Specification {
 
         then:
         1 * contentsLinkReadService.findContents(PLATE_ID) >> Flux.just(first, second)
-        1 * entityPropertyValuesReadService.findPropertyValues(SAMPLE_A_ID) >>
+        1 * objectPropertyValuesReadService.findPropertyValues('ent', SAMPLE_A_ID) >>
                 Mono.just(entity(SAMPLE_A_ID, 'barcode-a1'))
-        1 * entityPropertyValuesReadService.findPropertyValues(SAMPLE_C_ID) >>
+        1 * objectPropertyValuesReadService.findPropertyValues('ent', SAMPLE_C_ID) >>
                 Mono.just(entity(SAMPLE_C_ID, 'barcode-c3'))
         0 * _
 
@@ -186,8 +189,8 @@ class PlateContentsReadServiceSpec extends Specification {
 
         then:
         1 * contentsLinkReadService.findContents(PLATE_ID) >> Flux.just(placedMissingEntity, invalidPosition)
-        1 * entityPropertyValuesReadService.findPropertyValues(SAMPLE_C_ID) >> Mono.empty()
-        1 * entityPropertyValuesReadService.findPropertyValues(SAMPLE_B_ID) >>
+        1 * objectPropertyValuesReadService.findPropertyValues('ent', SAMPLE_C_ID) >> Mono.empty()
+        1 * objectPropertyValuesReadService.findPropertyValues('ent', SAMPLE_B_ID) >>
                 Mono.just(entity(SAMPLE_B_ID, 'barcode-b12'))
         0 * _
 
@@ -200,7 +203,7 @@ class PlateContentsReadServiceSpec extends Specification {
         record.unplacedContents.size() == 1
         record.unplacedContents[0].linkId == LINK_B_ID
         record.unplacedContents[0].unplacedReason == PlateContentsUnplacedReason.ROW_INVALID
-        record.unplacedContents[0].entity.entityId == SAMPLE_B_ID
+        record.unplacedContents[0].entity.objectId == SAMPLE_B_ID
     }
 
     def 'unplaced contents report distinct placement reasons'() {
@@ -224,7 +227,7 @@ class PlateContentsReadServiceSpec extends Specification {
 
         then:
         1 * contentsLinkReadService.findContents(PLATE_ID) >> Flux.fromIterable(links)
-        6 * entityPropertyValuesReadService.findPropertyValues(SAMPLE_A_ID) >>
+        6 * objectPropertyValuesReadService.findPropertyValues('ent', SAMPLE_A_ID) >>
                 Mono.just(entity(SAMPLE_A_ID, 'barcode-a1'))
         0 * _
 
@@ -266,7 +269,7 @@ class PlateContentsReadServiceSpec extends Specification {
 
         then:
         1 * contentsLinkReadService.findContents(PLATE_ID) >> Flux.just(missingRight)
-        0 * entityPropertyValuesReadService._
+        0 * objectPropertyValuesReadService._
 
         and:
         well(record, 'A1').contents.size() == 1
@@ -282,7 +285,7 @@ class PlateContentsReadServiceSpec extends Specification {
         then:
         thrown(IllegalArgumentException)
         0 * contentsLinkReadService._
-        0 * entityPropertyValuesReadService._
+        0 * objectPropertyValuesReadService._
 
         where:
         input << [null, '', '   ']

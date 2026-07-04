@@ -384,16 +384,19 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
         0 * mongoTemplate.updateFirst(*_)
     }
 
-    def 'a legacy entity_id-only assignment still takes the standalone-root path'() {
+    def 'a legacy entity_id-only assignment resolves through the deprecated alias onto the ent root'() {
         given:
-        Map<String, Object> captured = null
+        String capturedCollection = null
+        Update capturedUpdate = null
         mongoTemplate.findById(ENT_SAMPLE, Map.class, 'ent') >>
                 Mono.just(objectRoot(ENT_SAMPLE, 'ent', TYP_CONTAINER))
         mongoTemplate.findById(TYP_CONTAINER, Map.class, 'typ') >>
                 Mono.just(typRoot(TYP_CONTAINER, [name: 'container', property_refs: [(PPY_BARCODE): [:]]]))
-        mongoTemplate.insert(_ as Map, 'ppy') >> { args ->
-            captured = (Map<String, Object>) args[0]
-            return Mono.just(args[0])
+        mongoTemplate.updateFirst(_ as Query, _ as Update, _ as String) >> {
+            Query q, Update u, String coll ->
+                capturedCollection = coll
+                capturedUpdate = u
+                return Mono.empty()
         }
         CommittedTransactionMessage legacy = new CommittedTransactionMessage(
                 msgUuid: MSG_UUID,
@@ -413,10 +416,11 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
         when:
         MaterializeResult result = materializer.materialize(snapshot([legacy])).block()
 
-        then: 'the standalone ppy root is inserted; no property_values projection happens'
+        then: 'the value projects onto the ent root; no standalone assignment root is written'
         result.materialized == 1
-        captured._id == ENT_SAMPLE + '~' + PPY_BARCODE
-        captured.collection == 'ppy'
-        0 * mongoTemplate.updateFirst(*_)
+        capturedCollection == 'ent'
+        (capturedUpdate.updateObject.get('$set') as Map)
+                .containsKey("property_values.${PPY_BARCODE}" as String)
+        0 * mongoTemplate.insert(_, _)
     }
 }

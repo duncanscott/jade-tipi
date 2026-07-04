@@ -60,7 +60,7 @@ class LocationPropertyValuesReadControllerSpec extends Specification {
                         txnId: 'txn-1',
                         commitId: 'COMMIT-1',
                         msgUuid: 'msg-1',
-                        appliedAt: '2026-07-03T00:00:00Z'
+                        appliedAt: java.time.Instant.parse('2026-07-04T00:00:00Z')
                 )]
         ))
 

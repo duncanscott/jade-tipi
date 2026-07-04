@@ -618,11 +618,11 @@ class MessageSpec extends Specification {
         registeredPropertyIds.contains(assignText.data().property_id)
         registeredPropertyIds.contains(assignNumber.data().property_id)
 
-        and: 'both assignments target the canonical entity and use the composite assignment id convention'
-        assignText.data().entity_id == entCreate.data().id
-        assignNumber.data().entity_id == entCreate.data().id
-        assignText.data().id == "${entCreate.data().id}~${assignText.data().property_id}"
-        assignNumber.data().id == "${entCreate.data().id}~${assignNumber.data().property_id}"
+        and: 'both assignments target the canonical entity through the object-targeted form'
+        assignText.data().object_collection == 'ent'
+        assignNumber.data().object_collection == 'ent'
+        assignText.data().object_id == entCreate.data().id
+        assignNumber.data().object_id == entCreate.data().id
 
         and: 'all five share the same transaction uuid'
         String txnUuid = entCreate.txn().uuid()
@@ -765,7 +765,7 @@ class MessageSpec extends Specification {
         data.keySet() == ['kind', 'id', 'name', 'value_schema'] as Set
     }
 
-    def "ppy + create assignment example uses the human-readable kind, id, entity_id, property_id, and value shape"() {
+    def "ppy + create assignment example uses the object-targeted kind, object_collection, object_id, property_id, and value shape"() {
         given:
         Message message = JsonMapper.fromJson(
                 readResource('/example/message/07-assign-property-value-text.json'), Message)
@@ -777,12 +777,13 @@ class MessageSpec extends Specification {
         and:
         Map data = message.data()
         data.kind == 'assignment'
-        data.entity_id == 'jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~en~plate_a'
+        data.object_collection == 'ent'
+        data.object_id == 'jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~en~plate_a'
         data.property_id == 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~pp~barcode'
         data.value == [text: 'barcode-1']
 
         and: 'no other facts leak onto the data root next to the canonical assignment keys'
-        data.keySet() == ['kind', 'id', 'entity_id', 'property_id', 'value'] as Set
+        data.keySet() == ['kind', 'object_collection', 'object_id', 'property_id', 'value'] as Set
     }
 
     def "property-definition transaction example sequence shares one txn id and the assignment example references the property-definition and entity by id"() {
@@ -814,13 +815,14 @@ class MessageSpec extends Specification {
         commit.collection() == Collection.TRANSACTION
         commit.action() == Action.COMMIT
 
-        and: 'the assignment cross-references resolve verbatim to the entity and property-definition ids'
+        and: 'the object-targeted assignment cross-references resolve verbatim to the entity and property-definition ids'
         Map ppyData = ppyCreate.data()
         Map entData = entCreate.data()
         Map assignData = ppyAssign.data()
         ppyData.kind == 'definition'
         assignData.kind == 'assignment'
-        assignData.entity_id == entData.id
+        assignData.object_collection == 'ent'
+        assignData.object_id == entData.id
         assignData.property_id == ppyData.id
     }
 }

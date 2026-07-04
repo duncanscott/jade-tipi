@@ -210,12 +210,13 @@ property and defines the JSON object shape expected for assigned values. In the
 target model, `ppy` also owns property policy: the owning group and the rules
 for who may write values for that property.
 
-Current implementation note: definitions and entity assignments currently share
-`collection: "ppy"` and are distinguished by `data.kind` (`definition` vs.
-`assignment`). Assignment records materialized as root-shaped `ppy` documents
-are transitional. The target model keeps `ppy` for definitions/policy, stages
-property-value writes as transaction messages in `msg`, and materializes the
-current values onto the target object document keyed by `ppy` ID.
+Definitions and assignments share `collection: "ppy"` and are distinguished
+by `data.kind` (`definition` vs. `assignment`). Since TASK-045, `ppy` holds
+definitions only: assignment messages project their values onto the target
+object document keyed by `ppy` ID (see Object-Targeted Property Assignment),
+and the transitional standalone assignment-root path is retired. Rows written
+by that path remain in MongoDB as historical data only. Staging property-value
+writes in transient `msg` remains the drift-note target.
 
 ```json
 {
@@ -321,9 +322,13 @@ Entities live in `ent` and reference a type.
 
 ## Property Value Assignment
 
-Current implementation note: a property assignment is stored as a property
-record whose ID is the entity ID plus the property ID. The assignment payload
-references both sides and stores the value object.
+Every property assignment is object-targeted (TASK-045: one property model).
+The canonical form names the target explicitly; the value projects onto the
+target object root under `property_values` — see the next section for the
+full contract. A payload carrying only the deprecated `entity_id` (the
+pre-TASK-045 wire form, shown below) resolves as
+`object_collection: "ent"` / `object_id: <entity_id>` with a deprecation
+warning, and any legacy composite `data.id` is ignored:
 
 ```json
 {
@@ -331,7 +336,6 @@ references both sides and stores the value object.
   "action": "create",
   "data": {
     "kind": "assignment",
-    "id": "lbl_gov~jgi_pps~...~en~plate_a~lbl_gov~jgi_pps~...~pp~barcode",
     "entity_id": "lbl_gov~jgi_pps~...~en~plate_a",
     "property_id": "lbl_gov~jgi_pps~...~pp~barcode",
     "value": {
@@ -341,33 +345,11 @@ references both sides and stores the value object.
 }
 ```
 
-Early backend validation should verify required envelope fields, known
+Early backend validation verifies required envelope fields, known
 collection/action pairs, and object-shaped property values. Value-shape
 validation against the registered property `value_schema` remains a future
-read-time validator concern.
-
-The current committed materializer projects `ppy + create` messages whose
-`data.kind == "assignment"` into the `ppy` MongoDB collection as their own
-root-shaped records, gated by type registration. The materialized root uses
-`_id == data.id` (conventionally `<entity_id>~<property_id>`),
-`collection: "ppy"`, `type_id: null`, inline `properties.kind`,
-`properties.entity_id`, `properties.property_id`, and the verbatim
-object-shaped `properties.value`, plus an empty `links` map and
-`_head.provenance` pointing at the assignment message.
-
-Before inserting, the materializer enforces the rule from `DIRECTION.md` that a property must be added to the type before clients may assign it to an object of that type:
-
-- The target `ent` root referenced by `data.entity_id` must already be materialized; a missing entity root counts as `skippedMissingTarget`.
-- The entity root must carry a non-blank `type_id`, the referenced `typ` root must exist, and that `typ` root must list `data.property_id` under `properties.property_refs`. Any of those failing counts as `skippedUnregisteredProperty`.
-- Missing or blank `data.id`, `data.entity_id`, or `data.property_id`, and a missing or non-object `data.value`, count as `skippedInvalid`.
-
-Duplicate assignment inserts follow the shared root rules: identical payloads
-are idempotent (`duplicateMatching`); differing payloads are
-`conflictingDuplicate` and never overwritten. The materializer does not resolve
-`data.property_id` against the `ppy` collection, does not validate `data.value`
-against the registered `value_schema`, and does not rewrite the entity root's
-own `properties` map. `ppy + create` messages with missing, blank, or unknown
-`data.kind` values remain `skippedUnsupported`.
+read-time validator concern. `ppy + create` messages with missing, blank, or
+unknown `data.kind` values remain `skippedUnsupported`.
 
 ### Object-Targeted Property Assignment
 
@@ -391,12 +373,10 @@ is created. The canonical example is `15-assign-object-property-value.json`.
 }
 ```
 
-Routing is shape-determined: a payload carrying `object_collection` or
-`object_id` takes the object-targeted path; a payload carrying only the
-legacy `entity_id` keeps the standalone-root behavior above, unchanged until
-a deliberate cleanup. The materializer projects the committed value onto the
-target object root under a `property_values` map keyed by `ppy` ID, via a
-dotted-path `$set`:
+All assignments take this path (TASK-045); the deprecated `entity_id`-only
+payload is a compatibility alias for `object_collection: "ent"`. The
+materializer projects the committed value onto the target object root under
+a `property_values` map keyed by `ppy` ID, via a dotted-path `$set`:
 
 ```json
 {
@@ -533,7 +513,7 @@ overrides.
 
 ## Committed Materialization Of Locations And Links
 
-Once a transaction commits in `txn`, a post-commit projection currently materializes `loc + create`, `typ + create` (both link-type records where `data.kind == "link_type"` and bare entity-type records where `data.kind` is absent, optionally carrying `parent_type_id`), `typ + update` messages whose `data.operation == "add_property"`, `lnk + create`, `ent + create`, `grp + create`, and `ppy + create` messages whose `data.kind` is `"definition"` or `"assignment"` (legacy `entity_id` assignments materialize as standalone gated `ppy` roots as described above; object-targeted assignments project onto `ent`/`loc` roots under `property_values` with inheritance-aware gating) into their long-term collections (`loc`, `typ`, `lnk`, `ent`, `grp`, `ppy`). The projection is a read-after-commit step over the existing committed-snapshot read service; current code uses `txn` for both durable transaction facts and staged message payloads. The target split is described above: durable transaction facts stay in `txn`, while transient message payloads move to `msg`. Other collections and other actions — including every `typ + update` whose `data.operation` is not `add_property`, every `ppy + create` whose `data.kind` is neither `"definition"` nor `"assignment"`, every `*+ delete`, and other update actions — are intentionally not materialized in this iteration and are counted as `skippedUnsupported` without raising an error.
+Once a transaction commits in `txn`, a post-commit projection currently materializes `loc + create`, `typ + create` (both link-type records where `data.kind == "link_type"` and bare entity-type records where `data.kind` is absent, optionally carrying `parent_type_id`), `typ + update` messages whose `data.operation == "add_property"`, `lnk + create`, `ent + create`, `grp + create`, and `ppy + create` messages whose `data.kind` is `"definition"` or `"assignment"` (assignments project onto `ent`/`loc` roots under `property_values` with inheritance-aware gating; the `entity_id`-only form is a deprecated alias and standalone assignment roots are no longer written) into their long-term collections (`loc`, `typ`, `lnk`, `ent`, `grp`, `ppy`). The projection is a read-after-commit step over the existing committed-snapshot read service; current code uses `txn` for both durable transaction facts and staged message payloads. The target split is described above: durable transaction facts stay in `txn`, while transient message payloads move to `msg`. Other collections and other actions — including every `typ + update` whose `data.operation` is not `add_property`, every `ppy + create` whose `data.kind` is neither `"definition"` nor `"assignment"`, every `*+ delete`, and other update actions — are intentionally not materialized in this iteration and are counted as `skippedUnsupported` without raising an error.
 
 The current materializer writes the accepted root-document shape from `DIRECTION.md`: one logical Jade-Tipi object normally stored as one root document with top-level `_id`, `id`, `collection`, `type_id`, explicit `properties`, denormalized `links`, and reserved `_head.provenance` metadata. Duplicate `_id` writes with an identical payload are idempotent successes; differing-payload duplicates are logged and counted but not overwritten, and missing or blank `data.id` is logged and skipped without synthesizing an id. Semantic reference validation (`type_id`, `left`, `right`, and `allowed_*_collections`) is still not enforced; that remains a follow-up reader/validator concern.
 
@@ -727,11 +707,11 @@ empty map.
 
 The HTTP adapter is `GET /api/locations/{id}/property-values`, a resource
 read: a missing `loc` root returns 404; an existing root with no projected
-values returns 200 with an empty `propertyValues` map. The service supports
-`ent` roots for future use, but the legacy
-`GET /api/entities/{id}/property-values` route keeps its transitional
-standalone-assignment-root reader until the planned cleanup task retires
-that shape.
+values returns 200 with an empty `propertyValues` map. Since TASK-045 the
+entity route `GET /api/entities/{id}/property-values` delegates to this same
+generic reader with the fixed `ent` collection and returns the same response
+shape; the transitional entity-only reader over standalone assignment roots
+is deleted.
 
 ## Reading Effective Type Properties
 

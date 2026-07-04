@@ -54,11 +54,12 @@ import java.util.function.Supplier
  * route over materialized {@code ent}, {@code typ}, and {@code ppy} roots.
  *
  * <p>Publishes one canonical property-loop transaction to a per-spec Kafka
- * topic, waits for the transaction header plus the root-shaped entity,
- * property definition, and assignment documents, then asserts that
- * {@code GET /api/entities/{id}/property-values} joins the entity root with
- * its registered assignment roots. The same feature also covers an existing
- * entity with no assignments and a missing entity id.
+ * topic, waits for the transaction header plus the projected
+ * {@code property_values} entry on the entity root (TASK-045: assignments
+ * project onto object roots; standalone assignment roots are retired), then
+ * asserts that {@code GET /api/entities/{id}/property-values} returns the
+ * generic object property-values shape. The same feature also covers an
+ * existing entity with no assignments and a missing entity id.
  *
  * <p>Skip / run conditions are deliberately opt-in:
  * <ul>
@@ -187,7 +188,6 @@ class EntityPropertyValuesHttpReadIntegrationSpec extends Specification {
     String entityTypeId
     String entityId
     String emptyEntityId
-    String assignmentId
 
     def setupSpec() {
         Properties props = new Properties()
@@ -217,12 +217,12 @@ class EntityPropertyValuesHttpReadIntegrationSpec extends Specification {
     def setup() {
         txn = Transaction.newInstance('jade-itest-org', 'kafka', 'jade-itest-cli', 'itest-user')
         txnId = txn.id
-        String featureUuid = UUID.randomUUID().toString().substring(0, 8)
-        propertyDefinitionId = "jadetipi-itest-entppy~pp~barcode_${featureUuid}"
-        entityTypeId = "jadetipi-itest-entppy~typ~plate_96_${featureUuid}"
-        entityId = "jadetipi-itest-entppy~ent~plate_${featureUuid}"
-        emptyEntityId = "jadetipi-itest-entppy~ent~empty_plate_${featureUuid}"
-        assignmentId = "${entityId}~${propertyDefinitionId}"
+        // Object identifier convention (TASK-044): transaction-UUID form.
+        String idPrefix = "jade-itest-org~kafka~${txn.uuid()}"
+        propertyDefinitionId = "${idPrefix}~ppy~barcode"
+        entityTypeId = "${idPrefix}~typ~plate_96"
+        entityId = "${idPrefix}~ent~plate"
+        emptyEntityId = "${idPrefix}~ent~empty_plate"
     }
 
     def cleanup() {
@@ -230,7 +230,7 @@ class EntityPropertyValuesHttpReadIntegrationSpec extends Specification {
             mongoTemplate.remove(Query.query(Criteria.where('txn_id').is(txnId)),
                     TXN_COLLECTION).block(Duration.ofSeconds(10))
         }
-        [(PPY_COLLECTION): [propertyDefinitionId, assignmentId],
+        [(PPY_COLLECTION): [propertyDefinitionId],
          (TYP_COLLECTION): [entityTypeId],
          (ENT_COLLECTION): [entityId, emptyEntityId]].each { String collection, List<String> ids ->
             ids.findAll { it != null }.each { String id ->
@@ -279,11 +279,11 @@ class EntityPropertyValuesHttpReadIntegrationSpec extends Specification {
                 links     : [:]
         ] as Map<String, Object>)
         Message assignmentMsg = Message.newInstance(txn, JtpCollection.PROPERTY, Action.CREATE, [
-                kind       : 'assignment',
-                id         : assignmentId,
-                entity_id  : entityId,
-                property_id: propertyDefinitionId,
-                value      : [text: 'barcode-1']
+                kind             : 'assignment',
+                object_collection: 'ent',
+                object_id        : entityId,
+                property_id      : propertyDefinitionId,
+                value            : [text: 'barcode-1']
         ] as Map<String, Object>)
         Message commitMsg = Message.newInstance(txn, JtpCollection.TRANSACTION, Action.COMMIT, [
                 summary: 'entity property-values http read fixture'
@@ -308,47 +308,46 @@ class EntityPropertyValuesHttpReadIntegrationSpec extends Specification {
                 { Map d -> ((Map) d?.properties)?.kind == 'definition' },
                 'root-shaped ppy definition document'
         )
-        awaitMongo(
+        Map assignedEntity = awaitMongo(
                 { mongoTemplate.findById(entityId, Map, ENT_COLLECTION) },
-                { Map d -> d != null },
-                'assigned entity root'
+                { Map d -> d != null && ((Map) d.property_values)?.containsKey(propertyDefinitionId) },
+                'entity root with projected property_values entry'
         )
         awaitMongo(
                 { mongoTemplate.findById(emptyEntityId, Map, ENT_COLLECTION) },
                 { Map d -> d != null },
                 'unassigned entity root'
         )
-        Map assignmentDoc = awaitMongo(
-                { mongoTemplate.findById(assignmentId, Map, PPY_COLLECTION) },
-                { Map d -> ((Map) d?.properties)?.kind == 'assignment' },
-                'root-shaped ppy assignment document'
-        )
-        ((Map) assignmentDoc.properties).entity_id == entityId
-        ((Map) assignmentDoc.properties).property_id == propertyDefinitionId
+
+        and: 'no standalone assignment root is written for the object-targeted form'
+        ((Map) ((Map) assignedEntity.property_values)[propertyDefinitionId]).value == [text: 'barcode-1']
+        mongoTemplate.findById("${entityId}~${propertyDefinitionId}" as String, Map, PPY_COLLECTION)
+                .block(MONGO_BLOCK_TIMEOUT) == null
 
         when: 'the assigned entity is read through the HTTP route'
-        String valuePath = "\$.valuesByPropertyId['${propertyDefinitionId}'][0]"
+        String valuePath = "\$.propertyValues['${propertyDefinitionId}']"
         WebTestClient.ResponseSpec assignedResponse = webTestClient.get()
                 .uri('/api/entities/{id}/property-values', entityId)
                 .header('Authorization', "Bearer ${token}")
                 .exchange()
 
-        then: 'the route returns the entity root and grouped property assignment'
+        then: 'the route returns the generic object property-values shape with the projected entry'
         assignedResponse.expectStatus().isOk()
                 .expectHeader().contentType('application/json')
                 .expectBody()
-                .jsonPath('$.entityId').isEqualTo(entityId)
+                .jsonPath('$.objectId').isEqualTo(entityId)
+                .jsonPath('$.collection').isEqualTo('ent')
                 .jsonPath('$.typeId').isEqualTo(entityTypeId)
                 .jsonPath('$.properties.label').isEqualTo('Plate A')
                 .jsonPath('$.provenance.txn_id').isEqualTo(txnId)
-                .jsonPath('$.valuesByPropertyId.length()').isEqualTo(1)
-                .jsonPath("${valuePath}.assignmentId").isEqualTo(assignmentId)
+                .jsonPath('$.propertyValues.length()').isEqualTo(1)
                 .jsonPath("${valuePath}.propertyId").isEqualTo(propertyDefinitionId)
                 .jsonPath("${valuePath}.propertyName").isEqualTo('barcode')
                 .jsonPath("${valuePath}.value.text").isEqualTo('barcode-1')
-                .jsonPath("${valuePath}.provenance.txn_id").isEqualTo(txnId)
-                .jsonPath("${valuePath}.provenance.commit_id").exists()
-                .jsonPath("${valuePath}.provenance.msg_uuid").isEqualTo(assignmentMsg.uuid())
+                .jsonPath("${valuePath}.txnId").isEqualTo(txnId)
+                .jsonPath("${valuePath}.commitId").exists()
+                .jsonPath("${valuePath}.msgUuid").isEqualTo(assignmentMsg.uuid())
+                .jsonPath("${valuePath}.appliedAt").exists()
 
         when: 'an existing entity with no assignments is read through the same route'
         WebTestClient.ResponseSpec emptyResponse = webTestClient.get()
@@ -356,17 +355,17 @@ class EntityPropertyValuesHttpReadIntegrationSpec extends Specification {
                 .header('Authorization', "Bearer ${token}")
                 .exchange()
 
-        then: 'the route returns 200 with an empty valuesByPropertyId map'
+        then: 'the route returns 200 with an empty propertyValues map'
         emptyResponse.expectStatus().isOk()
                 .expectBody()
-                .jsonPath('$.entityId').isEqualTo(emptyEntityId)
-                .jsonPath('$.valuesByPropertyId').exists()
-                .jsonPath('$.valuesByPropertyId.length()').isEqualTo(0)
+                .jsonPath('$.objectId').isEqualTo(emptyEntityId)
+                .jsonPath('$.propertyValues').exists()
+                .jsonPath('$.propertyValues.length()').isEqualTo(0)
 
         when: 'a never-materialized entity id is read'
         WebTestClient.ResponseSpec missingResponse = webTestClient.get()
                 .uri('/api/entities/{id}/property-values',
-                        "jadetipi-itest-entppy~ent~missing_${UUID.randomUUID().toString().substring(0, 8)}")
+                        "jade-itest-org~kafka~${txn.uuid()}~ent~missing")
                 .header('Authorization', "Bearer ${token}")
                 .exchange()
 

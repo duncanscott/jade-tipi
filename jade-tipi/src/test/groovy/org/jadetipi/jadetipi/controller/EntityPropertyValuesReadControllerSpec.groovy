@@ -13,31 +13,33 @@
 package org.jadetipi.jadetipi.controller
 
 import org.jadetipi.jadetipi.exception.GlobalExceptionHandler
-import org.jadetipi.jadetipi.service.EntityPropertyValueRecord
-import org.jadetipi.jadetipi.service.EntityPropertyValuesReadService
-import org.jadetipi.jadetipi.service.EntityPropertyValuesRecord
+import org.jadetipi.jadetipi.service.ObjectPropertyValueEntryRecord
+import org.jadetipi.jadetipi.service.ObjectPropertyValuesReadService
+import org.jadetipi.jadetipi.service.ObjectPropertyValuesRecord
 import org.springframework.core.ReactiveAdapterRegistry
 import org.springframework.security.web.reactive.result.method.annotation.AuthenticationPrincipalArgumentResolver
 import org.springframework.test.web.reactive.server.WebTestClient
 import reactor.core.publisher.Mono
 import spock.lang.Specification
 
-import java.lang.reflect.Constructor
-
+/**
+ * TASK-045: the entity route keeps its path and 404 contract but delegates
+ * to the generic {@link ObjectPropertyValuesReadService} with the fixed
+ * {@code ent} collection, returning the generic {@code propertyValues}
+ * response shape.
+ */
 class EntityPropertyValuesReadControllerSpec extends Specification {
 
-    static final String ENTITY_ID = 'jade-tipi-org~dev~lbl_gov~jgi_pps~ent~plate_a'
-    static final String TYPE_ID = 'jade-tipi-org~dev~lbl_gov~jgi_pps~typ~plate_96'
-    static final String PROPERTY_ID = 'barcode'
-    static final String ASSIGNMENT_ID = "${ENTITY_ID}~${PROPERTY_ID}"
-    static final String PROPERTY_VALUES_PATH = '/api/entities/{id}/property-values'
+    static final String ENT_ID = 'jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~plate_a'
+    static final String PPY_BARCODE = 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
+    static final String PATH = '/api/entities/{id}/property-values'
 
-    EntityPropertyValuesReadService readService
+    ObjectPropertyValuesReadService readService
     EntityPropertyValuesReadController controller
     WebTestClient webTestClient
 
     def setup() {
-        readService = Mock(EntityPropertyValuesReadService)
+        readService = Mock(ObjectPropertyValuesReadService)
         controller = new EntityPropertyValuesReadController(readService)
         webTestClient = WebTestClient.bindToController(controller)
                 .controllerAdvice(new GlobalExceptionHandler())
@@ -48,127 +50,58 @@ class EntityPropertyValuesReadControllerSpec extends Specification {
                 .build()
     }
 
-    private static EntityPropertyValuesRecord record(
-            Map<String, List<EntityPropertyValueRecord>> valuesByPropertyId = [
-                    (PROPERTY_ID): [new EntityPropertyValueRecord(
-                            assignmentId: ASSIGNMENT_ID,
-                            propertyId: PROPERTY_ID,
-                            propertyName: 'barcode',
-                            value: [text: 'barcode-1'],
-                            provenance: [
-                                    txn_id   : 'aaaaaaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee',
-                                    commit_id: 'COMMIT-PPY',
-                                    msg_uuid : '22222222-2222-7222-8222-222222222222'
-                            ]
-                    )]
-            ]) {
-        return new EntityPropertyValuesRecord(
-                entityId: ENTITY_ID,
-                typeId: TYPE_ID,
-                properties: [label: 'Plate A'],
+    private static ObjectPropertyValuesRecord record() {
+        return new ObjectPropertyValuesRecord(
+                objectId: ENT_ID,
+                collection: 'ent',
+                typeId: 'jade-tipi-org~dev~018fd849-2a44-7444-8d04-dddddddddddd~typ~plate_96',
+                properties: [:],
                 links: [:],
-                provenance: [
-                        txn_id   : 'aaaaaaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee',
-                        commit_id: 'COMMIT-ENT',
-                        msg_uuid : '11111111-1111-7111-8111-111111111111'
-                ],
-                valuesByPropertyId: valuesByPropertyId
+                provenance: [commit_id: 'COMMIT-1'],
+                propertyValues: [(PPY_BARCODE): new ObjectPropertyValueEntryRecord(
+                        propertyId: PPY_BARCODE,
+                        propertyName: 'barcode',
+                        value: [text: 'barcode-1'],
+                        txnId: 'txn-1',
+                        commitId: 'COMMIT-1',
+                        msgUuid: 'msg-1',
+                        appliedAt: java.time.Instant.parse('2026-07-04T00:00:00Z')
+                )]
         )
     }
 
-    def 'route returns 200 with serialized entity property-values record'() {
+    def 'returns 200 with the generic property-values record for an existing ent root'() {
         given:
-        readService.findPropertyValues(ENTITY_ID) >> Mono.just(record())
+        readService.findPropertyValues('ent', ENT_ID) >> Mono.just(record())
 
         expect:
-        webTestClient.get()
-                .uri(PROPERTY_VALUES_PATH, ENTITY_ID)
+        webTestClient.get().uri(PATH, ENT_ID)
                 .exchange()
                 .expectStatus().isOk()
-                .expectHeader().contentType('application/json')
                 .expectBody()
-                .jsonPath('$.entityId').isEqualTo(ENTITY_ID)
-                .jsonPath('$.typeId').isEqualTo(TYPE_ID)
-                .jsonPath('$.properties.label').isEqualTo('Plate A')
-                .jsonPath('$.provenance.commit_id').isEqualTo('COMMIT-ENT')
-                .jsonPath('$.valuesByPropertyId.barcode.length()').isEqualTo(1)
-                .jsonPath('$.valuesByPropertyId.barcode[0].assignmentId').isEqualTo(ASSIGNMENT_ID)
-                .jsonPath('$.valuesByPropertyId.barcode[0].propertyId').isEqualTo(PROPERTY_ID)
-                .jsonPath('$.valuesByPropertyId.barcode[0].propertyName').isEqualTo('barcode')
-                .jsonPath('$.valuesByPropertyId.barcode[0].value.text').isEqualTo('barcode-1')
-                .jsonPath('$.valuesByPropertyId.barcode[0].provenance.msg_uuid')
-                .isEqualTo('22222222-2222-7222-8222-222222222222')
+                .jsonPath('$.objectId').isEqualTo(ENT_ID)
+                .jsonPath('$.collection').isEqualTo('ent')
+                .jsonPath("\$.propertyValues['${PPY_BARCODE}'].propertyName").isEqualTo('barcode')
+                .jsonPath("\$.propertyValues['${PPY_BARCODE}'].value.text").isEqualTo('barcode-1')
+                .jsonPath("\$.propertyValues['${PPY_BARCODE}'].commitId").isEqualTo('COMMIT-1')
     }
 
-    def 'route delegates to EntityPropertyValuesReadService and to no other collaborator'() {
-        when:
-        webTestClient.get()
-                .uri(PROPERTY_VALUES_PATH, ENTITY_ID)
-                .exchange()
-                .expectStatus().isOk()
-
-        then:
-        1 * readService.findPropertyValues(ENTITY_ID) >> Mono.just(record())
-        0 * _
-    }
-
-    def 'missing entity returns 404 with empty body'() {
+    def 'returns 404 when the ent root is not materialized'() {
         given:
-        readService.findPropertyValues(ENTITY_ID) >> Mono.empty()
+        readService.findPropertyValues('ent', ENT_ID) >> Mono.empty()
 
         expect:
-        webTestClient.get()
-                .uri(PROPERTY_VALUES_PATH, ENTITY_ID)
+        webTestClient.get().uri(PATH, ENT_ID)
                 .exchange()
                 .expectStatus().isNotFound()
-                .expectBody().isEmpty()
     }
 
-    def 'existing entity with no assignments returns 200 with empty values map'() {
-        given:
-        readService.findPropertyValues(ENTITY_ID) >> Mono.just(record([:]))
-
-        expect:
-        webTestClient.get()
-                .uri(PROPERTY_VALUES_PATH, ENTITY_ID)
-                .exchange()
-                .expectStatus().isOk()
-                .expectBody()
-                .jsonPath('$.entityId').isEqualTo(ENTITY_ID)
-                .jsonPath('$.valuesByPropertyId').exists()
-                .jsonPath('$.valuesByPropertyId.length()').isEqualTo(0)
-    }
-
-    def 'blank id surfaces service Assert.hasText as 400 ErrorResponse via GlobalExceptionHandler'() {
-        given:
-        readService.findPropertyValues('   ') >> {
-            throw new IllegalArgumentException('entityId must not be blank')
-        }
-
-        expect:
-        webTestClient.get()
-                .uri(PROPERTY_VALUES_PATH, '   ')
-                .exchange()
-                .expectStatus().isBadRequest()
-                .expectBody()
-                .jsonPath('$.status').isEqualTo(400)
-                .jsonPath('$.error').isEqualTo('Bad Request')
-                .jsonPath('$.message').isEqualTo('entityId must not be blank')
-    }
-
-    def 'controller has no direct Mongo collaborator: only constructor argument is the read service'() {
+    def 'route delegates to the generic reader with the fixed ent collection and no other collaborator'() {
         when:
-        Constructor<?>[] constructors = EntityPropertyValuesReadController.getDeclaredConstructors()
-        Constructor<?> ctor = constructors.find { it.parameterCount == 1 }
+        webTestClient.get().uri(PATH, ENT_ID).exchange().expectStatus().isOk()
 
         then:
-        ctor != null
-        ctor.parameterTypes.length == 1
-        ctor.parameterTypes[0] == EntityPropertyValuesReadService
-    }
-
-    def 'route path binds exactly to /api/entities/{id}/property-values'() {
-        expect:
-        PROPERTY_VALUES_PATH == '/api/entities/{id}/property-values'
+        1 * readService.findPropertyValues('ent', ENT_ID) >> Mono.just(record())
+        0 * _
     }
 }

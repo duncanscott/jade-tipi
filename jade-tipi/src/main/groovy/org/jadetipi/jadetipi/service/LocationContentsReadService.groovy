@@ -35,16 +35,16 @@ class LocationContentsReadService {
 
     private final LocationRootReadService locationRootReadService
     private final ContentsLinkReadService contentsLinkReadService
-    private final EntityPropertyValuesReadService entityPropertyValuesReadService
+    private final ObjectPropertyValuesReadService objectPropertyValuesReadService
 
     LocationContentsReadService(
             LocationRootReadService locationRootReadService,
             ContentsLinkReadService contentsLinkReadService,
-            EntityPropertyValuesReadService entityPropertyValuesReadService) {
+            ObjectPropertyValuesReadService objectPropertyValuesReadService) {
 
         this.locationRootReadService = locationRootReadService
         this.contentsLinkReadService = contentsLinkReadService
-        this.entityPropertyValuesReadService = entityPropertyValuesReadService
+        this.objectPropertyValuesReadService = objectPropertyValuesReadService
     }
 
     /**
@@ -77,8 +77,8 @@ class LocationContentsReadService {
         return locationRootReadService.findLocation(link.right)
                 .map { LocationRootRecord location -> toEntry(link, location, null) }
                 .switchIfEmpty(Mono.defer {
-                    entityPropertyValuesReadService.findPropertyValues(link.right)
-                            .map { EntityPropertyValuesRecord entity -> toEntry(link, null, entity) }
+                    objectPropertyValuesReadService.findPropertyValues('ent', link.right)
+                            .map { ObjectPropertyValuesRecord entity -> toEntry(link, null, entity) }
                 })
                 .defaultIfEmpty(unresolved)
     }
@@ -86,7 +86,7 @@ class LocationContentsReadService {
     private static LocationContentsEntryRecord toEntry(
             ContentsLinkRecord link,
             LocationRootRecord contentLocation,
-            EntityPropertyValuesRecord contentEntity) {
+            ObjectPropertyValuesRecord contentEntity) {
 
         return new LocationContentsEntryRecord(
                 linkId: link.linkId,

@@ -68,37 +68,18 @@ import java.time.Instant
  *       copied as an opaque JSON object and is not validated at
  *       materialization time. Every other {@code data.kind} value
  *       (missing, blank, or unknown) remains {@code skippedUnsupported}.</li>
- *   <li>{@code ppy + create} with {@code data.kind == "assignment"} →
- *       {@code ppy} collection, gated by type registration. The assignment
- *       materializes as its own root-shaped {@code ppy} record whose ID is
- *       {@code data.id} (conventionally {@code <entity_id>~<property_id>}),
- *       carrying {@code data.kind}, {@code data.entity_id},
- *       {@code data.property_id}, and the verbatim object-shaped
- *       {@code data.value} under root {@code properties}. Before insert the
- *       materializer requires that the target {@code ent} root exists
- *       (else {@code skippedMissingTarget}) and that the entity root carries
- *       a non-blank {@code type_id} whose {@code typ} root exists and lists
- *       {@code data.property_id} under {@code properties.property_refs}
- *       (else {@code skippedUnregisteredProperty}). Missing or blank
- *       {@code data.id}, {@code data.entity_id}, or {@code data.property_id},
- *       and a missing or non-object {@code data.value}, count as
- *       {@code skippedInvalid}. {@code data.value} is never validated
- *       against the property definition's {@code value_schema} in this
- *       iteration, the {@code property_id} is never resolved against the
- *       {@code ppy} collection, and the entity root's own {@code properties}
- *       map is not rewritten — this legacy standalone-root path is
- *       transitional (TASK-038 drift note) and is kept byte-for-byte until
- *       a deliberate cleanup.</li>
- *   <li>{@code ppy + create} with {@code data.kind == "assignment"} and an
- *       object-targeted payload ({@code data.object_collection} in
- *       {@code {ent, loc}} plus {@code data.object_id}) → the committed
- *       value is projected onto the target object root under
+ *   <li>{@code ppy + create} with {@code data.kind == "assignment"} → the
+ *       committed value is projected onto the target object root under
  *       {@code property_values.<data.property_id>} as
  *       {@code { value, txn_id, commit_id, msg_uuid, applied_at }} via a
- *       dotted-path {@code $set} (TASK-040; drift-note contracts
- *       8.2.6/8.2.7). Registration is inheritance-aware: the property must
- *       be listed under {@code properties.property_refs} on the target's
- *       {@code typ} root or on an ancestor reached by following
+ *       dotted-path {@code $set} (TASK-040/TASK-045; drift-note contracts
+ *       8.2.6/8.2.7). The target is explicit
+ *       {@code data.object_collection} in {@code {ent, loc}} plus
+ *       {@code data.object_id}; a payload carrying only the deprecated
+ *       {@code entity_id} resolves as ({@code ent}, {@code entity_id})
+ *       with a warning. Registration is inheritance-aware: the property
+ *       must be listed under {@code properties.property_refs} on the
+ *       target's {@code typ} root or on an ancestor reached by following
  *       {@code properties.parent_type_id} (single inheritance, bounded
  *       depth, cycle-safe); an exhausted or broken chain counts as
  *       {@code skippedUnregisteredProperty}. Unknown
@@ -109,9 +90,9 @@ import java.time.Instant
  *       incoming one ignoring {@code applied_at} counts as
  *       {@code duplicateMatching}; a differing entry is
  *       {@code conflictingDuplicate} and never overwritten. {@code data.id}
- *       is not required in the object-targeted form; a message carrying
- *       only the legacy {@code entity_id} stays on the standalone-root path
- *       above.</li>
+ *       is ignored on assignments; standalone assignment roots are no
+ *       longer written (existing rows remain readable as historical
+ *       data).</li>
  * </ul>
  * Every other collection/action combination — including delete and
  * txn-control actions, every {@code typ + update} whose
@@ -274,10 +255,7 @@ class CommittedTransactionMaterializer {
         if (message.action == ACTION_CREATE
                 && message.collection == COLLECTION_PPY
                 && KIND_ASSIGNMENT == message.data?.get(FIELD_KIND)) {
-            if (isObjectTargetedAssignment(message.data)) {
-                return processObjectPropertyAssignment(snapshot, message, result)
-            }
-            return processPpyAssignmentCreate(snapshot, message, result)
+            return processObjectPropertyAssignment(snapshot, message, result)
         }
 
         Map<String, Object> data = message.data
@@ -369,116 +347,6 @@ class CommittedTransactionMaterializer {
     }
 
     /**
-     * Materialize one {@code ppy + create} assignment message as its own
-     * root-shaped {@code ppy} record, gated on the property being registered
-     * under the target entity's type ({@code typ.properties.property_refs}).
-     * Outcomes are surfaced as counts; see the class Javadoc for the full
-     * decision table.
-     */
-    private Mono<Void> processPpyAssignmentCreate(CommittedTransactionSnapshot snapshot,
-                                                  CommittedTransactionMessage message,
-                                                  MaterializeResult result) {
-        Map<String, Object> data = message.data
-        String assignmentId = extractDocId(data)
-        if (assignmentId == null) {
-            log.error('Materializer skipping ppy assignment with missing or blank data.id: ' +
-                    'txnId={}, commitId={}, msgUuid={}',
-                    snapshot.txnId, snapshot.commitId, message.msgUuid)
-            result.skippedInvalid++
-            return Mono.empty()
-        }
-        warnIfNonconformingObjectId(assignmentId, snapshot, message)
-        String entityId = extractNonBlankString(data, FIELD_ENTITY_ID)
-        if (entityId == null) {
-            log.error('Materializer skipping ppy assignment with missing or blank data.entity_id: ' +
-                    'txnId={}, commitId={}, id={}, msgUuid={}',
-                    snapshot.txnId, snapshot.commitId, assignmentId, message.msgUuid)
-            result.skippedInvalid++
-            return Mono.empty()
-        }
-        String propertyId = extractPropertyId(data)
-        if (propertyId == null) {
-            log.error('Materializer skipping ppy assignment with missing or blank data.property_id: ' +
-                    'txnId={}, commitId={}, id={}, msgUuid={}',
-                    snapshot.txnId, snapshot.commitId, assignmentId, message.msgUuid)
-            result.skippedInvalid++
-            return Mono.empty()
-        }
-        if (!(data.get(FIELD_VALUE) instanceof Map)) {
-            log.error('Materializer skipping ppy assignment whose data.value is missing or not a JSON object: ' +
-                    'txnId={}, commitId={}, id={}, msgUuid={}',
-                    snapshot.txnId, snapshot.commitId, assignmentId, message.msgUuid)
-            result.skippedInvalid++
-            return Mono.empty()
-        }
-
-        return mongoTemplate.findById(entityId, Map.class, COLLECTION_ENT)
-                .map({ Map existing -> Optional.of(existing) })
-                .defaultIfEmpty(Optional.empty())
-                .flatMap({ Optional<Map> entityProbe ->
-                    if (!entityProbe.isPresent()) {
-                        log.warn('Materializer skipping ppy assignment with missing target ent root: ' +
-                                'entityId={}, propertyId={}, id={}, txnId={}, commitId={}, msgUuid={}',
-                                entityId, propertyId, assignmentId, snapshot.txnId, snapshot.commitId, message.msgUuid)
-                        result.skippedMissingTarget++
-                        return Mono.empty()
-                    }
-                    String typeId = extractNonBlankString(entityProbe.get() as Map<String, Object>, FIELD_TYPE_ID)
-                    if (typeId == null) {
-                        log.warn('Materializer skipping ppy assignment whose target ent root has no type_id; ' +
-                                'the property cannot be registered: entityId={}, propertyId={}, id={}, txnId={}',
-                                entityId, propertyId, assignmentId, snapshot.txnId)
-                        result.skippedUnregisteredProperty++
-                        return Mono.empty()
-                    }
-                    return mongoTemplate.findById(typeId, Map.class, COLLECTION_TYP)
-                            .map({ Map existing -> Optional.of(existing) })
-                            .defaultIfEmpty(Optional.empty())
-                            .flatMap({ Optional<Map> typProbe ->
-                                if (!typProbe.isPresent()) {
-                                    log.warn('Materializer skipping ppy assignment whose entity type root is missing: ' +
-                                            'typeId={}, entityId={}, propertyId={}, id={}, txnId={}',
-                                            typeId, entityId, propertyId, assignmentId, snapshot.txnId)
-                                    result.skippedUnregisteredProperty++
-                                    return Mono.empty()
-                                }
-                                if (readExistingPropertyRef(typProbe.get(), propertyId) == null) {
-                                    log.warn('Materializer skipping ppy assignment whose property is not registered ' +
-                                            'on the entity type (no properties.property_refs entry): ' +
-                                            'typeId={}, entityId={}, propertyId={}, id={}, txnId={}',
-                                            typeId, entityId, propertyId, assignmentId, snapshot.txnId)
-                                    result.skippedUnregisteredProperty++
-                                    return Mono.empty()
-                                }
-                                Map<String, Object> doc = buildDocument(assignmentId, snapshot, message)
-                                return mongoTemplate.insert(doc, COLLECTION_PPY)
-                                        .doOnSuccess({ Object inserted ->
-                                            log.info('Materialized ppy assignment root: id={}, entityId={}, propertyId={}, txnId={}, commitId={}',
-                                                    assignmentId, entityId, propertyId, snapshot.txnId, snapshot.commitId)
-                                            result.materialized++
-                                        })
-                                        .onErrorResume({ Throwable ex ->
-                                            handleInsertError(snapshot, message, doc, assignmentId, ex, result)
-                                        })
-                                        .then()
-                            })
-                })
-                .then() as Mono<Void>
-    }
-
-    /**
-     * A {@code kind == "assignment"} payload is object-targeted when it
-     * carries {@code object_collection} or {@code object_id}. A payload with
-     * only one of the two still routes here so its incompleteness surfaces
-     * as {@code skippedInvalid} rather than silently falling back to the
-     * legacy entity path.
-     */
-    private static boolean isObjectTargetedAssignment(Map<String, Object> data) {
-        return extractNonBlankString(data, FIELD_OBJECT_COLLECTION) != null ||
-                extractNonBlankString(data, FIELD_OBJECT_ID) != null
-    }
-
-    /**
      * Materialize one object-targeted {@code ppy + create} assignment by
      * projecting the value onto the target object root under
      * {@code property_values.<property_id>}, gated by inheritance-aware type
@@ -489,6 +357,17 @@ class CommittedTransactionMaterializer {
                                                        MaterializeResult result) {
         Map<String, Object> data = message.data
         String objectCollection = extractNonBlankString(data, FIELD_OBJECT_COLLECTION)
+        String aliasObjectId = null
+        if (objectCollection == null && extractNonBlankString(data, FIELD_OBJECT_ID) == null) {
+            String legacyEntityId = extractNonBlankString(data, FIELD_ENTITY_ID)
+            if (legacyEntityId != null) {
+                log.warn('Deprecated entity_id-only assignment form; resolving as object_collection=ent. ' +
+                        'Submit object_collection/object_id instead: entityId={}, txnId={}, msgUuid={}',
+                        legacyEntityId, snapshot.txnId, message.msgUuid)
+                objectCollection = COLLECTION_ENT
+                aliasObjectId = legacyEntityId
+            }
+        }
         if (objectCollection == null || !OBJECT_ASSIGNMENT_COLLECTIONS.contains(objectCollection)) {
             log.error('Materializer skipping object assignment with missing or unsupported data.object_collection: ' +
                     'objectCollection={}, txnId={}, commitId={}, msgUuid={}',
@@ -496,7 +375,7 @@ class CommittedTransactionMaterializer {
             result.skippedInvalid++
             return Mono.empty()
         }
-        String objectId = extractNonBlankString(data, FIELD_OBJECT_ID)
+        String objectId = extractNonBlankString(data, FIELD_OBJECT_ID) ?: aliasObjectId
         if (objectId == null) {
             log.error('Materializer skipping object assignment with missing or blank data.object_id: ' +
                     'objectCollection={}, txnId={}, commitId={}, msgUuid={}',

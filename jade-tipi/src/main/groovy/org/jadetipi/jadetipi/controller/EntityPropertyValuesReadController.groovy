@@ -13,8 +13,8 @@
 package org.jadetipi.jadetipi.controller
 
 import groovy.util.logging.Slf4j
-import org.jadetipi.jadetipi.service.EntityPropertyValuesReadService
-import org.jadetipi.jadetipi.service.EntityPropertyValuesRecord
+import org.jadetipi.jadetipi.service.ObjectPropertyValuesReadService
+import org.jadetipi.jadetipi.service.ObjectPropertyValuesRecord
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.oauth2.jwt.Jwt
@@ -25,26 +25,26 @@ import org.springframework.web.bind.annotation.RestController
 import reactor.core.publisher.Mono
 
 /**
- * Thin WebFlux read adapter over {@link EntityPropertyValuesReadService}.
+ * Thin WebFlux read adapter over {@link ObjectPropertyValuesReadService}.
  */
 @Slf4j
 @RestController
 @RequestMapping('/api/entities')
 class EntityPropertyValuesReadController {
 
-    private final EntityPropertyValuesReadService readService
+    private final ObjectPropertyValuesReadService readService
 
-    EntityPropertyValuesReadController(EntityPropertyValuesReadService readService) {
+    EntityPropertyValuesReadController(ObjectPropertyValuesReadService readService) {
         this.readService = readService
     }
 
     @GetMapping('/{id}/property-values')
-    Mono<ResponseEntity<EntityPropertyValuesRecord>> getPropertyValues(
+    Mono<ResponseEntity<ObjectPropertyValuesRecord>> getPropertyValues(
             @PathVariable('id') String id, @AuthenticationPrincipal Jwt jwt) {
 
         log.debug('Retrieving entity property values: id={}', id)
-        return readService.findPropertyValues(id)
-                .map { EntityPropertyValuesRecord record -> ResponseEntity.ok(record) }
+        return readService.findPropertyValues('ent', id)
+                .map { ObjectPropertyValuesRecord record -> ResponseEntity.ok(record) }
                 .defaultIfEmpty(ResponseEntity.notFound().build())
     }
 }

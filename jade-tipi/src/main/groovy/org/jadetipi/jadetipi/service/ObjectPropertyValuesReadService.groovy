@@ -21,20 +21,21 @@ import org.springframework.stereotype.Service
 import org.springframework.util.Assert
 import reactor.core.publisher.Mono
 
+import java.time.Instant
+
 /**
  * Reads one materialized object root ({@code loc} or {@code ent}) and its
  * projected {@code property_values} entries (TASK-041; root-only per drift
  * note 8.4 — no overlay of committed-but-unapplied messages).
  *
  * <p>Property names are resolved by joining the referenced {@code ppy}
- * definition roots, mirroring {@link EntityPropertyValuesReadService}; a
- * dangling {@code property_id} is tolerated and leaves
+ * definition roots; a dangling {@code property_id} is tolerated and leaves
  * {@code propertyName == null}. Stale tolerance mirrors the accepted
  * readers: a non-map {@code property_values} sub-document or a non-map
  * entry is ignored, and a non-map entry {@code value} surfaces as an empty
- * map rather than failing the read. This service does not read the legacy
- * standalone {@code ppy} assignment roots; that transitional shape stays
- * with the entity-only reader until the planned cleanup.
+ * map rather than failing the read. This service does not read the retired
+ * standalone {@code ppy} assignment roots (TASK-045); rows written by the
+ * transitional path remain in MongoDB as historical data only.
  */
 @Slf4j
 @Service
@@ -135,7 +136,7 @@ class ObjectPropertyValuesReadService {
                 txnId: raw.get(ENTRY_TXN_ID) as String,
                 commitId: raw.get(ENTRY_COMMIT_ID) as String,
                 msgUuid: raw.get(ENTRY_MSG_UUID) as String,
-                appliedAt: raw.get(ENTRY_APPLIED_AT)
+                appliedAt: toInstant(raw.get(ENTRY_APPLIED_AT))
         )
     }
 
@@ -174,6 +175,21 @@ class ObjectPropertyValuesReadService {
             if (provenanceValue instanceof Map) {
                 return (Map<String, Object>) provenanceValue
             }
+        }
+        return null
+    }
+
+    /**
+     * Coerce a raw Mongo date value into {@link Instant}; BSON dates read
+     * into raw maps surface as {@link Date}. Unrecognised values resolve to
+     * {@code null} (stale-row tolerance) rather than failing the read.
+     */
+    private static Instant toInstant(Object value) {
+        if (value instanceof Instant) {
+            return (Instant) value
+        }
+        if (value instanceof Date) {
+            return ((Date) value).toInstant()
         }
         return null
     }

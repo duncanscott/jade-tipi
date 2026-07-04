@@ -12,6 +12,8 @@
  */
 package org.jadetipi.jadetipi.service
 
+import groovy.transform.Immutable
+
 /**
  * Read view of one materialized object root and its projected
  * {@code property_values} (TASK-041). The legacy first-pass inline
@@ -19,6 +21,7 @@ package org.jadetipi.jadetipi.service
  * from the typed {@code propertyValues} map so reviewers can see both
  * representations during the transition.
  */
+@Immutable
 class ObjectPropertyValuesRecord {
     String objectId
     String collection

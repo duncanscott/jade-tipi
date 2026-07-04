@@ -13,8 +13,8 @@
 package org.jadetipi.jadetipi.controller
 
 import org.jadetipi.jadetipi.exception.GlobalExceptionHandler
-import org.jadetipi.jadetipi.service.EntityPropertyValueRecord
-import org.jadetipi.jadetipi.service.EntityPropertyValuesRecord
+import org.jadetipi.jadetipi.service.ObjectPropertyValueEntryRecord
+import org.jadetipi.jadetipi.service.ObjectPropertyValuesRecord
 import org.jadetipi.jadetipi.service.PlateContentsEntryRecord
 import org.jadetipi.jadetipi.service.PlateContentsReadService
 import org.jadetipi.jadetipi.service.PlateContentsRecord
@@ -61,20 +61,23 @@ class PlateContentsReadControllerSpec extends Specification {
                 position: [kind: 'plate_well', row: 'A', column: 1],
                 unplacedReason: null,
                 linkProvenance: [commit_id: 'COMMIT-LNK'],
-                entity: new EntityPropertyValuesRecord(
-                        entityId: SAMPLE_ID,
+                entity: new ObjectPropertyValuesRecord(
+                        objectId: SAMPLE_ID,
+                        collection: 'ent',
                         typeId: 'jade-tipi-org~dev~lbl_gov~jgi_pps~typ~sample',
                         properties: [label: 'Sample A1'],
                         links: [:],
                         provenance: [commit_id: 'COMMIT-ENT'],
-                        valuesByPropertyId: [
-                                (BARCODE_PROPERTY_ID): [new EntityPropertyValueRecord(
-                                        assignmentId: "${SAMPLE_ID}~${BARCODE_PROPERTY_ID}".toString(),
+                        propertyValues: [
+                                (BARCODE_PROPERTY_ID): new ObjectPropertyValueEntryRecord(
                                         propertyId: BARCODE_PROPERTY_ID,
                                         propertyName: 'barcode',
                                         value: [text: 'barcode-a1'],
-                                        provenance: [commit_id: 'COMMIT-PPY']
-                                )]
+                                        txnId: 'aaaaaaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee',
+                                        commitId: 'COMMIT-PPY',
+                                        msgUuid: 'msg-assignment',
+                                        appliedAt: java.time.Instant.parse('2026-07-04T00:00:00Z')
+                                )
                         ]
                 )
         )
@@ -128,8 +131,8 @@ class PlateContentsReadControllerSpec extends Specification {
                 .jsonPath('$.wells[0].contents[0].objectId').isEqualTo(SAMPLE_ID)
                 .jsonPath('$.wells[0].contents[0].position.kind').isEqualTo('plate_well')
                 .jsonPath('$.wells[0].contents[0].linkProvenance.commit_id').isEqualTo('COMMIT-LNK')
-                .jsonPath('$.wells[0].contents[0].entity.entityId').isEqualTo(SAMPLE_ID)
-                .jsonPath("\$.wells[0].contents[0].entity.valuesByPropertyId['${BARCODE_PROPERTY_ID}'][0].value.text")
+                .jsonPath('$.wells[0].contents[0].entity.objectId').isEqualTo(SAMPLE_ID)
+                .jsonPath("\$.wells[0].contents[0].entity.propertyValues['${BARCODE_PROPERTY_ID}'].value.text")
                 .isEqualTo('barcode-a1')
                 .jsonPath('$.unplacedContents.length()').isEqualTo(1)
                 .jsonPath('$.unplacedContents[0].unplacedReason').isEqualTo('COLUMN_MALFORMED')

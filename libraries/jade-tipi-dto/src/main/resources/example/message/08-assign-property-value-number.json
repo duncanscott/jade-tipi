@@ -13,8 +13,8 @@
   "action": "create",
   "data": {
     "kind": "assignment",
-    "id": "jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~en~plate_a~jade-tipi-org~dev~018fd849-2a42-7222-8b02-bbbbbbbbbbbb~pp~volume",
-    "entity_id": "jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~en~plate_a",
+    "object_collection": "ent",
+    "object_id": "jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~en~plate_a",
     "property_id": "jade-tipi-org~dev~018fd849-2a42-7222-8b02-bbbbbbbbbbbb~pp~volume",
     "value": {
       "number": 10,

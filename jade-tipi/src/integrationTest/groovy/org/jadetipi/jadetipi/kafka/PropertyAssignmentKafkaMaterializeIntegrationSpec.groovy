@@ -53,22 +53,23 @@ import java.util.function.Supplier
  * <p>Publishes one canonical human-readable property-loop transaction —
  * {@code open}, {@code ppy + create kind=definition}, {@code typ + create},
  * {@code typ + update add_property}, {@code ent + create},
- * {@code ppy + create kind=assignment}, plus a second assignment whose
- * property is intentionally never registered on the type, then
- * {@code commit} — and waits for {@code TransactionMessageListener} plus
- * {@code CommittedTransactionMaterializer} to land:
+ * {@code ppy + create kind=assignment} in the deprecated
+ * {@code entity_id}-only alias form, plus a second (object-targeted)
+ * assignment whose property is intentionally never registered on the type,
+ * then {@code commit} — and waits for {@code TransactionMessageListener}
+ * plus {@code CommittedTransactionMaterializer} to land (TASK-045: one
+ * property model):
  * <ul>
  *   <li>a committed {@code txn} header in the {@code txn} collection,</li>
- *   <li>a root-shaped assignment document in the {@code ppy} collection
- *       whose ID is the composite {@code <entity_id>~<property_id>},
- *       carrying root {@code properties.kind == "assignment"},
- *       {@code properties.entity_id}, {@code properties.property_id}, the
- *       verbatim object-shaped {@code properties.value}, empty
- *       {@code links}, and {@code _head.provenance} pointing at the
- *       original assignment message,</li>
- *   <li>no materialized document for the unregistered assignment — the
- *       type-registration gate counts it as
- *       {@code skippedUnregisteredProperty} and never inserts.</li>
+ *   <li>the registered value projected onto the entity root under
+ *       {@code property_values.<property_id>} with transaction provenance —
+ *       the alias form resolves as ({@code ent}, {@code entity_id}) and the
+ *       legacy composite {@code data.id} is ignored,</li>
+ *   <li>no standalone assignment root in the {@code ppy} collection for
+ *       either message — that write path is retired,</li>
+ *   <li>no {@code property_values} entry for the unregistered assignment —
+ *       the inheritance-aware gate counts it as
+ *       {@code skippedUnregisteredProperty}.</li>
  * </ul>
  *
  * <p>Skip / run conditions (deliberately opt-in):
@@ -197,11 +198,12 @@ class PropertyAssignmentKafkaMaterializeIntegrationSpec extends Specification {
     def setup() {
         txn = Transaction.newInstance('jade-itest-org', 'kafka', 'jade-itest-cli', 'itest-user')
         txnId = txn.id
-        String featureUuid = UUID.randomUUID().toString().substring(0, 8)
-        propertyDefinitionId = "jadetipi-itest-ppyasn~pp~barcode_${featureUuid}"
-        unregisteredPropertyId = "jadetipi-itest-ppyasn~pp~volume_${featureUuid}"
-        entityTypeId = "jadetipi-itest-ppyasn~ty~plate_96_${featureUuid}"
-        entityId = "jadetipi-itest-ppyasn~en~plate_${featureUuid}"
+        // Object identifier convention (TASK-044): transaction-UUID form.
+        String idPrefix = "jade-itest-org~kafka~${txn.uuid()}"
+        propertyDefinitionId = "${idPrefix}~ppy~barcode"
+        unregisteredPropertyId = "${idPrefix}~ppy~volume"
+        entityTypeId = "${idPrefix}~typ~plate_96"
+        entityId = "${idPrefix}~ent~plate"
         assignmentId = "${entityId}~${propertyDefinitionId}"
         unregisteredAssignmentId = "${entityId}~${unregisteredPropertyId}"
     }
@@ -221,7 +223,7 @@ class PropertyAssignmentKafkaMaterializeIntegrationSpec extends Specification {
         }
     }
 
-    def 'committed property-loop transaction materializes the registered assignment root and gates the unregistered one'() {
+    def 'committed property-loop transaction projects the registered assignment onto the entity root and gates the unregistered one'() {
         given: 'one canonical property-loop transaction with a registered and an unregistered assignment'
         Message openMsg = Message.newInstance(txn, JtpCollection.TRANSACTION, Action.OPEN, [
                 hint: 'opened from ppy assignment kafka integration test'
@@ -261,11 +263,11 @@ class PropertyAssignmentKafkaMaterializeIntegrationSpec extends Specification {
                 value      : [text: 'barcode-1']
         ] as Map<String, Object>)
         Message unregisteredAssignmentMsg = Message.newInstance(txn, JtpCollection.PROPERTY, Action.CREATE, [
-                kind       : 'assignment',
-                id         : unregisteredAssignmentId,
-                entity_id  : entityId,
-                property_id: unregisteredPropertyId,
-                value      : [number: 10, unit_id: 'jade-tipi-org~dev~liter~milli~ml~SI']
+                kind             : 'assignment',
+                object_collection: 'ent',
+                object_id        : entityId,
+                property_id      : unregisteredPropertyId,
+                value            : [number: 10, unit_id: 'jade-tipi-org~dev~liter~milli~ml~SI']
         ] as Map<String, Object>)
         Message commitMsg = Message.newInstance(txn, JtpCollection.TRANSACTION, Action.COMMIT, [
                 summary: 'property loop with one registered and one unregistered assignment'
@@ -293,45 +295,30 @@ class PropertyAssignmentKafkaMaterializeIntegrationSpec extends Specification {
         propertyRefs[propertyDefinitionId] == [required: true]
         !propertyRefs.containsKey(unregisteredPropertyId)
 
-        and: 'the registered assignment materializes as its own root-shaped ppy document'
-        Map assignmentDoc = awaitMongo(
-                { mongoTemplate.findById(assignmentId, Map, PPY_COLLECTION) },
-                { Map d -> d != null },
-                'root-shaped ppy assignment document'
+        and: 'the registered assignment (deprecated alias form) projects onto the entity root'
+        Map entDoc = awaitMongo(
+                { mongoTemplate.findById(entityId, Map, ENT_COLLECTION) },
+                { Map d -> d != null && ((Map) d.property_values)?.containsKey(propertyDefinitionId) },
+                'entity root with projected property_values entry'
         )
-        assignmentDoc['_id'] == assignmentId
-        assignmentDoc.id == assignmentId
-        assignmentDoc.collection == 'ppy'
-        assignmentDoc.type_id == null
-        Map assignmentProperties = assignmentDoc.properties as Map
-        assignmentProperties.kind == 'assignment'
-        assignmentProperties.entity_id == entityId
-        assignmentProperties.property_id == propertyDefinitionId
-        assignmentProperties.value == [text: 'barcode-1']
-        !assignmentProperties.containsKey('id')
-        assignmentDoc.links == [:]
+        Map entry = ((Map) entDoc.property_values)[propertyDefinitionId] as Map
+        entry.value == [text: 'barcode-1']
+        entry.txn_id == txnId
+        entry.commit_id == header.commit_id
+        entry.msg_uuid == assignmentMsg.uuid()
+        entry.applied_at != null
 
-        and: '_head carries projection provenance pointing at this txn and the assignment msg uuid'
-        Map head = assignmentDoc._head as Map
-        head.schema_version == 1
-        head.document_kind == 'root'
-        head.root_id == assignmentId
-        Map provenance = head.provenance as Map
-        provenance.txn_id == txnId
-        provenance.msg_uuid == assignmentMsg.uuid()
-        provenance.collection == 'ppy'
-        provenance.action == 'create'
-
-        and: 'the entity root properties map is not rewritten by the assignment'
-        Map entDoc = mongoTemplate.findById(entityId, Map, ENT_COLLECTION)
-                .block(MONGO_BLOCK_TIMEOUT)
-        entDoc != null
+        and: 'the entity root inline properties map is not rewritten by the assignment'
         entDoc.properties == [:]
 
-        and: 'the unregistered assignment is gated and never materialized'
-        Map unregisteredDoc = mongoTemplate.findById(unregisteredAssignmentId, Map, PPY_COLLECTION)
-                .block(MONGO_BLOCK_TIMEOUT)
-        unregisteredDoc == null
+        and: 'no standalone assignment root is written for either message — that path is retired'
+        mongoTemplate.findById(assignmentId, Map, PPY_COLLECTION)
+                .block(MONGO_BLOCK_TIMEOUT) == null
+        mongoTemplate.findById(unregisteredAssignmentId, Map, PPY_COLLECTION)
+                .block(MONGO_BLOCK_TIMEOUT) == null
+
+        and: 'the unregistered assignment is gated and never lands on the root'
+        !((Map) entDoc.property_values).containsKey(unregisteredPropertyId)
     }
 
     private void send(Message message) {
