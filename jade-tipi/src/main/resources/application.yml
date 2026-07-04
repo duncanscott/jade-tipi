@@ -33,6 +33,13 @@ jadetipi:
   # Startup ensure for the reserved bootstrap usr root (usr~jdtp-admin).
   genesis:
     enabled: \${JADETIPI_GENESIS_ENABLED:true}
+  # Narrow local CouchDB-to-JDTP import loop (TASK-043). Defaults target
+  # the docker-compose CouchDB with its loopback-only dev credentials.
+  import:
+    couchdb:
+      url: \${JADETIPI_IMPORT_COUCHDB_URL:http://localhost:5984}
+      username: \${JADETIPI_IMPORT_COUCHDB_USERNAME:admin}
+      password: \${JADETIPI_IMPORT_COUCHDB_PASSWORD:admin}
 
 server:
   port: ${backendPort}

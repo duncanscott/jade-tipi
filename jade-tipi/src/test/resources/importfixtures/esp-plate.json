@@ -1,0 +1,24 @@
+{
+  "_id": "019a420c-728d-7f4c-a817-cd8ba13a1e36",
+  "uuid": "019a420c-728d-7f4c-a817-cd8ba13a1e36",
+  "name": "27-474501",
+  "barcode": "27-474501",
+  "numeric_id": 474501,
+  "type_uuid": "019a3ac2-b494-71ac-82cc-fadc028be18f",
+  "type_name": "96W Plate",
+  "class_name": "Container",
+  "class_uuid": "77777777-7777-4014-b700-053500000000",
+  "archived": false,
+  "created": "2025-11-02T00:51:28.605Z",
+  "updated": "2026-03-14T16:16:09.280Z",
+  "container": {
+    "uuid": "019a3a60-9628-7c90-bc47-f40518a12127",
+    "barcode": "BIN057",
+    "name": "PP050",
+    "type_uuid": "019a3a49-3672-73ec-842d-6c21c5ad9be7",
+    "type_name": "Bin 9x3",
+    "label": null,
+    "slot": "A1"
+  },
+  "contents": {}
+}

@@ -1,0 +1,18 @@
+{
+  "_id": "containers_27-10000",
+  "limsid": "27-10000",
+  "type": {
+    "path": "containers",
+    "rel": "containers"
+  },
+  "json": {
+    "limsid": "27-10000",
+    "name": "27-170230",
+    "state": "Populated",
+    "type": {
+      "name": "Tube",
+      "uri": "https://jgi-prd.claritylims.com/api/v2/containertypes/2"
+    },
+    "occupied-wells": "1"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "_id": "019a420b-a021-7332-a375-e348af611ac8",
+  "uuid": "019a420b-a021-7332-a375-e348af611ac8",
+  "name": "LHCPOT",
+  "barcode": "27-474501",
+  "numeric_id": null,
+  "type_uuid": "019a3a49-4aa2-72f7-889e-17f1c58e2224",
+  "type_name": "Illumina Library",
+  "class_name": "Sample",
+  "class_uuid": "77777777-7777-4014-b700-053400000000",
+  "archived": false,
+  "created": "2025-11-02T00:50:44.797Z",
+  "updated": "2026-03-25T02:08:59.285Z",
+  "container": {
+    "uuid": "019a420c-728d-7f4c-a817-cd8ba13a1e36",
+    "barcode": "27-474501",
+    "name": "27-474501",
+    "type_uuid": "019a3ac2-b494-71ac-82cc-fadc028be18f",
+    "type_name": "96W Plate",
+    "label": "20-Dec-22_RA_1",
+    "slot": "A2"
+  },
+  "contents": {}
+}

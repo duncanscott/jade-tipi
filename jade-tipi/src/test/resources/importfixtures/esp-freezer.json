@@ -1,0 +1,24 @@
+{
+  "_id": "019a3a62-8fa8-74d8-ad5c-c7f294c9a331",
+  "uuid": "019a3a62-8fa8-74d8-ad5c-c7f294c9a331",
+  "name": "Illumina 130-32",
+  "barcode": "FREEZE012",
+  "numeric_id": 32,
+  "type_uuid": "019a3a49-6dd8-7dcc-af68-130207d9a1de",
+  "type_name": "Freezer (6-shelf)",
+  "class_name": "Container",
+  "class_uuid": "77777777-7777-4014-b700-053500000000",
+  "archived": false,
+  "created": "2025-10-31T13:08:49.140Z",
+  "updated": "2025-10-31T13:10:44.798Z",
+  "container": null,
+  "contents": {
+    "2": {
+      "uuid": "019a3a60-b3f0-73d0-8e11-9e05ebfe65fd",
+      "name": "PP058",
+      "barcode": "BIN065",
+      "type_uuid": "019a3a49-3672-73ec-842d-6c21c5ad9be7",
+      "type_name": "Bin 9x3"
+    }
+  }
+}

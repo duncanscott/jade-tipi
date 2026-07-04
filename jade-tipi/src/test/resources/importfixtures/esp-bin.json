@@ -1,0 +1,39 @@
+{
+  "_id": "019a3a60-9628-7c90-bc47-f40518a12127",
+  "uuid": "019a3a60-9628-7c90-bc47-f40518a12127",
+  "name": "PP050",
+  "barcode": "BIN057",
+  "numeric_id": 50,
+  "type_uuid": "019a3a49-3672-73ec-842d-6c21c5ad9be7",
+  "type_name": "Bin 9x3",
+  "class_name": "Container",
+  "class_uuid": "77777777-7777-4014-b700-053500000000",
+  "archived": false,
+  "created": "2025-10-31T13:06:39.721Z",
+  "updated": "2025-10-31T13:06:39.721Z",
+  "container": {
+    "uuid": "019a3a62-8fa8-74d8-ad5c-c7f294c9a331",
+    "barcode": "FREEZE012",
+    "name": "Illumina 130-32",
+    "type_uuid": "019a3a49-6dd8-7dcc-af68-130207d9a1de",
+    "type_name": "Freezer (6-shelf)",
+    "label": null,
+    "slot": "2"
+  },
+  "contents": {
+    "A1": {
+      "uuid": "019a420c-728d-7f4c-a817-cd8ba13a1e36",
+      "name": "27-474501",
+      "barcode": "27-474501",
+      "type_uuid": "019a3ac2-b494-71ac-82cc-fadc028be18f",
+      "type_name": "96W Plate"
+    },
+    "A2": {
+      "uuid": "019a4068-3a8f-7eef-bc58-cd60d1d0f535",
+      "name": "27-675867",
+      "barcode": "27-675867",
+      "type_uuid": "019a3ac2-b494-71ac-82cc-fadc028be18f",
+      "type_name": "96W Plate"
+    }
+  }
+}

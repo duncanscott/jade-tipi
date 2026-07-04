@@ -134,6 +134,67 @@ the plate type itself. Typed reads over these roots are available via
 `GET /api/locations/{id}/property-values` and
 `GET /api/types/{id}/effective-properties`.
 
+## TASK-043 CouchDB import loop
+
+`TASK-043` closes the loop the roadmap names: the same sampled records
+are no longer hand-transcribed — they are read live from the locally
+replicated `clarity` and `esp-entity` databases, mapped by production
+code (`ClarityEspContainerImportMapper` over a
+`ClarityEspContainerModel` registry, documents fetched by
+`CouchDbDocumentReader`), published through Kafka as one
+system-authored transaction (`txn.user` is the bootstrap identity),
+and materialized through the unchanged listener/materializer path into
+the typed shape from the previous section.
+
+Mapping rules, grounded in the live replica shapes:
+
+- ESP `class_name == "Container"` → `loc + create`; other ESP classes
+  (the sampled Illumina Library is `class_name: "Sample"`) →
+  `ent + create`. Clarity `containers_*` documents → `loc + create`.
+- The root `type_id` comes from the registry's mapping of the source
+  type label; an unmapped ESP container kind falls back to the base
+  `container` type, so unknown kinds still import typed.
+- Only source-present domain facts become assignments (`name`,
+  `barcode`). `format`/`rows`/`columns` are never synthesized — they
+  appear nowhere in the source documents, which keeps the
+  instance-vs-type-fact question above open instead of baking an
+  inference into the importer.
+- Identifiers follow D4; positions follow D3, keyed by the parent
+  kind.
+- **Containment derives from each imported document's own upward
+  `container` pointer, never from a parent's `contents` map.** The
+  live data forced this decision: the sampled freezer's `contents`
+  shows bin PP058 at slot 2, while bin PP050's `container` pointer
+  claims the same slot — the parent-side map goes stale (the freezer
+  document's `enrichment_time` is five months older than the bin's).
+  D6's single-sourcing rule therefore resolves to the child side.
+
+Re-import semantics boundary: the loop is create-only and is not a
+synchronizer. Re-publishing the identical transaction is idempotent at
+the WAL and materializer layers; a *new* transaction re-importing the
+same IDs surfaces as conflicting duplicates (counted, never
+overwritten); source updates and deletes are not propagated. Real
+synchronization waits on the deferred lifecycle work (drift-note plan
+tasks D/F and the value-update semantics).
+
+Run the import loop locally (opt-in; skipped unless the replicas hold
+the sampled documents):
+
+```sh
+docker compose -f docker/docker-compose.yml up -d
+JADETIPI_IT_KAFKA=1 JADETIPI_COUCHDB_IMPORT=1 ./gradlew :jade-tipi:integrationTest \
+  --tests '*ClarityEspCouchDbImportKafkaIntegrationSpec*'
+```
+
+The imported roots land in database `jdtp` under the stable prefix
+`jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e543` and are left
+in place for review; the spec asserts the materialized values
+dynamically against the live source documents (source → JDTP
+fidelity), so it keeps passing as upstream values drift. Mapper unit
+coverage runs against fixture JSON captured verbatim (trimmed) from
+the same replica documents under
+`jade-tipi/src/test/resources/importfixtures/`.
+
 ## Design-brief alignment
 
 The design brief sets out six points that the prototype must answer.
