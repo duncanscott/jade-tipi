@@ -257,7 +257,7 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
 
     def 'skips as unregistered when the chain exceeds the inheritance depth cap'() {
         given: 'a 12-type chain with the property registered only past the cap'
-        List<String> chain = (0..11).collect { int i -> "jade-tipi-org~dev~chain~typ~t${i}" as String }
+        List<String> chain = (0..11).collect { int i -> "jade-tipi-org~dev~018fd849-2a5c-7ccc-8a0c-121212121212~typ~t${i}" as String }
         mongoTemplate.findById(LOC_PLATE, Map.class, 'loc') >>
                 Mono.just(objectRoot(LOC_PLATE, 'loc', chain[0]))
         (0..11).each { int i ->

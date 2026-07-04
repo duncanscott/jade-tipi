@@ -130,6 +130,10 @@ class GroupAdminServiceSpec extends Specification {
         record.id.startsWith('jade-tipi-org~dev~')
         record.id.endsWith('~grp~analytics')
         captured['_id'] == record.id
+
+        and: 'the synthesized UUID segment is a version-7 UUID per the object identifier convention'
+        String uuidSegment = record.id.split('~')[2]
+        uuidSegment ==~ /[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/
     }
 
     def 'create rejects blank name with 400'() {

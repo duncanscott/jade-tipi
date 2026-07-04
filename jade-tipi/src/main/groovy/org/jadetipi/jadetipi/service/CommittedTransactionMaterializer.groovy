@@ -198,6 +198,22 @@ class CommittedTransactionMaterializer {
     /** Bound on the {@code parent_type_id} walk; prevents runaway chains. */
     static final int MAX_TYPE_INHERITANCE_DEPTH = 10
 
+    /**
+     * Object identifier convention (TASK-044):
+     * {@code <org>~<grp>~<uuidv7>~<collection>~<suffix>}, where the UUIDv7
+     * is the creating transaction's or creating message's UUID. The literal
+     * {@code genesis} segment is the single sanctioned non-UUID exception
+     * (the bootstrap {@code usr}); legacy composite assignment IDs are two
+     * conforming IDs joined ({@code <object_id>~<property_id>}).
+     * Enforcement is warn-only in this iteration; schema validation is
+     * ledgered for the transitional-shapes cleanup.
+     */
+    static final java.util.regex.Pattern UUIDV7_SEGMENT = java.util.regex.Pattern.compile(
+            '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
+    static final String GENESIS_SEGMENT = 'genesis'
+    static final Set<String> ID_COLLECTION_SEGMENTS =
+            Set.of('ent', 'ppy', 'lnk', 'loc', 'uni', 'grp', 'typ', 'vdn', 'usr')
+
     private final ReactiveMongoTemplate mongoTemplate
     private final CommittedTransactionReadService readService
 
@@ -273,6 +289,7 @@ class CommittedTransactionMaterializer {
             result.skippedInvalid++
             return Mono.empty()
         }
+        warnIfNonconformingObjectId(docId, snapshot, message)
 
         Map<String, Object> doc = buildDocument(docId, snapshot, message)
         return mongoTemplate.insert(doc, message.collection)
@@ -370,6 +387,7 @@ class CommittedTransactionMaterializer {
             result.skippedInvalid++
             return Mono.empty()
         }
+        warnIfNonconformingObjectId(assignmentId, snapshot, message)
         String entityId = extractNonBlankString(data, FIELD_ENTITY_ID)
         if (entityId == null) {
             log.error('Materializer skipping ppy assignment with missing or blank data.entity_id: ' +
@@ -790,6 +808,47 @@ class CommittedTransactionMaterializer {
         }
         String asString = idValue.toString()
         return asString.trim().isEmpty() ? null : asString
+    }
+
+    /**
+     * Structural check against the object identifier convention: at least
+     * five {@code ~}-separated segments, a UUIDv7 (or the sanctioned
+     * {@code genesis} literal) in the third segment, and a known collection
+     * abbreviation in the fourth. A composite legacy assignment ID (ten or
+     * more segments) must conform in both halves.
+     */
+    static boolean isConformingObjectId(String id) {
+        if (id == null) {
+            return false
+        }
+        String[] segments = id.split('~')
+        if (segments.length < 5) {
+            return false
+        }
+        if (!conformingIdCore(segments, 0)) {
+            return false
+        }
+        if (segments.length >= 10 && !conformingIdCore(segments, 5)) {
+            return false
+        }
+        return true
+    }
+
+    private static boolean conformingIdCore(String[] segments, int offset) {
+        String uuidSegment = segments[offset + 2]
+        boolean uuidOk = GENESIS_SEGMENT == uuidSegment ||
+                UUIDV7_SEGMENT.matcher(uuidSegment).matches()
+        return uuidOk && ID_COLLECTION_SEGMENTS.contains(segments[offset + 3])
+    }
+
+    private static void warnIfNonconformingObjectId(String docId,
+                                                    CommittedTransactionSnapshot snapshot,
+                                                    CommittedTransactionMessage message) {
+        if (!isConformingObjectId(docId)) {
+            log.warn('data.id does not follow the object identifier convention ' +
+                    '<org>~<grp>~<uuidv7>~<collection>~<suffix>: id={}, collection={}, txnId={}, msgUuid={}',
+                    docId, message.collection, snapshot.txnId, message.msgUuid)
+        }
     }
 
     private static Map<String, Object> buildDocument(String docId,

@@ -24,8 +24,8 @@ import spock.lang.Specification
 
 class LocationPropertyValuesReadControllerSpec extends Specification {
 
-    static final String LOC_ID = 'jade-tipi-org~dev~aaa~loc~plate_0001'
-    static final String PPY_BARCODE = 'jade-tipi-org~dev~ccc~ppy~barcode'
+    static final String LOC_ID = 'jade-tipi-org~dev~018fd849-2a61-7111-8a01-aaaaaaaaaaaa~loc~plate_0001'
+    static final String PPY_BARCODE = 'jade-tipi-org~dev~018fd849-2a63-7333-8a03-cccccccccccc~ppy~barcode'
     static final String PATH = '/api/locations/{id}/property-values'
 
     ObjectPropertyValuesReadService readService
@@ -49,7 +49,7 @@ class LocationPropertyValuesReadControllerSpec extends Specification {
         readService.findPropertyValues('loc', LOC_ID) >> Mono.just(new ObjectPropertyValuesRecord(
                 objectId: LOC_ID,
                 collection: 'loc',
-                typeId: 'jade-tipi-org~dev~bbb~typ~plate_96_well',
+                typeId: 'jade-tipi-org~dev~018fd849-2a62-7222-8a02-bbbbbbbbbbbb~typ~plate_96_well',
                 properties: [name: 'demo plate 0001'],
                 links: [:],
                 provenance: [commit_id: 'COMMIT-1'],

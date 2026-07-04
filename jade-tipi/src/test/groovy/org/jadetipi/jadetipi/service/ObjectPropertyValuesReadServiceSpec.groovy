@@ -22,10 +22,10 @@ import java.time.Instant
 
 class ObjectPropertyValuesReadServiceSpec extends Specification {
 
-    static final String LOC_ID = 'jade-tipi-org~dev~aaa~loc~plate_0001'
-    static final String TYP_ID = 'jade-tipi-org~dev~bbb~typ~plate_96_well'
-    static final String PPY_BARCODE = 'jade-tipi-org~dev~ccc~ppy~barcode'
-    static final String PPY_VOLUME = 'jade-tipi-org~dev~ddd~ppy~volume'
+    static final String LOC_ID = 'jade-tipi-org~dev~018fd849-2a61-7111-8a01-aaaaaaaaaaaa~loc~plate_0001'
+    static final String TYP_ID = 'jade-tipi-org~dev~018fd849-2a62-7222-8a02-bbbbbbbbbbbb~typ~plate_96_well'
+    static final String PPY_BARCODE = 'jade-tipi-org~dev~018fd849-2a63-7333-8a03-cccccccccccc~ppy~barcode'
+    static final String PPY_VOLUME = 'jade-tipi-org~dev~018fd849-2a64-7444-8a04-dddddddddddd~ppy~volume'
     static final String TXN_ID = 'aaaaaaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee~org~grp~kli'
     static final Instant APPLIED_AT = Instant.parse('2026-07-03T00:00:00Z')
 
@@ -163,7 +163,7 @@ class ObjectPropertyValuesReadServiceSpec extends Specification {
 
     def 'ent roots are supported by the generic service'() {
         given:
-        String entId = 'jade-tipi-org~dev~eee~ent~sample_x'
+        String entId = 'jade-tipi-org~dev~018fd849-2a65-7555-8a05-eeeeeeeeeeee~ent~sample_x'
         mongoTemplate.findById(entId, Map.class, 'ent') >> Mono.just([
                 _id: entId, collection: 'ent', type_id: TYP_ID, properties: [:], links: [:]
         ] as Map)

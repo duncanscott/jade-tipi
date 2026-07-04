@@ -16,6 +16,18 @@ it stores durable transaction objects, not normal domain objects.
 Transaction-message payloads may use a separate transient staging collection,
 tentatively `msg`, until they have been applied to the domain object documents.
 
+## Object Identifiers
+
+Object IDs are world-unique text strings of the form
+`<org>~<grp>~<uuidv7>~<collection>~<suffix>`. The UUID version 7 segment is
+the creating transaction's or the creating message's UUID — both forms are
+sanctioned — giving world-uniqueness and chronological sortability without a
+central registry. When the transaction's UUID is used, clients must keep
+suffixes unique within that transaction. The single sanctioned non-UUID
+segment is the literal `genesis` in the reserved bootstrap `usr` ID
+(`...~genesis~usr~jdtp-admin`), which must be well-known before any
+transaction exists. Demo, test, and documentation IDs follow the same rule.
+
 ## Objects, Types, And Properties
 
 A member of a long-term collection is a Jade-Tipi object, not necessarily an

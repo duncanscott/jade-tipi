@@ -179,13 +179,15 @@ class PlateTypeHierarchyKafkaMaterializeIntegrationSpec extends Specification {
     def setup() {
         txn = Transaction.newInstance('jade-itest-org', 'kafka', 'jade-itest-cli', 'itest-user')
         txnId = txn.id
-        String featureUuid = UUID.randomUUID().toString().substring(0, 8)
-        barcodePropertyId = "jadetipi-itest-plate96~ppy~barcode_${featureUuid}"
-        unregisteredPropertyId = "jadetipi-itest-plate96~ppy~volume_${featureUuid}"
-        containerTypeId = "jadetipi-itest-plate96~typ~container_${featureUuid}"
-        plateTypeId = "jadetipi-itest-plate96~typ~plate_${featureUuid}"
-        plate96TypeId = "jadetipi-itest-plate96~typ~plate_96_well_${featureUuid}"
-        plateLocId = "jadetipi-itest-plate96~loc~plate_0001_${featureUuid}"
+        // Object identifier convention (TASK-044): transaction-UUID form —
+        // per-feature uniqueness comes from the fresh transaction UUIDv7.
+        String idPrefix = "jade-itest-org~kafka~${txn.uuid()}"
+        barcodePropertyId = "${idPrefix}~ppy~barcode"
+        unregisteredPropertyId = "${idPrefix}~ppy~volume"
+        containerTypeId = "${idPrefix}~typ~container"
+        plateTypeId = "${idPrefix}~typ~plate"
+        plate96TypeId = "${idPrefix}~typ~plate_96_well"
+        plateLocId = "${idPrefix}~loc~plate_0001"
     }
 
     def cleanup() {

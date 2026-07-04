@@ -11,6 +11,11 @@ The step payloads live in `clients/kafka-kli/examples/plate-96-well/` as
 data-only JSON files (the `data` portion of each message; `kli` builds the
 envelope from your session).
 
+Every ID in the step files follows the object identifier convention
+`<org>~<grp>~<uuidv7>~<collection>~<suffix>`: this demo's fixed UUIDv7 is
+`018fd84a-51a7-7e96-8de1-000000000001` (the demo transaction's UUID, shared
+by all its roots, with suffixes unique within the transaction).
+
 ## Prerequisites
 
 1. Local stack up (MongoDB, Keycloak, Kafka):
@@ -71,8 +76,8 @@ MongoDB (database `jdtp` for `bootRun`'s default profile):
 
 ```sh
 docker exec jade-tipi-mongo mongosh jdtp --quiet --eval '
-  printjson(db.typ.findOne({_id: "jade-tipi-org~dev~plate96-demo~typ~plate_96_well"}));
-  printjson(db.loc.findOne({_id: "jade-tipi-org~dev~plate96-demo~loc~plate_0001"}));
+  printjson(db.typ.findOne({_id: "jade-tipi-org~dev~018fd84a-51a7-7e96-8de1-000000000001~typ~plate_96_well"}));
+  printjson(db.loc.findOne({_id: "jade-tipi-org~dev~018fd84a-51a7-7e96-8de1-000000000001~loc~plate_0001"}));
 '
 ```
 
@@ -107,13 +112,14 @@ The materializer is idempotent per payload, not per run:
   `conflictingDuplicate` (the provenance differs) — logged and counted,
   never overwritten.
 
-To repeat the demo cleanly, either change the `plate96-demo` segment in
-every ID, or drop the demo documents first:
+To repeat the demo cleanly, either mint a fresh UUIDv7 and swap it in for
+`018fd84a-51a7-7e96-8de1-000000000001` in every ID (keeping the convention
+intact), or drop the demo documents first:
 
 ```sh
 docker exec jade-tipi-mongo mongosh jdtp --quiet --eval '
   ["typ","ppy","loc"].forEach(c =>
-    db[c].deleteMany({_id: {$regex: "plate96-demo"}}));
+    db[c].deleteMany({_id: {$regex: "018fd84a-51a7-7e96-8de1-000000000001"}}));
 '
 ```
 

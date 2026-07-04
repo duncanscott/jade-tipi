@@ -51,6 +51,37 @@ Use these rules for early domain messages:
 - Do not infer the collection from payload shape.
 - Do not use arrays of nested operations for the first implementation.
 
+## Object Identifier Convention
+
+Every submitted `data.id` follows the world-unique object identifier
+convention (TASK-044, restoring the 2026-02-02 Kafka design decision to use
+UUID version 7 for all ID generation):
+
+```text
+<org>~<grp>~<uuidv7>~<collection>~<suffix>
+```
+
+- The UUIDv7 segment is either the creating transaction's UUID (the
+  D4/seed convention — all roots in the transaction share it, and the
+  client must keep suffixes unique within that transaction) or the creating
+  message's UUID (the canonical-examples convention — uniqueness is
+  automatic). Both forms are sanctioned.
+- The `<collection>` segment is the target collection abbreviation; the
+  `<suffix>` is a human-readable label and is not the uniqueness carrier.
+- The single sanctioned non-UUID segment is the literal `genesis` in the
+  reserved bootstrap `usr` ID (`...~genesis~usr~jdtp-admin`), which must be
+  constructible before any transaction exists.
+- Legacy composite assignment IDs (`<object_id>~<property_id>`, ten
+  segments) must conform in both halves; they retire with the
+  standalone-assignment-root cleanup.
+
+Enforcement is currently warn-only: `CommittedTransactionMaterializer`
+logs a warning for any create-path `data.id` that does not conform
+(structural check: at least five segments, UUIDv7-or-`genesis` third
+segment, known collection abbreviation fourth). Hard `data.id` validation
+in `message.schema.json` is ledgered for the transitional-shapes cleanup
+task, once every fixture conforms.
+
 A simple location creation should look like this inside the normal message
 envelope:
 

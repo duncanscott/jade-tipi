@@ -1,6 +1,6 @@
 {
   "kind": "definition",
-  "id": "jade-tipi-org~dev~plate96-demo~ppy~barcode",
+  "id": "jade-tipi-org~dev~018fd84a-51a7-7e96-8de1-000000000001~ppy~barcode",
   "name": "barcode",
   "value_schema": {
     "type": "object",
