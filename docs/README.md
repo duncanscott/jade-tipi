@@ -60,16 +60,22 @@ Metadata in Jade-Tipi falls into three broad categories:
 
 ### World-Unique Identifiers
 
-Every object in a Jade-Tipi is assigned a **world-unique ID**. Naming conventions ensure that IDs are unique without requiring a central repository. IDs are generated on demand by a local service and follow a structured format:
+Every object in a Jade-Tipi is assigned a **world-unique ID**. Naming conventions ensure that IDs are unique without requiring a central repository. IDs embed a UUID version 7 (the creating transaction's or message's UUID) and follow a structured format:
 
 ```
-institution~group~timestamp~increment~type~suffix
+organization~group~uuidv7~collection~suffix
 ```
 
 For example:
 ```
-lbl_gov~jgi_pps~1747977406~azba~en~aab
+lbl_gov~jgi_pps~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~plate_a
 ```
+
+The UUIDv7 provides world-uniqueness plus chronological sortability without
+a central ID server; the suffix is a human-readable label, unique within its
+transaction when the transaction's UUID is shared. The single sanctioned
+non-UUID segment is the literal `genesis` in the reserved bootstrap `usr` ID.
+The wire schema enforces this convention on every submitted `data.id`.
 
 This naming scheme ensures:
 - IDs from different repositories never conflict

@@ -14,8 +14,8 @@
   "data": {
     "kind": "assignment",
     "object_collection": "ent",
-    "object_id": "jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~en~plate_a",
-    "property_id": "jade-tipi-org~dev~018fd849-2a42-7222-8b02-bbbbbbbbbbbb~pp~volume",
+    "object_id": "jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~plate_a",
+    "property_id": "jade-tipi-org~dev~018fd849-2a42-7222-8b02-bbbbbbbbbbbb~ppy~volume",
     "value": {
       "number": 10,
       "unit_id": "jade-tipi-org~dev~liter~milli~ml~SI"

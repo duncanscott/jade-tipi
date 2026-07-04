@@ -15,7 +15,7 @@
     "kind": "assignment",
     "object_collection": "loc",
     "object_id": "jade-tipi-org~dev~018fd849-2a5a-7aaa-8a0a-121212121212~loc~plate_0001",
-    "property_id": "jade-tipi-org~dev~018fd849-2a41-7123-8c67-333333333333~pp~barcode",
+    "property_id": "jade-tipi-org~dev~018fd849-2a41-7123-8c67-333333333333~ppy~barcode",
     "value": {
       "text": "PLATE-BC-0001"
     }

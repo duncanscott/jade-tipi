@@ -74,7 +74,7 @@ class MessageSpec extends Specification {
                 'kli',
                 null
         )
-        def message = Message.newInstance(txn, Collection.ENTITY, Action.CREATE, [id: 'jade-tipi-org~dev~uuid~en~plate_a'])
+        def message = Message.newInstance(txn, Collection.ENTITY, Action.CREATE, [id: 'jade-tipi-org~dev~uuid~ent~plate_a'])
 
         when:
         String json = JsonMapper.toJson(message)
@@ -471,9 +471,9 @@ class MessageSpec extends Specification {
         message.collection() == Collection.TYPE
         message.action() == Action.CREATE
 
-        and: 'data.id is the materialized entity-type object id ending with the ~ty~ segment'
+        and: 'data.id is the materialized entity-type object id ending with the ~typ~ segment'
         Map data = message.data()
-        data.id == 'jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~ty~plate_96'
+        data.id == 'jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~typ~plate_96'
 
         and: 'human-authored facts live flat under data, with no link-type kind discriminator and no data.links block'
         data.name == 'plate_96'
@@ -498,8 +498,8 @@ class MessageSpec extends Specification {
 
         and: 'data.id is the materialized entity object id; data.type_id references the entity type'
         Map data = message.data()
-        data.id == 'jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~en~plate_a'
-        data.type_id == 'jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~ty~plate_96'
+        data.id == 'jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~plate_a'
+        data.type_id == 'jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~typ~plate_96'
 
         and: 'data.properties and data.links are present and explicitly empty on a simple create'
         data.properties == [:]
@@ -555,13 +555,13 @@ class MessageSpec extends Specification {
 
         and: 'data.id targets the existing bare entity-type root by id'
         Map data = message.data()
-        data.id == 'jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~ty~plate_96'
+        data.id == 'jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~typ~plate_96'
 
         and: 'data.operation names the bounded supported variant'
         data.operation == 'add_property'
 
         and: 'data.property_id references the property-definition by id; data.required carries the wire-shape boolean'
-        data.property_id == 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~pp~barcode'
+        data.property_id == 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
         data.required == true
 
         and: 'no other facts leak onto the data root next to id, operation, property_id, and required'
@@ -581,13 +581,13 @@ class MessageSpec extends Specification {
 
         and: 'data.id targets the same bare entity-type root as 05'
         Map data = message.data()
-        data.id == 'jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~ty~plate_96'
+        data.id == 'jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~typ~plate_96'
 
         and: 'data.operation names the bounded supported variant'
         data.operation == 'add_property'
 
         and: 'data.property_id references the numeric property-definition; required carries the wire-shape false'
-        data.property_id == 'jade-tipi-org~dev~018fd849-2a42-7222-8b02-bbbbbbbbbbbb~pp~volume'
+        data.property_id == 'jade-tipi-org~dev~018fd849-2a42-7222-8b02-bbbbbbbbbbbb~ppy~volume'
         data.required == false
 
         and: 'no other facts leak onto the data root next to id, operation, property_id, and required'
@@ -723,7 +723,7 @@ class MessageSpec extends Specification {
         and:
         Map data = message.data()
         data.kind == 'definition'
-        data.id == 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~pp~barcode'
+        data.id == 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
         data.name == 'barcode'
 
         and: 'value_schema is preserved verbatim as a JSON-object value contract'
@@ -750,7 +750,7 @@ class MessageSpec extends Specification {
         and:
         Map data = message.data()
         data.kind == 'definition'
-        data.id == 'jade-tipi-org~dev~018fd849-2a42-7222-8b02-bbbbbbbbbbbb~pp~volume'
+        data.id == 'jade-tipi-org~dev~018fd849-2a42-7222-8b02-bbbbbbbbbbbb~ppy~volume'
         data.name == 'volume'
 
         and: 'value_schema accepts multi-key required arrays for compound JSON-object values'
@@ -778,8 +778,8 @@ class MessageSpec extends Specification {
         Map data = message.data()
         data.kind == 'assignment'
         data.object_collection == 'ent'
-        data.object_id == 'jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~en~plate_a'
-        data.property_id == 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~pp~barcode'
+        data.object_id == 'jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~plate_a'
+        data.property_id == 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
         data.value == [text: 'barcode-1']
 
         and: 'no other facts leak onto the data root next to the canonical assignment keys'
@@ -824,5 +824,48 @@ class MessageSpec extends Specification {
         assignData.object_collection == 'ent'
         assignData.object_id == entData.id
         assignData.property_id == ppyData.id
+    }
+
+    def "schema rejects a data.id that does not follow the object identifier convention"() {
+        given: 'the pre-TASK-044 runbook drift shape: a literal segment where the UUIDv7 belongs'
+        def txn = new Transaction(
+                '018fd849-2a40-7abc-8a45-111111111111',
+                new Group('jade-tipi-org', 'dev'),
+                'kli',
+                '0000-0002-1825-0097'
+        )
+        def message = Message.newInstance(txn, Collection.LOCATION, Action.CREATE,
+                [id: 'jade-tipi-org~dev~plate96-demo~loc~plate_0001'])
+
+        when:
+        message.validate()
+
+        then:
+        ValidationException ex = thrown()
+        ex.message.toLowerCase().contains('id')
+    }
+
+    @Unroll
+    def "schema accepts a conforming data.id: #description"() {
+        given:
+        def txn = new Transaction(
+                '018fd849-2a40-7abc-8a45-111111111111',
+                new Group('jade-tipi-org', 'dev'),
+                'kli',
+                '0000-0002-1825-0097'
+        )
+        def message = Message.newInstance(txn, collection, Action.CREATE, data)
+
+        when:
+        message.validate()
+
+        then:
+        noExceptionThrown()
+
+        where:
+        description                                     | collection          | data
+        'message-UUID form'                             | Collection.LOCATION | [id: 'jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~freezer_01']
+        'transaction-UUID form, source-derived suffix'  | Collection.LOCATION | [id: 'jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e501~loc~esp_bin_019a3a60-9628']
+        'deprecated legacy composite alias id'          | Collection.PROPERTY | [kind: 'assignment', id: 'lbl_gov~jgi_pps~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~plate_a~lbl_gov~jgi_pps~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode', entity_id: 'lbl_gov~jgi_pps~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~plate_a', property_id: 'lbl_gov~jgi_pps~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode', value: [text: 'barcode-1']]
     }
 }

@@ -191,10 +191,11 @@ class EntityCreateKafkaMaterializeIntegrationSpec extends Specification {
     def setup() {
         txn = Transaction.newInstance('jade-itest-org', 'kafka', 'jade-itest-cli', 'itest-user')
         txnId = txn.id
-        String featureUuid = UUID.randomUUID().toString().substring(0, 8)
-        entityId = "jadetipi-itest-ent~ent~plate_${featureUuid}"
-        entityTypeId = "jadetipi-itest-ent~typ~plate_96_${featureUuid}"
-        propertyDefinitionId = "jadetipi-itest-ent~ppy~barcode_${featureUuid}"
+        // Object identifier convention (TASK-044): transaction-UUID form.
+        String idPrefix = "jade-itest-org~kafka~${txn.uuid()}"
+        entityId = "${idPrefix}~ent~plate"
+        entityTypeId = "${idPrefix}~typ~plate_96"
+        propertyDefinitionId = "${idPrefix}~ppy~barcode"
     }
 
     def cleanup() {

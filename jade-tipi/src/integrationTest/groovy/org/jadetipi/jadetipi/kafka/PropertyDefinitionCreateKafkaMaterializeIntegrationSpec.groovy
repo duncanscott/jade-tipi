@@ -185,9 +185,10 @@ class PropertyDefinitionCreateKafkaMaterializeIntegrationSpec extends Specificat
     def setup() {
         txn = Transaction.newInstance('jade-itest-org', 'kafka', 'jade-itest-cli', 'itest-user')
         txnId = txn.id
-        String featureUuid = UUID.randomUUID().toString().substring(0, 8)
-        propertyDefinitionId = "jadetipi-itest-ppy~pp~barcode_${featureUuid}"
-        assignmentId = "jadetipi-itest-ppy~en~plate_${featureUuid}~pp~barcode_${featureUuid}"
+        // Object identifier convention (TASK-044): transaction-UUID form.
+        String idPrefix = "jade-itest-org~kafka~${txn.uuid()}"
+        propertyDefinitionId = "${idPrefix}~ppy~barcode"
+        assignmentId = "${idPrefix}~ent~plate~${propertyDefinitionId}"
     }
 
     def cleanup() {
@@ -224,7 +225,7 @@ class PropertyDefinitionCreateKafkaMaterializeIntegrationSpec extends Specificat
         Message ppyAssignmentMsg = Message.newInstance(txn, JtpCollection.PROPERTY, Action.CREATE, [
                 kind       : 'assignment',
                 id         : assignmentId,
-                entity_id  : "jadetipi-itest-ppy~en~plate_${UUID.randomUUID().toString().substring(0, 8)}".toString(),
+                entity_id  : "jade-itest-org~kafka~${txn.uuid()}~ent~never_exists".toString(),
                 property_id: propertyDefinitionId,
                 value      : [text: 'barcode-1']
         ] as Map<String, Object>)

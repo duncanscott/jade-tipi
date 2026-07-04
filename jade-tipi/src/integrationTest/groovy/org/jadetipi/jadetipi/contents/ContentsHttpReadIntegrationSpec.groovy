@@ -248,11 +248,12 @@ class ContentsHttpReadIntegrationSpec extends Specification {
         // Cleanup uses these ids to delete only this feature's rows.
         txn = Transaction.newInstance('jade-itest-org', 'kafka', 'jade-itest-cli', 'itest-user')
         txnId = txn.id
-        String featureUuid = UUID.randomUUID().toString().substring(0, 8)
-        containerId = "jadetipi-itest-contents~loc~plate_${featureUuid}"
-        typeId = "jadetipi-itest-contents~typ~contents_${featureUuid}"
-        linkId = "jadetipi-itest-contents~lnk~plate_${featureUuid}_well_a1"
-        contentId = "jadetipi-itest-contents~ent~sample_${featureUuid}"
+        // Object identifier convention (TASK-044): transaction-UUID form.
+        String idPrefix = "jade-itest-org~kafka~${txn.uuid()}"
+        containerId = "${idPrefix}~loc~plate"
+        typeId = "${idPrefix}~typ~contents"
+        linkId = "${idPrefix}~lnk~plate_well_a1"
+        contentId = "${idPrefix}~ent~sample"
     }
 
     def cleanup() {
@@ -417,7 +418,7 @@ class ContentsHttpReadIntegrationSpec extends Specification {
 
     def 'empty-result contents HTTP routes return 200 with an empty array'() {
         given: 'a fresh container/content id that has never been materialized'
-        String emptyEndpointId = "jadetipi-itest-contents~loc~empty_${UUID.randomUUID().toString().substring(0, 8)}"
+        String emptyEndpointId = "jade-itest-org~kafka~${txn.uuid()}~loc~empty"
         String token = KeycloakTestHelper.getAccessToken()
 
         when: 'the forward route is exercised against the empty id'

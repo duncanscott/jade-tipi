@@ -26,7 +26,7 @@ class PlateContentsReadServiceSpec extends Specification {
     static final String LINK_A_ID = 'jade-tipi-org~dev~lbl_gov~jgi_pps~lnk~plate_b1_sample_a1'
     static final String LINK_B_ID = 'jade-tipi-org~dev~lbl_gov~jgi_pps~lnk~plate_b1_sample_b12'
     static final String LINK_C_ID = 'jade-tipi-org~dev~lbl_gov~jgi_pps~lnk~plate_b1_sample_c3'
-    static final String BARCODE_PROPERTY_ID = 'jade-tipi-org~dev~lbl_gov~jgi_pps~pp~barcode'
+    static final String BARCODE_PROPERTY_ID = 'jade-tipi-org~dev~lbl_gov~jgi_pps~ppy~barcode'
 
     ContentsLinkReadService contentsLinkReadService
     ObjectPropertyValuesReadService objectPropertyValuesReadService

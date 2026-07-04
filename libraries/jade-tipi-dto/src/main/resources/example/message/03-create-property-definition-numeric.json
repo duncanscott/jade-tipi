@@ -13,7 +13,7 @@
   "action": "create",
   "data": {
     "kind": "definition",
-    "id": "jade-tipi-org~dev~018fd849-2a42-7222-8b02-bbbbbbbbbbbb~pp~volume",
+    "id": "jade-tipi-org~dev~018fd849-2a42-7222-8b02-bbbbbbbbbbbb~ppy~volume",
     "name": "volume",
     "value_schema": {
       "type": "object",

@@ -42,7 +42,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
     static final String ENT_TYPE_ID = 'jade-tipi-org~dev~018fd849-2a48-7888-8a08-eeeeeeeeeeee~typ~plate_96'
     static final String ENT_MSG_UUID = '018fd849-2a42-7222-8a02-dddddddddddd'
     static final String ENTITY_TYPE_MSG_UUID = '018fd849-2a48-7888-8a08-eeeeeeeeeeee'
-    static final String PPY_ID = 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-cccccccccccc~pp~barcode'
+    static final String PPY_ID = 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-cccccccccccc~ppy~barcode'
     static final String PPY_MSG_UUID = '018fd849-2a41-7111-8a01-cccccccccccc'
     static final String PPY_ASSIGNMENT_ID = ENT_ID + '~' + PPY_ID
     static final String PPY_ASSIGNMENT_MSG_UUID = '018fd849-2a46-7666-8f06-ffffffffffff'

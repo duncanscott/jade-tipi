@@ -40,13 +40,23 @@
       "description": "Transaction collection accepts only transaction-control actions.",
       "if": {
         "properties": {
-          "collection": { "const": "txn" }
+          "collection": {
+            "const": "txn"
+          }
         },
-        "required": ["collection"]
+        "required": [
+          "collection"
+        ]
       },
       "then": {
         "properties": {
-          "action": { "enum": ["open", "rollback", "commit"] }
+          "action": {
+            "enum": [
+              "open",
+              "rollback",
+              "commit"
+            ]
+          }
         }
       }
     },
@@ -55,31 +65,72 @@
       "if": {
         "properties": {
           "collection": {
-            "enum": ["ent", "ppy", "lnk", "loc", "uni", "grp", "typ", "vdn"]
+            "enum": [
+              "ent",
+              "ppy",
+              "lnk",
+              "loc",
+              "uni",
+              "grp",
+              "typ",
+              "vdn"
+            ]
           }
         },
-        "required": ["collection"]
+        "required": [
+          "collection"
+        ]
       },
       "then": {
         "properties": {
-          "action": { "enum": ["create", "update", "delete"] }
+          "action": {
+            "enum": [
+              "create",
+              "update",
+              "delete"
+            ]
+          }
         }
       }
     },
     {
-      "description": "Pick the data payload schema by collection. grp uses GroupData (permits world-unique grp IDs as permissions map keys); every other collection uses SnakeCaseObject.",
+      "description": "Pick the data payload schema by collection. grp uses GroupData (permits world-unique grp IDs as permissions map keys); every other collection uses SnakeCaseObject. In both branches a top-level data.id, when present, must follow the ObjectId convention.",
       "if": {
-        "properties": { "collection": { "const": "grp" } },
-        "required": ["collection"]
+        "properties": {
+          "collection": {
+            "const": "grp"
+          }
+        },
+        "required": [
+          "collection"
+        ]
       },
       "then": {
         "properties": {
-          "data": { "$ref": "#/$defs/GroupData" }
+          "data": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/GroupData"
+              },
+              {
+                "$ref": "#/$defs/DataWithObjectId"
+              }
+            ]
+          }
         }
       },
       "else": {
         "properties": {
-          "data": { "$ref": "#/$defs/SnakeCaseObject" }
+          "data": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/SnakeCaseObject"
+              },
+              {
+                "$ref": "#/$defs/DataWithObjectId"
+              }
+            ]
+          }
         }
       }
     }
@@ -205,7 +256,9 @@
         "pattern": "^[a-z][a-z0-9_]*$"
       },
       "properties": {
-        "permissions": { "$ref": "#/$defs/Permissions" }
+        "permissions": {
+          "$ref": "#/$defs/Permissions"
+        }
       },
       "additionalProperties": {
         "$ref": "#/$defs/SnakeCaseValue"
@@ -217,7 +270,10 @@
       "type": "object",
       "additionalProperties": {
         "type": "string",
-        "enum": ["rw", "r"]
+        "enum": [
+          "rw",
+          "r"
+        ]
       }
     },
     "SnakeCaseValue": {
@@ -246,6 +302,22 @@
           }
         }
       ]
+    },
+    "ObjectId": {
+      "title": "ObjectId",
+      "description": "World-unique object identifier per the TASK-044 convention: <org>~<grp>~<uuidv7>~<collection>~<suffix>, where the UUIDv7 is the creating transaction's or message's UUID. The literal genesis segment is sanctioned only for the reserved bootstrap usr. An optional second conforming block tolerates the deprecated legacy composite assignment id, which the materializer ignores.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*~[a-z][a-z0-9_-]*~([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|genesis)~(ent|ppy|lnk|loc|uni|grp|typ|vdn|usr)~[a-z0-9._-]+(~[a-z][a-z0-9_-]*~[a-z][a-z0-9_-]*~([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|genesis)~(ent|ppy|lnk|loc|uni|grp|typ|vdn|usr)~[a-z0-9._-]+)?$"
+    },
+    "DataWithObjectId": {
+      "title": "DataWithObjectId",
+      "description": "Constrains the top-level data.id (when present) to the object identifier convention.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ObjectId"
+        }
+      }
     }
   },
   "examples": [
@@ -279,13 +351,17 @@
       "action": "create",
       "data": {
         "kind": "definition",
-        "id": "jade-tipi-org~dev~018fd849-2a41-7123-8c67-333333333333~pp~barcode",
+        "id": "jade-tipi-org~dev~018fd849-2a41-7123-8c67-333333333333~ppy~barcode",
         "name": "barcode",
         "value_schema": {
           "type": "object",
-          "required": ["text"],
+          "required": [
+            "text"
+          ],
           "properties": {
-            "text": { "type": "string" }
+            "text": {
+              "type": "string"
+            }
           }
         }
       }

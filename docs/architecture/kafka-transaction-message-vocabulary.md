@@ -75,12 +75,14 @@ UUID version 7 for all ID generation):
   segments) must conform in both halves; they retire with the
   standalone-assignment-root cleanup.
 
-Enforcement is currently warn-only: `CommittedTransactionMaterializer`
-logs a warning for any create-path `data.id` that does not conform
-(structural check: at least five segments, UUIDv7-or-`genesis` third
-segment, known collection abbreviation fourth). Hard `data.id` validation
-in `message.schema.json` is ledgered for the transitional-shapes cleanup
-task, once every fixture conforms.
+Enforcement is two-layered (TASK-046): `message.schema.json` rejects any
+submitted top-level `data.id` that does not match the `ObjectId` pattern
+(org/grp segments, UUIDv7-or-`genesis` third segment, known collection
+abbreviation fourth, `[a-z0-9._-]+` suffix, optional second conforming
+block for the deprecated legacy composite alias id), so nonconforming
+messages never reach the WAL; and `CommittedTransactionMaterializer` keeps
+its structural warning as defense in depth for non-Kafka writers. Nested
+`id` keys inside `properties` bags are not constrained.
 
 A simple location creation should look like this inside the normal message
 envelope:
@@ -224,7 +226,7 @@ writes in transient `msg` remains the drift-note target.
   "action": "create",
   "data": {
     "kind": "definition",
-    "id": "lbl_gov~jgi_pps~...~pp~barcode",
+    "id": "lbl_gov~jgi_pps~...~ppy~barcode",
     "name": "barcode",
     "value_schema": {
       "type": "object",
@@ -259,9 +261,9 @@ Entity types live in `typ`. A type can be created independently and then updated
   "collection": "typ",
   "action": "update",
   "data": {
-    "id": "lbl_gov~jgi_pps~...~ty~plate_96",
+    "id": "lbl_gov~jgi_pps~...~typ~plate_96",
     "operation": "add_property",
-    "property_id": "lbl_gov~jgi_pps~...~pp~barcode",
+    "property_id": "lbl_gov~jgi_pps~...~ppy~barcode",
     "required": true
   }
 }
@@ -314,8 +316,8 @@ Entities live in `ent` and reference a type.
   "collection": "ent",
   "action": "create",
   "data": {
-    "id": "lbl_gov~jgi_pps~...~en~plate_a",
-    "type_id": "lbl_gov~jgi_pps~...~ty~plate_96"
+    "id": "lbl_gov~jgi_pps~...~ent~plate_a",
+    "type_id": "lbl_gov~jgi_pps~...~typ~plate_96"
   }
 }
 ```
@@ -336,8 +338,8 @@ warning, and any legacy composite `data.id` is ignored:
   "action": "create",
   "data": {
     "kind": "assignment",
-    "entity_id": "lbl_gov~jgi_pps~...~en~plate_a",
-    "property_id": "lbl_gov~jgi_pps~...~pp~barcode",
+    "entity_id": "lbl_gov~jgi_pps~...~ent~plate_a",
+    "property_id": "lbl_gov~jgi_pps~...~ppy~barcode",
     "value": {
       "text": "barcode-1"
     }

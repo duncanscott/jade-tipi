@@ -34,7 +34,7 @@ class PlateContentsReadControllerSpec extends Specification {
     static final String SAMPLE_ID = 'jade-tipi-org~dev~lbl_gov~jgi_pps~ent~sample_a1'
     static final String LINK_ID = 'jade-tipi-org~dev~lbl_gov~jgi_pps~lnk~plate_b1_sample_a1'
     static final String TYPE_ID = 'jade-tipi-org~dev~lbl_gov~jgi_pps~typ~contents'
-    static final String BARCODE_PROPERTY_ID = 'jade-tipi-org~dev~lbl_gov~jgi_pps~pp~barcode'
+    static final String BARCODE_PROPERTY_ID = 'jade-tipi-org~dev~lbl_gov~jgi_pps~ppy~barcode'
     static final String PLATE_CONTENTS_PATH = '/api/contents/plate/{id}'
 
     PlateContentsReadService readService
