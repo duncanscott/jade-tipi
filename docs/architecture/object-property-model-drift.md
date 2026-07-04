@@ -713,6 +713,13 @@ Bounded tasks in implementation order. Letters are provisional; the director
 assigns TASK numbers at creation. Every task keeps TASK-031/032/033 examples
 and tests passing; nothing deletes or migrates existing data before Task L.
 
+Director resequencing (2026-07-03): plan task E was pulled forward and
+implemented as TASK-040, extended with single-inheritance type hierarchy
+(`parent_type_id` on `typ` roots; the object-assignment registration gate
+walks the chain, bounded and cycle-safe). Tasks A (TASK-039) and E (TASK-040)
+are done; tasks B-D (usr resolution, writer persistence, txn/msg split) are
+deferred, not canceled; F-L remain in the stated order.
+
 | # | Task | Depends on |
 |---|---|---|
 | A | Bootstrap `usr~jdtp-admin` genesis ensure | — |

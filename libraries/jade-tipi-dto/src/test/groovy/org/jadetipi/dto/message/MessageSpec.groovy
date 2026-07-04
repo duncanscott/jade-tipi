@@ -35,7 +35,9 @@ class MessageSpec extends Specification {
             '/example/message/10-create-location.json',
             '/example/message/11-create-contents-type.json',
             '/example/message/12-create-contents-link-plate-sample.json',
-            '/example/message/13-create-group.json'
+            '/example/message/13-create-group.json',
+            '/example/message/14-create-plate-type-extends-container.json',
+            '/example/message/15-assign-object-property-value.json'
     ]
 
     private static String readResource(String path) {

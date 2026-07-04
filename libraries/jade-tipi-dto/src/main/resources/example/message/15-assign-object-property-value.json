@@ -1,0 +1,23 @@
+{
+  "txn": {
+    "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+    "group": {
+      "org": "jade-tipi-org",
+      "grp": "dev"
+    },
+    "client": "kli",
+    "user": "0000-0002-1825-0097"
+  },
+  "uuid": "018fd849-2a59-7999-8a09-efefefefefef",
+  "collection": "ppy",
+  "action": "create",
+  "data": {
+    "kind": "assignment",
+    "object_collection": "loc",
+    "object_id": "jade-tipi-org~dev~018fd849-2a5a-7aaa-8a0a-121212121212~loc~plate_0001",
+    "property_id": "jade-tipi-org~dev~018fd849-2a41-7123-8c67-333333333333~pp~barcode",
+    "value": {
+      "text": "PLATE-BC-0001"
+    }
+  }
+}

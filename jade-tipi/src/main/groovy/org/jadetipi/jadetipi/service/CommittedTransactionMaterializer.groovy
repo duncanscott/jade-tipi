@@ -86,8 +86,32 @@ import java.time.Instant
  *       against the property definition's {@code value_schema} in this
  *       iteration, the {@code property_id} is never resolved against the
  *       {@code ppy} collection, and the entity root's own {@code properties}
- *       map is not rewritten — assignment projection onto entity roots
- *       remains future work, like {@code lnk} endpoint projections.</li>
+ *       map is not rewritten — this legacy standalone-root path is
+ *       transitional (TASK-038 drift note) and is kept byte-for-byte until
+ *       a deliberate cleanup.</li>
+ *   <li>{@code ppy + create} with {@code data.kind == "assignment"} and an
+ *       object-targeted payload ({@code data.object_collection} in
+ *       {@code {ent, loc}} plus {@code data.object_id}) → the committed
+ *       value is projected onto the target object root under
+ *       {@code property_values.<data.property_id>} as
+ *       {@code { value, txn_id, commit_id, msg_uuid, applied_at }} via a
+ *       dotted-path {@code $set} (TASK-040; drift-note contracts
+ *       8.2.6/8.2.7). Registration is inheritance-aware: the property must
+ *       be listed under {@code properties.property_refs} on the target's
+ *       {@code typ} root or on an ancestor reached by following
+ *       {@code properties.parent_type_id} (single inheritance, bounded
+ *       depth, cycle-safe); an exhausted or broken chain counts as
+ *       {@code skippedUnregisteredProperty}. Unknown
+ *       {@code object_collection}, blank {@code object_id} or
+ *       {@code property_id}, or a non-object {@code value} count as
+ *       {@code skippedInvalid}; a missing target root counts as
+ *       {@code skippedMissingTarget}. An existing entry equal to the
+ *       incoming one ignoring {@code applied_at} counts as
+ *       {@code duplicateMatching}; a differing entry is
+ *       {@code conflictingDuplicate} and never overwritten. {@code data.id}
+ *       is not required in the object-targeted form; a message carrying
+ *       only the legacy {@code entity_id} stays on the standalone-root path
+ *       above.</li>
  * </ul>
  * Every other collection/action combination — including delete and
  * txn-control actions, every {@code typ + update} whose
@@ -157,10 +181,22 @@ class CommittedTransactionMaterializer {
     static final String FIELD_REQUIRED = 'required'
     static final String FIELD_PROPERTY_REFS = 'property_refs'
     static final String FIELD_KIND = 'kind'
+    static final String FIELD_OBJECT_COLLECTION = 'object_collection'
+    static final String FIELD_OBJECT_ID = 'object_id'
+    static final String FIELD_PROPERTY_VALUES = 'property_values'
+    static final String FIELD_PARENT_TYPE_ID = 'parent_type_id'
+    static final String ENTRY_APPLIED_AT = 'applied_at'
 
     static final String OPERATION_ADD_PROPERTY = 'add_property'
     static final String KIND_DEFINITION = 'definition'
     static final String KIND_ASSIGNMENT = 'assignment'
+
+    /** Collections that may receive object-targeted property assignments. */
+    static final Set<String> OBJECT_ASSIGNMENT_COLLECTIONS =
+            Set.of(COLLECTION_ENT, COLLECTION_LOC)
+
+    /** Bound on the {@code parent_type_id} walk; prevents runaway chains. */
+    static final int MAX_TYPE_INHERITANCE_DEPTH = 10
 
     private final ReactiveMongoTemplate mongoTemplate
     private final CommittedTransactionReadService readService
@@ -222,6 +258,9 @@ class CommittedTransactionMaterializer {
         if (message.action == ACTION_CREATE
                 && message.collection == COLLECTION_PPY
                 && KIND_ASSIGNMENT == message.data?.get(FIELD_KIND)) {
+            if (isObjectTargetedAssignment(message.data)) {
+                return processObjectPropertyAssignment(snapshot, message, result)
+            }
             return processPpyAssignmentCreate(snapshot, message, result)
         }
 
@@ -407,6 +446,231 @@ class CommittedTransactionMaterializer {
                             })
                 })
                 .then() as Mono<Void>
+    }
+
+    /**
+     * A {@code kind == "assignment"} payload is object-targeted when it
+     * carries {@code object_collection} or {@code object_id}. A payload with
+     * only one of the two still routes here so its incompleteness surfaces
+     * as {@code skippedInvalid} rather than silently falling back to the
+     * legacy entity path.
+     */
+    private static boolean isObjectTargetedAssignment(Map<String, Object> data) {
+        return extractNonBlankString(data, FIELD_OBJECT_COLLECTION) != null ||
+                extractNonBlankString(data, FIELD_OBJECT_ID) != null
+    }
+
+    /**
+     * Materialize one object-targeted {@code ppy + create} assignment by
+     * projecting the value onto the target object root under
+     * {@code property_values.<property_id>}, gated by inheritance-aware type
+     * registration. See the class Javadoc for the full decision table.
+     */
+    private Mono<Void> processObjectPropertyAssignment(CommittedTransactionSnapshot snapshot,
+                                                       CommittedTransactionMessage message,
+                                                       MaterializeResult result) {
+        Map<String, Object> data = message.data
+        String objectCollection = extractNonBlankString(data, FIELD_OBJECT_COLLECTION)
+        if (objectCollection == null || !OBJECT_ASSIGNMENT_COLLECTIONS.contains(objectCollection)) {
+            log.error('Materializer skipping object assignment with missing or unsupported data.object_collection: ' +
+                    'objectCollection={}, txnId={}, commitId={}, msgUuid={}',
+                    objectCollection, snapshot.txnId, snapshot.commitId, message.msgUuid)
+            result.skippedInvalid++
+            return Mono.empty()
+        }
+        String objectId = extractNonBlankString(data, FIELD_OBJECT_ID)
+        if (objectId == null) {
+            log.error('Materializer skipping object assignment with missing or blank data.object_id: ' +
+                    'objectCollection={}, txnId={}, commitId={}, msgUuid={}',
+                    objectCollection, snapshot.txnId, snapshot.commitId, message.msgUuid)
+            result.skippedInvalid++
+            return Mono.empty()
+        }
+        String propertyId = extractPropertyId(data)
+        if (propertyId == null) {
+            log.error('Materializer skipping object assignment with missing or blank data.property_id: ' +
+                    'objectId={}, txnId={}, commitId={}, msgUuid={}',
+                    objectId, snapshot.txnId, snapshot.commitId, message.msgUuid)
+            result.skippedInvalid++
+            return Mono.empty()
+        }
+        if (!(data.get(FIELD_VALUE) instanceof Map)) {
+            log.error('Materializer skipping object assignment whose data.value is missing or not a JSON object: ' +
+                    'objectId={}, propertyId={}, txnId={}, commitId={}, msgUuid={}',
+                    objectId, propertyId, snapshot.txnId, snapshot.commitId, message.msgUuid)
+            result.skippedInvalid++
+            return Mono.empty()
+        }
+
+        return mongoTemplate.findById(objectId, Map.class, objectCollection)
+                .map({ Map existing -> Optional.of(existing) })
+                .defaultIfEmpty(Optional.empty())
+                .flatMap({ Optional<Map> rootProbe ->
+                    if (!rootProbe.isPresent()) {
+                        log.warn('Materializer skipping object assignment with missing target root: ' +
+                                'objectCollection={}, objectId={}, propertyId={}, txnId={}, commitId={}, msgUuid={}',
+                                objectCollection, objectId, propertyId,
+                                snapshot.txnId, snapshot.commitId, message.msgUuid)
+                        result.skippedMissingTarget++
+                        return Mono.empty()
+                    }
+                    Map<String, Object> root = rootProbe.get() as Map<String, Object>
+                    String typeId = extractNonBlankString(root, FIELD_TYPE_ID)
+                    if (typeId == null) {
+                        log.warn('Materializer skipping object assignment whose target root has no type_id; ' +
+                                'the property cannot be registered: objectCollection={}, objectId={}, propertyId={}, txnId={}',
+                                objectCollection, objectId, propertyId, snapshot.txnId)
+                        result.skippedUnregisteredProperty++
+                        return Mono.empty()
+                    }
+                    return isPropertyRegisteredInHierarchy(typeId, propertyId)
+                            .flatMap({ Boolean registered ->
+                                if (!registered) {
+                                    log.warn('Materializer skipping object assignment whose property is not ' +
+                                            'registered on the target type or any ancestor: typeId={}, ' +
+                                            'objectCollection={}, objectId={}, propertyId={}, txnId={}',
+                                            typeId, objectCollection, objectId, propertyId, snapshot.txnId)
+                                    result.skippedUnregisteredProperty++
+                                    return Mono.empty()
+                                }
+                                return projectPropertyValue(root, objectCollection, objectId,
+                                        propertyId, data, snapshot, message, result)
+                            })
+                })
+                .then() as Mono<Void>
+    }
+
+    /**
+     * Inheritance-aware registration check: walk from {@code typeId} up the
+     * {@code properties.parent_type_id} chain until a {@code typ} root lists
+     * {@code propertyId} under {@code properties.property_refs}. A missing
+     * ancestor root, an exhausted chain, a cycle, or exceeding
+     * {@link #MAX_TYPE_INHERITANCE_DEPTH} resolves to {@code false}.
+     */
+    private Mono<Boolean> isPropertyRegisteredInHierarchy(String typeId, String propertyId) {
+        return checkTypeChain(typeId, propertyId, new HashSet<String>(), 0)
+    }
+
+    private Mono<Boolean> checkTypeChain(String typeId, String propertyId,
+                                         Set<String> visited, int depth) {
+        if (typeId == null) {
+            return Mono.just(Boolean.FALSE)
+        }
+        if (depth >= MAX_TYPE_INHERITANCE_DEPTH) {
+            log.warn('Type inheritance walk exceeded depth {} at typeId={}; treating property as unregistered',
+                    MAX_TYPE_INHERITANCE_DEPTH, typeId)
+            return Mono.just(Boolean.FALSE)
+        }
+        if (!visited.add(typeId)) {
+            log.warn('Type inheritance cycle detected at typeId={}; treating property as unregistered', typeId)
+            return Mono.just(Boolean.FALSE)
+        }
+        return mongoTemplate.findById(typeId, Map.class, COLLECTION_TYP)
+                .map({ Map existing -> Optional.of(existing) })
+                .defaultIfEmpty(Optional.empty())
+                .flatMap({ Optional<Map> typProbe ->
+                    if (!typProbe.isPresent()) {
+                        log.warn('Type inheritance walk found no typ root for typeId={}; treating property as unregistered',
+                                typeId)
+                        return Mono.just(Boolean.FALSE)
+                    }
+                    Map typRoot = typProbe.get()
+                    if (readExistingPropertyRef(typRoot, propertyId) != null) {
+                        return Mono.just(Boolean.TRUE)
+                    }
+                    return checkTypeChain(extractParentTypeId(typRoot), propertyId, visited, depth + 1)
+                }) as Mono<Boolean>
+    }
+
+    private static String extractParentTypeId(Map typRoot) {
+        if (typRoot == null) {
+            return null
+        }
+        Object propertiesValue = typRoot.get(FIELD_PROPERTIES)
+        if (!(propertiesValue instanceof Map)) {
+            return null
+        }
+        Object parent = ((Map) propertiesValue).get(FIELD_PARENT_TYPE_ID)
+        if (parent == null) {
+            return null
+        }
+        String asString = parent.toString()
+        return asString.trim().isEmpty() ? null : asString
+    }
+
+    /**
+     * Write the property-value entry onto the already-fetched target root via
+     * a dotted-path {@code $set}, honoring the shared duplicate rules. The
+     * entry equality check ignores {@code applied_at}, mirroring the
+     * {@code materialized_at} exemption on root duplicates.
+     */
+    private Mono<Void> projectPropertyValue(Map<String, Object> root,
+                                            String objectCollection,
+                                            String objectId,
+                                            String propertyId,
+                                            Map<String, Object> data,
+                                            CommittedTransactionSnapshot snapshot,
+                                            CommittedTransactionMessage message,
+                                            MaterializeResult result) {
+        Map<String, Object> entry = new LinkedHashMap<>()
+        entry.put(FIELD_VALUE, new LinkedHashMap<>((Map<String, Object>) data.get(FIELD_VALUE)))
+        entry.put(PROV_TXN_ID, snapshot.txnId)
+        entry.put(PROV_COMMIT_ID, snapshot.commitId)
+        entry.put(PROV_MSG_UUID, message.msgUuid)
+        entry.put(ENTRY_APPLIED_AT, Instant.now())
+
+        Map<String, Object> existingEntry = readExistingPropertyValue(root, propertyId)
+        if (existingEntry != null) {
+            if (samePropertyValueEntry(existingEntry, entry)) {
+                log.info('Materialize duplicate matching object property value: ' +
+                        'objectCollection={}, objectId={}, propertyId={}, txnId={}',
+                        objectCollection, objectId, propertyId, snapshot.txnId)
+                result.duplicateMatching++
+            } else {
+                log.error('Materialize conflicting object property value (not overwriting): ' +
+                        'objectCollection={}, objectId={}, propertyId={}, txnId={}, commitId={}, msgUuid={}',
+                        objectCollection, objectId, propertyId,
+                        snapshot.txnId, snapshot.commitId, message.msgUuid)
+                result.conflictingDuplicate++
+            }
+            return Mono.empty()
+        }
+
+        String dottedKey = FIELD_PROPERTY_VALUES + '.' + propertyId
+        Query query = Query.query(Criteria.where(FIELD_ID).is(objectId))
+        Update update = new Update().set(dottedKey, entry)
+        return mongoTemplate.updateFirst(query, update, objectCollection)
+                .doOnSuccess({ Object updateResult ->
+                    log.info('Materialized object property value: objectCollection={}, objectId={}, ' +
+                            'propertyId={}, txnId={}, commitId={}',
+                            objectCollection, objectId, propertyId, snapshot.txnId, snapshot.commitId)
+                    result.materialized++
+                })
+                .then() as Mono<Void>
+    }
+
+    private static Map<String, Object> readExistingPropertyValue(Map root, String propertyId) {
+        if (root == null) {
+            return null
+        }
+        Object valuesMap = root.get(FIELD_PROPERTY_VALUES)
+        if (!(valuesMap instanceof Map)) {
+            return null
+        }
+        Object entry = ((Map) valuesMap).get(propertyId)
+        if (entry instanceof Map) {
+            return new LinkedHashMap<String, Object>((Map<String, Object>) entry)
+        }
+        return null
+    }
+
+    private static boolean samePropertyValueEntry(Map<String, Object> existing,
+                                                  Map<String, Object> incoming) {
+        Map<String, Object> existingCopy = new LinkedHashMap<>(existing)
+        Map<String, Object> incomingCopy = new LinkedHashMap<>(incoming)
+        existingCopy.remove(ENTRY_APPLIED_AT)
+        incomingCopy.remove(ENTRY_APPLIED_AT)
+        return Objects.equals(existingCopy, incomingCopy)
     }
 
     private static String extractPropertyId(Map<String, Object> data) {

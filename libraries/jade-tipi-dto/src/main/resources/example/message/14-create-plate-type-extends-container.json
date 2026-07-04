@@ -1,0 +1,20 @@
+{
+  "txn": {
+    "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+    "group": {
+      "org": "jade-tipi-org",
+      "grp": "dev"
+    },
+    "client": "kli",
+    "user": "0000-0002-1825-0097"
+  },
+  "uuid": "018fd849-2a58-7888-8a08-abababababab",
+  "collection": "typ",
+  "action": "create",
+  "data": {
+    "id": "jade-tipi-org~dev~018fd849-2a58-7888-8a08-abababababab~typ~plate",
+    "name": "plate",
+    "description": "sample plate container",
+    "parent_type_id": "jade-tipi-org~dev~018fd849-2a57-7777-8a07-cdcdcdcdcdcd~typ~container"
+  }
+}

@@ -40,6 +40,19 @@ system can explain who wrote the value even after transient staged messages are
 cleared. Any standalone `ppy` assignment records are a transitional
 implementation detail, not the target storage model.
 
+Types support simple single inheritance. A type may extend a parent type by
+declaring a `parent_type_id` pointing at its supertype; the subtype inherits
+all the properties of the parent type. A property is therefore assignable to
+an object when it is registered on the object's own type or on any ancestor
+reached through the `parent_type_id` chain. Keep the mechanism minimal:
+single parent, no property overriding or shadowing, no multiple inheritance,
+and bounded, cycle-safe resolution. An unresolvable chain (missing ancestor,
+cycle, or excessive depth) means the property is not assignable.
+
+The type hierarchy never changes which collection an instance belongs to.
+Container instances — including instances of container subtypes such as
+`plate_96_well` — are `loc` records.
+
 ## Users, Groups, And Permissions
 
 `usr` records are first-class Jade-Tipi identity/audit objects. They represent

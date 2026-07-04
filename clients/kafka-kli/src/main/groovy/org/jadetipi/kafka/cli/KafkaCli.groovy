@@ -763,7 +763,7 @@ class KafkaCli {
         cli.with {
             h(longOpt: 'help', 'Show this help message')
             c(longOpt: 'collection', args: 1, argName: 'abbr',
-                    'Target collection (ent, ppy, lnk, uni, grp, typ, vdn)')
+                    'Target collection (ent, ppy, lnk, loc, uni, grp, typ, vdn)')
             d(longOpt: 'data', args: 1, argName: 'json|@file', 'JSON data or @filepath')
             v(longOpt: 'verbose', 'Enable verbose output')
         }
@@ -787,7 +787,7 @@ class KafkaCli {
         try {
             collection = Collection.fromJson(collectionRaw)
         } catch (IllegalArgumentException e) {
-            printError("Unknown collection '${collectionRaw}'. Use one of: ent, ppy, lnk, uni, grp, typ, vdn.")
+            printError("Unknown collection '${collectionRaw}'. Use one of: ent, ppy, lnk, loc, uni, grp, typ, vdn.")
             System.exit(1)
         }
         if (collection == Collection.TRANSACTION) {

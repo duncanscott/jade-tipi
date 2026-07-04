@@ -1,0 +1,6 @@
+{
+  "id": "jade-tipi-org~dev~plate96-demo~typ~plate_96_well",
+  "name": "plate_96_well",
+  "description": "96-well sample plate",
+  "parent_type_id": "jade-tipi-org~dev~plate96-demo~typ~plate"
+}

@@ -1,0 +1,12 @@
+{
+  "kind": "definition",
+  "id": "jade-tipi-org~dev~plate96-demo~ppy~barcode",
+  "name": "barcode",
+  "value_schema": {
+    "type": "object",
+    "required": ["text"],
+    "properties": {
+      "text": { "type": "string" }
+    }
+  }
+}

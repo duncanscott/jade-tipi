@@ -1,0 +1,6 @@
+{
+  "id": "jade-tipi-org~dev~plate96-demo~typ~plate",
+  "name": "plate",
+  "description": "sample plate container",
+  "parent_type_id": "jade-tipi-org~dev~plate96-demo~typ~container"
+}
