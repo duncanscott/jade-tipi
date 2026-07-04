@@ -237,6 +237,42 @@ Entity types live in `typ`. A type can be created independently and then updated
 
 The materialized type document records property references, not embedded property definitions. The committed materializer writes each `typ + update add_property` message as a `$set` on `properties.property_refs.<data.property_id>` of the existing target `typ` root. The reference value carries only the wire-shape metadata that is present (currently `required` when supplied); when `data.required` is omitted the materialized entry is an empty object rather than a synthesized `{ "required": false }`. The materializer does not resolve `data.property_id` against the `ppy` collection in this iteration; the reference is recorded verbatim, and semantic resolution remains a future reader/validator concern.
 
+### Type Inheritance
+
+A type may extend another type by declaring an inline `parent_type_id` on its
+`typ + create` message (TASK-040). Inheritance is single-parent and
+deliberately minimal: no property overriding, no shadowing, no multiple
+inheritance.
+
+```json
+{
+  "collection": "typ",
+  "action": "create",
+  "data": {
+    "id": "jade-tipi-org~dev~...~typ~plate",
+    "name": "plate",
+    "parent_type_id": "jade-tipi-org~dev~...~typ~container"
+  }
+}
+```
+
+A subtype inherits all the properties of its parent type. The parent
+reference needs no dedicated materializer support: like other inline type
+facts it lands under root `properties`, so the materialized subtype root
+carries `properties.parent_type_id`. The inheritance semantics live in the
+assignment registration gate: a property is assignable to an object when it
+is listed under `properties.property_refs` on the object's own `typ` root or
+on any ancestor reached by following `properties.parent_type_id`. The walk is
+bounded (depth 10), cycle-safe, and fails closed — a missing ancestor root, a
+cycle, or an exceeded depth counts the assignment as
+`skippedUnregisteredProperty`. The canonical example is
+`14-create-plate-type-extends-container.json`.
+
+The type hierarchy never changes an instance's collection: container
+instances — including instances of container subtypes such as
+`plate_96_well` — are `loc` records, created with `loc + create` and
+targeted by assignments with `object_collection: "loc"`.
+
 ## Entity Creation
 
 Entities live in `ent` and reference a type.
@@ -302,32 +338,65 @@ against the registered `value_schema`, and does not rewrite the entity root's
 own `properties` map. `ppy + create` messages with missing, blank, or unknown
 `data.kind` values remain `skippedUnsupported`.
 
-Target direction: property-value writes should be transaction messages staged
-in `msg`, associated with a durable `txn_id`, checked against the target
-object's `type_id` and the referenced `ppy` definition/policy, and projected
-onto the target object root as a value keyed by `ppy` ID. The materialized
-value entry should preserve enough transaction provenance to answer who wrote
-the value after the transient `msg` payload has been cleared. A working shape
-is:
+### Object-Targeted Property Assignment
+
+Current implementation (TASK-040): an assignment may target any supported
+object root directly with explicit `object_collection` (`ent` or `loc`) plus
+`object_id`; the materializer never infers a collection from ID parsing.
+`data.id` is not required in this form because no standalone assignment root
+is created. The canonical example is `15-assign-object-property-value.json`.
 
 ```json
 {
-  "properties": {
-    "lbl_gov~jgi_pps~...~ppy~barcode": {
-      "value": { "text": "barcode-1" },
-      "txn_id": "lbl_gov~jgi_pps~...~txn~example",
+  "collection": "ppy",
+  "action": "create",
+  "data": {
+    "kind": "assignment",
+    "object_collection": "loc",
+    "object_id": "jade-tipi-org~dev~...~loc~plate_0001",
+    "property_id": "jade-tipi-org~dev~...~ppy~barcode",
+    "value": { "text": "PLATE-BC-0001" }
+  }
+}
+```
+
+Routing is shape-determined: a payload carrying `object_collection` or
+`object_id` takes the object-targeted path; a payload carrying only the
+legacy `entity_id` keeps the standalone-root behavior above, unchanged until
+a deliberate cleanup. The materializer projects the committed value onto the
+target object root under a `property_values` map keyed by `ppy` ID, via a
+dotted-path `$set`:
+
+```json
+{
+  "property_values": {
+    "jade-tipi-org~dev~...~ppy~barcode": {
+      "value": { "text": "PLATE-BC-0001" },
+      "txn_id": "018fd849-...~jade-tipi-org~dev~kli",
       "commit_id": "commit-001",
-      "msg_uuid": "018fd849-2a47-7777-8f01-aaaaaaaaaaaa",
-      "applied_at": "2026-06-28T00:00:00Z"
+      "msg_uuid": "018fd849-2a59-7999-8a09-efefefefefef",
+      "applied_at": "2026-07-03T00:00:00Z"
     }
   }
 }
 ```
 
-The future object-targeted assignment message should avoid the entity-specific
-`entity_id` field as its primary form. A likely shape is explicit
-`object_collection` plus `object_id`, with `entity_id` retained only as a
-backward-compatible alias while legacy examples and tests exist.
+The registration gate is inheritance-aware (see Type Inheritance): the
+property must be listed under `properties.property_refs` on the target's
+`typ` root or on an ancestor via `parent_type_id`. Gate outcomes mirror the
+shared decision table: unknown `object_collection`, blank `object_id` or
+`property_id`, or a non-object `value` are `skippedInvalid`; a missing target
+root is `skippedMissingTarget`; a blank target `type_id`, missing `typ`
+root, or unregistered property is `skippedUnregisteredProperty`. An existing
+entry equal to the incoming one ignoring `applied_at` is `duplicateMatching`;
+a differing entry is `conflictingDuplicate` and never overwritten. Value
+updates (last-committed-wins) are deferred; the orderable `commit_id` is the
+primitive that will enable them.
+
+Remaining target direction: property-value messages should eventually stage
+in transient `msg` rather than `txn`, and the drift-note lifecycle (per-message
+apply outcomes, `applied` watermark, guarded cleanup) still follows as plan
+tasks D/F/G.
 
 ## Link Types And Concrete Links
 
@@ -433,7 +502,7 @@ overrides.
 
 ## Committed Materialization Of Locations And Links
 
-Once a transaction commits in `txn`, a post-commit projection currently materializes `loc + create`, `typ + create` (both link-type records where `data.kind == "link_type"` and bare entity-type records where `data.kind` is absent), `typ + update` messages whose `data.operation == "add_property"`, `lnk + create`, `ent + create`, `grp + create`, and `ppy + create` messages whose `data.kind` is `"definition"` or `"assignment"` (assignments gated by type registration as described above) into their long-term collections (`loc`, `typ`, `lnk`, `ent`, `grp`, `ppy`). The projection is a read-after-commit step over the existing committed-snapshot read service; current code uses `txn` for both durable transaction facts and staged message payloads. The target split is described above: durable transaction facts stay in `txn`, while transient message payloads move to `msg`. Other collections and other actions — including every `typ + update` whose `data.operation` is not `add_property`, every `ppy + create` whose `data.kind` is neither `"definition"` nor `"assignment"`, every `*+ delete`, and other update actions — are intentionally not materialized in this iteration and are counted as `skippedUnsupported` without raising an error.
+Once a transaction commits in `txn`, a post-commit projection currently materializes `loc + create`, `typ + create` (both link-type records where `data.kind == "link_type"` and bare entity-type records where `data.kind` is absent, optionally carrying `parent_type_id`), `typ + update` messages whose `data.operation == "add_property"`, `lnk + create`, `ent + create`, `grp + create`, and `ppy + create` messages whose `data.kind` is `"definition"` or `"assignment"` (legacy `entity_id` assignments materialize as standalone gated `ppy` roots as described above; object-targeted assignments project onto `ent`/`loc` roots under `property_values` with inheritance-aware gating) into their long-term collections (`loc`, `typ`, `lnk`, `ent`, `grp`, `ppy`). The projection is a read-after-commit step over the existing committed-snapshot read service; current code uses `txn` for both durable transaction facts and staged message payloads. The target split is described above: durable transaction facts stay in `txn`, while transient message payloads move to `msg`. Other collections and other actions — including every `typ + update` whose `data.operation` is not `add_property`, every `ppy + create` whose `data.kind` is neither `"definition"` nor `"assignment"`, every `*+ delete`, and other update actions — are intentionally not materialized in this iteration and are counted as `skippedUnsupported` without raising an error.
 
 The current materializer writes the accepted root-document shape from `DIRECTION.md`: one logical Jade-Tipi object normally stored as one root document with top-level `_id`, `id`, `collection`, `type_id`, explicit `properties`, denormalized `links`, and reserved `_head.provenance` metadata. Duplicate `_id` writes with an identical payload are idempotent successes; differing-payload duplicates are logged and counted but not overwritten, and missing or blank `data.id` is logged and skipped without synthesizing an id. Semantic reference validation (`type_id`, `left`, `right`, and `allowed_*_collections`) is still not enforced; that remains a follow-up reader/validator concern.
 
@@ -609,6 +678,50 @@ repair conflicting locations, write MongoDB, submit Kafka messages, add
 frontend UI, enforce authorization, paginate results, or infer child types
 beyond the accepted `loc` and `ent` read services.
 
+## Reading Object Property Values
+
+`ObjectPropertyValuesReadService` answers "which typed property values are
+projected onto this object root?" over the TASK-040 `property_values`
+contract (TASK-041, root-only — no overlay of committed-but-unapplied
+messages yet). It reads one object root by `_id` from a supported collection
+(`loc` or `ent`), extracts the `property_values` entries sorted by property
+ID, and resolves human-readable `propertyName` values by joining the
+referenced `ppy` definition roots; a dangling `property_id` leaves
+`propertyName == null`. The legacy first-pass inline `properties` bag is
+returned verbatim and deliberately separated from the typed `propertyValues`
+map so both representations are reviewable during the transition. Stale
+tolerance mirrors the accepted readers: a non-map `property_values`
+sub-document or entry is ignored, and a non-map entry `value` surfaces as an
+empty map.
+
+The HTTP adapter is `GET /api/locations/{id}/property-values`, a resource
+read: a missing `loc` root returns 404; an existing root with no projected
+values returns 200 with an empty `propertyValues` map. The service supports
+`ent` roots for future use, but the legacy
+`GET /api/entities/{id}/property-values` route keeps its transitional
+standalone-assignment-root reader until the planned cleanup task retires
+that shape.
+
+## Reading Effective Type Properties
+
+`TypeEffectivePropertiesReadService` answers the read-side consequence of
+type inheritance: "which properties may objects of this type carry?" It
+walks the subject `typ` root's `properties.parent_type_id` chain (same
+bounds as the TASK-040 registration gate: single parent, depth 10,
+cycle-safe) and unions `properties.property_refs` across the chain. The
+most-derived registration wins when a property is registered at multiple
+levels; each effective property carries `sourceTypeId` (the type that
+registered it), the verbatim reference metadata, and the resolved
+`propertyName` from the `ppy` definition when present.
+
+Where the write gate fails closed on a broken chain, this read surfaces the
+partial result for inspection: the response carries the ordered `typeChain`
+(subject first) and `chainComplete: false` when the walk stopped early on a
+missing ancestor, a cycle, or the depth bound.
+
+The HTTP adapter is `GET /api/types/{id}/effective-properties`, a resource
+read: a missing subject `typ` root returns 404.
+
 ## Contents Read Surface Map
 
 The contents read surface intentionally mixes query-style routes under
@@ -624,6 +737,8 @@ prove or query:
 | Plate-shaped forward contents | `GET /api/contents/plate/{id}` | No `loc` lookup; treats the id as a plate-shaped query key | HTTP 200 with an empty fixed grid |
 | Generic resolved forward contents | `GET /api/locations/{id}/contents` | Requires the subject `loc` root | HTTP 404 when the `loc` root is missing |
 | Entity property values | `GET /api/entities/{id}/property-values` | Requires the subject `ent` root | HTTP 404 when the `ent` root is missing |
+| Location property values | `GET /api/locations/{id}/property-values` | Requires the subject `loc` root | HTTP 404 when the `loc` root is missing |
+| Effective type properties | `GET /api/types/{id}/effective-properties` | Requires the subject `typ` root | HTTP 404 when the `typ` root is missing |
 
 The asymmetry is deliberate. Flat contents routes and the plate-shaped view are
 queries over materialized `lnk` rows and cannot prove that the submitted id
@@ -651,6 +766,8 @@ A complete early transaction flow is bundled as resources under `libraries/jade-
 12. `11-create-contents-type.json`
 13. `12-create-contents-link-plate-sample.json`
 14. `13-create-group.json`
+15. `14-create-plate-type-extends-container.json`
+16. `15-assign-object-property-value.json`
 
 `05a` registers the numeric `volume` property-definition on the same entity type as `05` registers `barcode`, so both canonical assignments (`07` and `08`) satisfy the materializer's type-registration gate within the one example transaction.
 
