@@ -82,6 +82,58 @@ in this document conflict, the brief wins; the affected sections have
 been narrowed in place and the rest of the original mapping is
 preserved.
 
+## TASK-042 typed review seed update
+
+`TASK-042` delivers the follow-on named at the end of the previous
+section: the review seed now publishes the same representative records
+in the intended target shape — typed `loc`/`ent` roots with object
+property values keyed by `ppy` ID — using the TASK-040 type-inheritance
+and object-targeted assignment machinery. The name-keyed
+`loc.properties` mapping shown in the historical sections below is
+superseded for the seed; those sections are preserved as the
+`TASK-019`/`TASK-036` design record.
+
+The typed mapping:
+
+| Source fact | Previous target (TASK-036) | Typed target (TASK-042) |
+|---|---|---|
+| ESP `type_name` / Clarity `type.name` (e.g. `"96W Plate"`, `"Tube"`) | `loc.properties.kind` | The type hierarchy: root `type_id` points at `freezer`/`bin`/`plate_96_well`/`tube` `typ` roots; the verbatim source label is preserved as `loc.properties.source_kind`. |
+| `name` | `loc.properties.name` | `property_values.<ppy~name>` entry via object-targeted assignment. |
+| `barcode` | `loc.properties.barcode` | `property_values.<ppy~barcode>` entry. |
+| Plate `format`/`rows`/`columns` | `loc.properties.*` | `property_values.<ppy~format/rows/columns>` entries (registered on `plate`, inherited by `plate_96_well`). |
+| `source_system`, `source_id`, `source_type_id`, `source_numeric_id`, `source_state`, `source_type_name` | inline `properties` | Unchanged: inline `properties` stays the source-traceability bag, per drift-note decision 8.6/10. |
+
+Type hierarchy created by the seed (single inheritance,
+`properties.parent_type_id`): `container` registers `name` and
+`barcode`; `freezer`, `bin`, `plate`, and `tube` extend `container`;
+`plate` additionally registers `format`, `rows`, and `columns`;
+`plate_96_well` extends `plate`. Every seeded assignment lands through
+an inherited registration, and each `property_values` entry carries
+`value`, `txn_id`, `commit_id`, `msg_uuid`, and `applied_at`. The
+`illumina_library` `ent` type registers `name` and `barcode` directly;
+`ppy` definitions are collection-agnostic and shared between `loc` and
+`ent` targets.
+
+The seed transaction is system-authored: `txn.user` carries the
+TASK-039 bootstrap identity
+(`jade-tipi-org~dev~genesis~usr~jdtp-admin`). Durable writer
+persistence remains deferred (drift-note plan task C); the envelope
+convention is established now so it resolves cleanly later.
+
+Expected review roots gain one collection: `ppy` now holds the five
+seed property definitions (`name`, `barcode`, `format`, `rows`,
+`columns`), and `typ` holds the seven type roots (`container`,
+`freezer`, `bin`, `plate`, `plate_96_well`, `tube`, `contents`) plus
+`illumina_library`. Row reset before each run deletes by the stable
+seed ID prefix, so rows written by earlier seed versions cannot
+linger. The run command is unchanged from the TASK-036 section.
+
+Open modeling question recorded, not resolved: whether `format`,
+`rows`, and `columns` are per-instance values (as seeded) or facts of
+the plate type itself. Typed reads over these roots are available via
+`GET /api/locations/{id}/property-values` and
+`GET /api/types/{id}/effective-properties`.
+
 ## Design-brief alignment
 
 The design brief sets out six points that the prototype must answer.
