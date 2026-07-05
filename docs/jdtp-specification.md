@@ -1,7 +1,13 @@
 # JDTP Specification
 
-**Version:** 0.3.2-draft · **Date:** 2026-07-05 · **Status:** Draft for
+**Version:** 0.3.3-draft · **Date:** 2026-07-05 · **Status:** Draft for
 director review
+
+*Changes in 0.3.3: late appends are guarded (UT-6 resolved) — a data
+message appended after a transaction reaches a terminal state is stored
+flagged `late_append: true` and excluded from the committed snapshot, so
+it can never materialize on a commit re-delivery; before-open appends
+remain allowed and deterministic.*
 
 *Changes in 0.3.2: task-input and procedure-output collections are
 explicitly unconstrained by the protocol (director ruling 2026-07-05) —
@@ -32,7 +38,7 @@ Procedures and tasks added as Planned.*
 
 JDTP (JSON Data Transparency Protocol) is a technology-agnostic protocol for
 world-mergeable, provenance-preserving scientific metadata. This document is
-the authoritative statement of the protocol as ratified through TASK-050 of
+the authoritative statement of the protocol as ratified through TASK-051 of
 the reference implementation. It stands apart from any one database, queue,
 or search product: the reference implementation currently uses Kafka and
 MongoDB, but those are adapters, not the definition.
@@ -445,9 +451,14 @@ record but skipped as unsupported at materialization, without error):
 ### 2.4 Transaction lifecycle
 
 **[Normative — current]** Submitted messages are appended to the durable
-transaction store as they arrive (header records and message records; no
-state guard on append). The header has one non-terminal state (`open`) and
-two mutually exclusive terminal states: `committed` and `rolled_back`.
+transaction store as they arrive (header records and message records). The
+header has one non-terminal state (`open`) and two mutually exclusive
+terminal states: `committed` and `rolled_back`. A data message appended
+**after** the header reached a terminal state is stored — submitted facts
+are never discarded — but flagged `late_append: true` and excluded from
+the committed snapshot, so it can never materialize on any commit
+re-delivery. Appends before open (no header yet) remain allowed and
+unflagged; they materialize at the explicit commit like any other row.
 Commit durably marks the header with the orderable `commit_id` **before**
 any materialization; the post-commit projection then materializes
 supported messages in message-UUID order. A projection failure never
@@ -536,9 +547,9 @@ Contracts of note:
 | Writer persistence (`writer.user_id` + snapshot) | — | Planned |
 
 The gaps in this table — and several sharper ones (silently ignored
-`uni`/`vdn` submissions, unguarded late message appends) — are tracked as
-director-ratified TODO items with stable IDs in
-[`uncomfortable-truths.md`](uncomfortable-truths.md).
+`uni`/`vdn` submissions, no re-drive of committed-but-unmaterialized
+transactions) — are tracked as director-ratified TODO items with stable
+IDs in [`uncomfortable-truths.md`](uncomfortable-truths.md).
 
 ---
 

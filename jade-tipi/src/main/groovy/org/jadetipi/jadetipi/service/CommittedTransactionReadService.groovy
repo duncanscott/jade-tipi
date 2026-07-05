@@ -32,6 +32,7 @@ import static org.jadetipi.jadetipi.service.TransactionMessagePersistenceService
 import static org.jadetipi.jadetipi.service.TransactionMessagePersistenceService.FIELD_COMMIT_ID
 import static org.jadetipi.jadetipi.service.TransactionMessagePersistenceService.FIELD_DATA
 import static org.jadetipi.jadetipi.service.TransactionMessagePersistenceService.FIELD_KAFKA
+import static org.jadetipi.jadetipi.service.TransactionMessagePersistenceService.FIELD_LATE_APPEND
 import static org.jadetipi.jadetipi.service.TransactionMessagePersistenceService.FIELD_MSG_UUID
 import static org.jadetipi.jadetipi.service.TransactionMessagePersistenceService.FIELD_OPENED_AT
 import static org.jadetipi.jadetipi.service.TransactionMessagePersistenceService.FIELD_OPEN_DATA
@@ -98,10 +99,17 @@ class CommittedTransactionReadService {
                 } as Mono<CommittedTransactionSnapshot>
     }
 
+    /**
+     * The snapshot is the set of messages that were part of the transaction
+     * when it committed: rows flagged {@code late_append: true} (appended
+     * after the header reached a terminal state; UT-6/TASK-051) are excluded
+     * so a commit re-delivery can never materialize them.
+     */
     private Flux<CommittedTransactionMessage> findMessagesForTxn(String txnId) {
         Query query = Query.query(
                 Criteria.where(FIELD_RECORD_TYPE).is(RECORD_TYPE_MESSAGE)
                         .and(FIELD_TXN_ID).is(txnId)
+                        .and(FIELD_LATE_APPEND).ne(true)
         ).with(Sort.by(Sort.Direction.ASC, FIELD_ID))
 
         return mongoTemplate.find(query, Map.class, COLLECTION_NAME)

@@ -51,7 +51,13 @@ import static org.jadetipi.jadetipi.util.Constants.TRANSACTION_ID_SEPARATOR
  *   <li>Message (record_type=message): {@code _id = txn_id~msg_uuid}, one row per
  *       received {@link Message} with collection/action/data and Kafka source
  *       metadata. Rows appended before a rollback remain stored (audit); the
- *       committed-visibility gate keeps them from ever materializing.</li>
+ *       committed-visibility gate keeps them from ever materializing. A row
+ *       appended after the header reached a terminal state is stored flagged
+ *       {@code late_append: true} (UT-6/TASK-051) — never discarded, but
+ *       excluded from the committed snapshot so it cannot materialize on a
+ *       commit re-delivery. Appends before open (no header yet) remain
+ *       allowed and unflagged: they materialize at the explicit commit like
+ *       any other row.</li>
  * </ul>
  *
  * <p>The service is intentionally Kafka-free and HTTP-free: a thin HTTP adapter can
@@ -77,6 +83,7 @@ class TransactionMessagePersistenceService {
     static final String FIELD_DATA = 'data'
     static final String FIELD_RECEIVED_AT = 'received_at'
     static final String FIELD_KAFKA = 'kafka'
+    static final String FIELD_LATE_APPEND = 'late_append'
 
     static final String RECORD_TYPE_TRANSACTION = 'transaction'
     static final String RECORD_TYPE_MESSAGE = 'message'
@@ -292,10 +299,32 @@ class TransactionMessagePersistenceService {
             ] as Map<String, Object>)
         }
 
-        return mongoTemplate.insert(doc, COLLECTION_NAME)
-                .doOnSuccess { log.info('Transaction message appended: id={}', recordId) }
-                .thenReturn(PersistResult.APPENDED)
+        return isTerminalHeader(txnId)
+                .flatMap { Boolean terminal ->
+                    if (terminal) {
+                        doc.put(FIELD_LATE_APPEND, true)
+                        log.warn('Late append to a terminal-state transaction, stored flagged ' +
+                                'and excluded from materialization: id={}', recordId)
+                    }
+                    return mongoTemplate.insert(doc, COLLECTION_NAME)
+                            .doOnSuccess { log.info('Transaction message appended: id={}', recordId) }
+                            .thenReturn(terminal ? PersistResult.APPENDED_LATE : PersistResult.APPENDED)
+                }
                 .onErrorResume({ Throwable ex -> handleAppendDuplicate(recordId, message, ex) }) as Mono<PersistResult>
+    }
+
+    /**
+     * True when a WAL header exists for {@code txnId} in a terminal state
+     * ({@code committed} or {@code rolled_back}). A missing header (append
+     * before open) and the {@code open} state both resolve {@code false}.
+     */
+    private Mono<Boolean> isTerminalHeader(String txnId) {
+        return mongoTemplate.findById(txnId, Map.class, COLLECTION_NAME)
+                .map { Map header ->
+                    String state = header.get(FIELD_STATE) as String
+                    return state == STATE_COMMITTED || state == STATE_ROLLED_BACK
+                }
+                .defaultIfEmpty(Boolean.FALSE) as Mono<Boolean>
     }
 
     private Mono<PersistResult> handleAppendDuplicate(String recordId, Message message, Throwable ex) {

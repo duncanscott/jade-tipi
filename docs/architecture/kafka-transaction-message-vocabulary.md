@@ -126,8 +126,13 @@ the `txn` MongoDB collection:
   Each message record stores the submitted envelope, including `collection`, so
   materializers and readers do not have to infer the target collection from
   payload fields. Rows appended before a rollback remain stored (audit);
-  the committed-visibility gate keeps them from ever materializing.
-  Guarding *new* appends after a terminal state remains UT-6.
+  the committed-visibility gate keeps them from ever materializing. A row
+  appended **after** the header reached a terminal state is stored flagged
+  `late_append: true` (UT-6/TASK-051) — never discarded, but excluded from
+  the committed snapshot, so a commit re-delivery can never materialize
+  it. Appends before open (no header yet) remain allowed and unflagged;
+  full staging and cleanup remain the ratified lifecycle work (plan task
+  F).
 
 That shape is transitional. The target direction is to split durable
 transaction metadata from transient message staging:

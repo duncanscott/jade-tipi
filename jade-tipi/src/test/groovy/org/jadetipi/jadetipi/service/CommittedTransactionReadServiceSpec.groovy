@@ -108,6 +108,23 @@ class CommittedTransactionReadServiceSpec extends Specification {
         first.kafka.timestampMs == 1700000000000L
     }
 
+    def 'the message query excludes late_append rows from the committed snapshot'() {
+        given:
+        Query capturedQuery = null
+        mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just(committedHeader())
+        mongoTemplate.find(_ as Query, Map.class, COLLECTION) >> { Query q, Class _t, String _c ->
+            capturedQuery = q
+            return Flux.empty()
+        }
+
+        when:
+        service.findCommitted(TXN_ID).block()
+
+        then: 'rows flagged by the UT-6 late-append guard never enter the snapshot'
+        Map lateAppendCriteria = capturedQuery.getQueryObject().get('late_append') as Map
+        lateAppendCriteria.get('$ne') == true
+    }
+
     def 'open (uncommitted) header is not exposed as committed and skips message lookup'() {
         given:
         Map header = committedHeader(state: 'open', commit_id: null, committed_at: null, commit_data: null)

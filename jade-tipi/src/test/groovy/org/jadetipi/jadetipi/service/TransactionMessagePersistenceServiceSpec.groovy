@@ -152,6 +152,10 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
         given:
         def message = dataMessage()
         Map captured = null
+        mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just([
+                _id: TXN_ID,
+                state: 'open'
+        ])
         mongoTemplate.insert(_ as Map, COLLECTION) >> { Map doc, String _coll ->
             captured = doc
             return Mono.just(doc)
@@ -173,13 +177,63 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
         captured.kafka.partition == 0
         captured.kafka.offset == 42L
         captured.kafka.timestamp_ms == 1700000000000L
-        0 * mongoTemplate.findById(_, _, _)
+
+        and: 'an append to an open transaction is not flagged late'
+        !captured.containsKey('late_append')
+    }
+
+    def 'data message appended before open (no header) inserts unflagged and returns APPENDED'() {
+        given:
+        def message = dataMessage()
+        Map captured = null
+        mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.empty()
+        mongoTemplate.insert(_ as Map, COLLECTION) >> { Map doc, String _coll ->
+            captured = doc
+            return Mono.just(doc)
+        }
+
+        when:
+        def result = service.persist(message, source()).block()
+
+        then:
+        result == PersistResult.APPENDED
+        !captured.containsKey('late_append')
+    }
+
+    def 'data message appended after a terminal state is stored flagged and returns APPENDED_LATE'() {
+        given:
+        def message = dataMessage()
+        Map captured = null
+        mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just([
+                _id: TXN_ID,
+                state: terminalState
+        ])
+        mongoTemplate.insert(_ as Map, COLLECTION) >> { Map doc, String _coll ->
+            captured = doc
+            return Mono.just(doc)
+        }
+
+        when:
+        def result = service.persist(message, source()).block()
+
+        then: 'the row is stored — never discarded — but flagged for snapshot exclusion'
+        result == PersistResult.APPENDED_LATE
+        captured.late_append == true
+        captured.record_type == 'message'
+        captured.data == [name: 'value']
+
+        where:
+        terminalState << ['committed', 'rolled_back']
     }
 
     def 'duplicate data message with equal payload returns APPEND_DUPLICATE'() {
         given:
         def message = dataMessage()
         def recordId = TXN_ID + '~' + message.uuid()
+        mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just([
+                _id: TXN_ID,
+                state: 'open'
+        ])
         mongoTemplate.insert(_ as Map, COLLECTION) >> Mono.error(springDuplicate())
         mongoTemplate.findById(recordId, Map.class, COLLECTION) >> Mono.just([
                 _id: recordId,
@@ -201,6 +255,10 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
         def message = dataMessage('33333333-3333-7333-8333-333333333333',
                 [name: 'incoming-value'])
         def recordId = TXN_ID + '~' + message.uuid()
+        mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just([
+                _id: TXN_ID,
+                state: 'open'
+        ])
         mongoTemplate.insert(_ as Map, COLLECTION) >> Mono.error(springDuplicate())
         mongoTemplate.findById(recordId, Map.class, COLLECTION) >> Mono.just([
                 _id: recordId,

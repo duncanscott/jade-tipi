@@ -118,17 +118,29 @@ rule. All real clients send a user.
 
 ## UT-6 — No state guard on message append; late messages can surprise
 
-**Status: PLANNED** (plan tasks D/F) · **Priority: medium**
+**Status: RESOLVED (TASK-051, 2026-07-05)** · **Priority: medium**
 
-Messages append to a transaction regardless of header state — before
-open, even after commit. A message arriving after commit sits inert
-unless a commit **redelivery** later occurs, at which point it suddenly
-materializes.
+What was true: messages appended to a transaction regardless of header
+state — before open, even after commit. A message arriving after commit
+sat inert unless a commit **redelivery** later occurred, at which point
+it suddenly materialized: nondeterministic late-effect semantics
+dependent on transport redelivery behavior.
 
-- Failure permitted: nondeterministic late-effect semantics dependent on
-  transport redelivery behavior.
-- Covered by: the ratified lifecycle — staging, `message_count` at
-  commit, per-message `apply_state`, and the `applied` watermark.
+Resolution (TASK-051): on append, the header is read first; a row
+arriving after the header reached a terminal state (`committed` or
+`rolled_back`) is still stored — submitted facts are never discarded —
+but flagged `late_append: true` (`PersistResult.APPENDED_LATE`, logged
+as a warning), and the committed-snapshot reader excludes flagged rows,
+so they can never materialize on any redelivery. Proven end to end by
+`LateAppendGuardKafkaIntegrationSpec` (late append + commit re-delivery
+under strict partition ordering).
+
+Explicit residuals, by design: appends **before open** (no header yet)
+remain allowed and unflagged — they are deterministic, materializing at
+the explicit commit like any other row; orphan rows for never-opened
+transactions sit inert. Full staging, `message_count` at commit,
+per-message `apply_state`, the `applied` watermark, and cleanup remain
+the ratified lifecycle work (plan tasks D/F, with UT-7).
 
 ## UT-7 — No re-drive of committed-but-unmaterialized transactions
 
