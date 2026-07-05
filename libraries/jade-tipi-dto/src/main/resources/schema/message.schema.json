@@ -307,7 +307,7 @@
       "title": "ObjectId",
       "description": "World-unique object identifier per the TASK-044 convention: <org>~<grp>~<uuidv7>~<collection>~<suffix>, where the UUIDv7 is the creating transaction's or message's UUID. The literal genesis segment is sanctioned only for the reserved bootstrap usr. An optional second conforming block tolerates the deprecated legacy composite assignment id, which the materializer ignores.",
       "type": "string",
-      "pattern": "^[a-z][a-z0-9_-]*~[a-z][a-z0-9_-]*~([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|genesis)~(ent|ppy|lnk|loc|uni|grp|typ|vdn|usr)~[a-z0-9._-]+(~[a-z][a-z0-9_-]*~[a-z][a-z0-9_-]*~([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|genesis)~(ent|ppy|lnk|loc|uni|grp|typ|vdn|usr)~[a-z0-9._-]+)?$"
+      "pattern": "^[a-z][a-z0-9_-]*~[a-z][a-z0-9_-]*~([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|genesis)~(ent|ppy|lnk|loc|uni|grp|typ|vdn|usr)~[a-z0-9_-]+(~[a-z][a-z0-9_-]*~[a-z][a-z0-9_-]*~([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|genesis)~(ent|ppy|lnk|loc|uni|grp|typ|vdn|usr)~[a-z0-9_-]+)?$"
     },
     "DataWithObjectId": {
       "title": "DataWithObjectId",

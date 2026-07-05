@@ -75,7 +75,7 @@ class GroupAdminService {
     static final int MAX_NAME_LENGTH = 255
     static final int MAX_DESCRIPTION_LENGTH = 4096
 
-    static final Pattern ID_PATTERN = Pattern.compile('^[A-Za-z0-9._\\-~]+$')
+    static final Pattern ID_PATTERN = Pattern.compile('^[A-Za-z0-9_\\-~]+$')
 
     static final String FIELD_ID = '_id'
     static final String FIELD_DATA_ID = 'id'

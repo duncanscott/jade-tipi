@@ -1,7 +1,11 @@
 # JDTP Specification
 
-**Version:** 0.1.0-draft · **Date:** 2026-07-04 · **Status:** Draft for
+**Version:** 0.1.1-draft · **Date:** 2026-07-04 · **Status:** Draft for
 director review
+
+*Changes in 0.1.1: identifier suffix charset tightened to `[a-z0-9_-]`
+(dots removed by director ruling — they were never authorized); §1.9
+Procedures and tasks added as Planned.*
 
 JDTP (JSON Data Transparency Protocol) is a technology-agnostic protocol for
 world-mergeable, provenance-preserving scientific metadata. This document is
@@ -45,6 +49,8 @@ exactly one collection. The peer domain collections are:
 | location | `loc` | Physical/addressable locations and containers |
 | type | `typ` | Type definitions: entity types and link types |
 | group | `grp` | Ownership groups and group-to-group permission grants |
+| procedure | `prc` | Performed procedures: execution events turning inputs into outputs *(planned; see §1.9)* |
+| task | `tsk` | Intentions to perform a procedure of a given type on a set of inputs *(planned; see §1.9)* |
 | unit | `uni` | Measurement units *(wire-accepted; not yet materialized)* |
 | validation | `vdn` | Validation rules *(wire-accepted; not yet materialized)* |
 | user | `usr` | Local identity/audit records *(backend-internal today; not in the wire vocabulary)* |
@@ -80,8 +86,9 @@ Every object ID is a world-unique text string:
   ID server.
 - The fourth segment is the collection abbreviation from §1.1 (three-letter
   forms; `usr` included).
-- The suffix is a human-readable label (`[a-z0-9._-]+`); it is **not** the
-  uniqueness carrier.
+- The suffix is a human-readable label (`[a-z0-9_-]+` — lowercase letters,
+  digits, underscore, hyphen; no dots); it is **not** the uniqueness
+  carrier.
 
 **Sanctioned exceptions.**
 
@@ -252,6 +259,34 @@ record — writer identity today survives only as long as the transport
 retains the message. Closing that gap is the ratified writer-persistence
 work. (Known quirk for that work: an envelope serializing `"user": null`
 fails schema validation; all real clients send a user.)
+
+### 1.9 Procedures and tasks [Planned]
+
+Two further collections realize the manifesto's process-tracing extension
+(director-ratified 2026-07-04):
+
+- A **procedure** (`prc`) is a *performed* procedure: the execution event
+  that turns inputs into outputs. Its `type_id` references a procedure
+  type in `typ`.
+- A **task** (`tsk`) is the *intention* to perform a procedure of a given
+  type on a set of inputs. Tasks have their own task types; type
+  definitions are never overloaded across the two collections. A task
+  type carries its associated procedure type as a property of the task
+  type (`properties.procedure_type_id`), so task instances need no
+  per-instance procedure pointer. Task and procedure type declarations
+  carry `kind: "task_type"` / `kind: "procedure_type"` discriminators,
+  mirroring `link_type`.
+- Task inputs are `ent` objects; the input relationships, the
+  task-fulfilled-by-procedure relationship (recorded on completion), and
+  each output's produced-by relationship are **canonical `lnk` records**.
+  On-root pointers arrive with the planned `links` projection.
+- The procedure root carries a top-level `output_input` map — the
+  canonical execution provenance: keys are output `ent` IDs; each value
+  maps contributing input `ent` IDs to an open **contribution object**
+  (e.g. `{ "volume": 12.5 }` for pooling). Contribution weights live only
+  here; the schema for contribution objects will be supplied by a `vdn`
+  record associated with the procedure type once `vdn` materializes
+  (UT-4).
 
 ---
 
@@ -441,7 +476,8 @@ Ratified direction, in the migration plan's order: local `usr` identity
 resolution and durable writer persistence; the `txn`/`msg` split with the
 applied watermark and guarded cleanup; overlay reads; value updates;
 permission enforcement; retirement or formal reservation of the inline
-`properties` bag; link-property alignment; materialization of `uni` and
+`properties` bag; link-property alignment; the procedure/task provenance
+model (§1.9); materialization of `uni` and
 `vdn`; an HTTP submission adapter over the same message vocabulary;
 extension pages for oversized objects; and derived-capability seams
 (`SearchProvider`, `GraphProvider`, `VectorProvider`, `ArchiveProvider`)

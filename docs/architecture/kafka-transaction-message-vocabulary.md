@@ -78,7 +78,7 @@ UUID version 7 for all ID generation):
 Enforcement is two-layered (TASK-046): `message.schema.json` rejects any
 submitted top-level `data.id` that does not match the `ObjectId` pattern
 (org/grp segments, UUIDv7-or-`genesis` third segment, known collection
-abbreviation fourth, `[a-z0-9._-]+` suffix, optional second conforming
+abbreviation fourth, `[a-z0-9_-]+` suffix, optional second conforming
 block for the deprecated legacy composite alias id), so nonconforming
 messages never reach the WAL; and `CommittedTransactionMaterializer` keeps
 its structural warning as defense in depth for non-Kafka writers. Nested

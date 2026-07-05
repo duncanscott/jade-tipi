@@ -11,7 +11,8 @@ locations. In a biology laboratory this includes buildings, rooms, freezers,
 freezer shelves, racks, boxes, tubes, plates, and possibly individual wells.
 
 `loc` is a long-term materialized collection alongside `ent`, `ppy`, `lnk`,
-`uni`, `grp`, `usr`, `typ`, and `vdn`. The `txn` collection remains special:
+`uni`, `grp`, `usr`, `typ`, `vdn`, `prc`, and `tsk`. The `txn` collection
+remains special:
 it stores durable transaction objects, not normal domain objects.
 Transaction-message payloads may use a separate transient staging collection,
 tentatively `msg`, until they have been applied to the domain object documents.
@@ -64,6 +65,59 @@ cycle, or excessive depth) means the property is not assignable.
 The type hierarchy never changes which collection an instance belongs to.
 Container instances — including instances of container subtypes such as
 `plate_96_well` — are `loc` records.
+
+## Procedures And Tasks
+
+JDTP adds two further first-class collections: `prc` (procedure) and `tsk`
+(task). A procedure is a performed procedure — the execution event that
+turns inputs into outputs. A task is the intention to perform a procedure
+of a given type on a set of inputs.
+
+Every object has exactly one type, and type definitions are not
+overloaded: procedure types define `prc` objects and task types define
+`tsk` objects. A task type carries its associated procedure type as a
+property of the task type (working shape: `properties.procedure_type_id`,
+optionally with the human-readable procedure name), so task instances need
+no per-instance procedure pointer. Working proposal, mirroring the
+`link_type` discriminator: task and procedure type declarations in `typ`
+carry `kind: "task_type"` and `kind: "procedure_type"`.
+
+A task's inputs are `ent` objects, represented canonically as `lnk`
+records. When a task is completed, the procedure that fulfilled it is
+recorded as a `lnk` between the task and the `prc` record.
+
+A procedure optionally produces outputs of type `ent`. The procedure root
+carries the canonical execution provenance as a top-level `output_input`
+map (parallel to `lnk`'s top-level `left`/`right`):
+
+```json
+{
+  "output_input": {
+    "<output ent id>": {
+      "<input ent id>": { "volume": 12.5 }
+    }
+  }
+}
+```
+
+Keys are output IDs; each value maps the IDs of the inputs used to
+generate that output to a contribution object. The contribution object is
+deliberately open — for a pooling procedure it would typically record the
+volume each input contributed to each pool. The schema for contribution
+objects will later be supplied by a `vdn` record associated with the
+procedure type; that association is deferred until `vdn` materialization
+exists.
+
+The coarse relationships — task inputs, task fulfillment, and each
+output's produced-by pointer to its creating procedure — are canonical
+`lnk` records. On-root pointers (for example an output entity's reference
+to the procedure that created it) arrive with the planned denormalized
+`links` projection, never as duplicated source-of-truth fields. The
+fine-grained contribution weights live only in the procedure's
+`output_input` map: execution-owned data, not a duplicate of the links.
+
+Instances stay in their own collections regardless of the type hierarchy:
+tasks are `tsk` records and procedures are `prc` records.
 
 ## Users, Groups, And Permissions
 
