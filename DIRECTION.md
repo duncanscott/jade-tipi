@@ -217,6 +217,15 @@ document forever. The root document should contain the object's identity,
 `collection`, `type_id`, small `properties` and `links` maps when they fit, and
 reserved implementation metadata.
 
+Ratified 2026-07-05: while Kafka and MongoDB are implementation details
+and not part of the specification, the structure of the JSON documents —
+whether virtual or not — is a key part of the specification. The
+collection of JSON documents completely describes the current state of
+the system. One route for sharing data between systems will likely be
+sharing the last stage of the documents that constitute the system:
+interchange happens at the document level, not by replaying any
+particular transport.
+
 Start with the simple implementation: store each materialized object in one root
 document and keep `properties` and denormalized `links` directly on that root
 document. This is the common and ideal case. Do not implement page chains,

@@ -1,7 +1,14 @@
 # JDTP Specification
 
-**Version:** 0.4.0-draft · **Date:** 2026-07-05 · **Status:** Draft for
+**Version:** 0.4.1-draft · **Date:** 2026-07-05 · **Status:** Draft for
 director review
+
+*Changes in 0.4.1: recorded the director-ratified document-state
+principle — the JSON document structures are normative protocol surface
+(not implementation detail, unlike Kafka/MongoDB); the complete
+collection of root documents describes current system state, and
+document-level interchange is an anticipated data-sharing route (intro,
+§1.3).*
 
 *Changes in 0.4.0: materialization is owned by a background worker (UT-7
 resolved; director-ratified 2026-07-05) — commit handling only marks the
@@ -48,7 +55,14 @@ world-mergeable, provenance-preserving scientific metadata. This document is
 the authoritative statement of the protocol as ratified through TASK-052 of
 the reference implementation. It stands apart from any one database, queue,
 or search product: the reference implementation currently uses Kafka and
-MongoDB, but those are adapters, not the definition.
+MongoDB, but those are adapters, not the definition. What is **not** an
+implementation detail is the JSON itself: the message envelope (§2.2) and
+the root document contract (§1.3) are normative structures, whether the
+documents are physically stored in one piece or virtually assembled. The
+complete collection of root JSON documents describes the current state of
+a repository, and sharing that final stage of documents — rather than
+replaying any particular transport — is an anticipated route for moving
+data between systems.
 
 Relationship to other documents: [`docs/Jade-Tipi.md`](Jade-Tipi.md) is the
 narrative manifesto (vision, motivation, worked stories); `DIRECTION.md`
@@ -142,6 +156,14 @@ warning for nonconforming create IDs as defense in depth for non-wire
 writers. Nested `id` keys inside property bags are not constrained.
 
 ### 1.3 Root document contract [Normative]
+
+The document structure below is protocol surface, not an implementation
+convenience: whether a document is physically stored in one piece or
+virtually assembled, its JSON shape is the contract, and the complete
+collection of root documents describes the current state of a repository
+(director-ratified 2026-07-05). Document-level interchange — sharing this
+final stage of the documents that constitute a system — is an anticipated
+data-sharing route between JDTP systems.
 
 One logical object is normally stored as one **root document**:
 
