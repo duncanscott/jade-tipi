@@ -1,7 +1,14 @@
 # JDTP Specification
 
-**Version:** 0.3.3-draft · **Date:** 2026-07-05 · **Status:** Draft for
+**Version:** 0.4.0-draft · **Date:** 2026-07-05 · **Status:** Draft for
 director review
+
+*Changes in 0.4.0: materialization is owned by a background worker (UT-7
+resolved; director-ratified 2026-07-05) — commit handling only marks the
+header and nudges; the worker projects committed transactions lacking the
+`materialized_at` watermark and stamps it, and a periodic sweep guarantees
+projection with no dependence on transport redelivery. Commit re-delivery
+no longer triggers projection.*
 
 *Changes in 0.3.3: late appends are guarded (UT-6 resolved) — a data
 message appended after a transaction reaches a terminal state is stored
@@ -38,7 +45,7 @@ Procedures and tasks added as Planned.*
 
 JDTP (JSON Data Transparency Protocol) is a technology-agnostic protocol for
 world-mergeable, provenance-preserving scientific metadata. This document is
-the authoritative statement of the protocol as ratified through TASK-051 of
+the authoritative statement of the protocol as ratified through TASK-052 of
 the reference implementation. It stands apart from any one database, queue,
 or search product: the reference implementation currently uses Kafka and
 MongoDB, but those are adapters, not the definition.
@@ -460,18 +467,25 @@ the committed snapshot, so it can never materialize on any commit
 re-delivery. Appends before open (no header yet) remain allowed and
 unflagged; they materialize at the explicit commit like any other row.
 Commit durably marks the header with the orderable `commit_id` **before**
-any materialization; the post-commit projection then materializes
-supported messages in message-UUID order. A projection failure never
-un-commits: re-delivery of the commit re-runs materialization, and all
-projections are idempotent (§2.5), so gaps self-heal on redelivery.
+any materialization. Projection is owned by a **background worker**, not
+the commit path: commit handling nudges the worker (a best-effort
+in-process signal) and returns, so ingest is never blocked by projection
+cost; the worker materializes committed transactions whose header lacks
+the `materialized_at` watermark, projecting supported messages in
+message-UUID order and stamping the watermark when a pass completes. A
+periodic sweep over committed-but-unwatermarked headers — plus one sweep
+at startup — guarantees every committed transaction is eventually
+projected, with no dependence on transport redelivery. A projection
+failure never un-commits: the header stays unwatermarked and the next
+sweep retries; all projections are idempotent (§2.5). Commit re-delivery
+does not trigger projection.
 Rollback durably marks the header `rolled_back` with `rolled_back_at` and
 `rollback_data`; a commit arriving after a rollback is **refused** (no
 `commit_id`, no materialization), as is a rollback arriving after a
 commit — terminal states are never overwritten, and both transitions are
 additionally guarded on the `open` state at write time. Message rows
 appended before a rollback remain stored as audit; the
-committed-visibility gate keeps them from materializing. There is no
-background sweep for committed-but-unmaterialized transactions yet.
+committed-visibility gate keeps them from materializing.
 
 **[Planned]** The ratified lifecycle separates durable facts from staging:
 messages stage in transient `msg`; commit records a `message_count`;
@@ -546,10 +560,10 @@ Contracts of note:
 | Group permissions (read/write, property scope) | — | Planned |
 | Writer persistence (`writer.user_id` + snapshot) | — | Planned |
 
-The gaps in this table — and several sharper ones (silently ignored
-`uni`/`vdn` submissions, no re-drive of committed-but-unmaterialized
-transactions) — are tracked as director-ratified TODO items with stable
-IDs in [`uncomfortable-truths.md`](uncomfortable-truths.md).
+The gaps in this table — and the sharper one (silently ignored
+`uni`/`vdn` submissions) — are tracked as director-ratified TODO items
+with stable IDs in
+[`uncomfortable-truths.md`](uncomfortable-truths.md).
 
 ---
 

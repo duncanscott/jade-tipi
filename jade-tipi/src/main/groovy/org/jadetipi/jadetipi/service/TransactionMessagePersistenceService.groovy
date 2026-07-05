@@ -47,7 +47,11 @@ import static org.jadetipi.jadetipi.util.Constants.TRANSACTION_ID_SEPARATOR
  *       The two terminal states are mutually exclusive: commit-after-rollback
  *       and rollback-after-commit are refused, never overwritten, and the
  *       state transitions are additionally guarded by a {@code state: open}
- *       condition on the update query.</li>
+ *       condition on the update query. Commit handling does not project:
+ *       it durably marks the header, then nudges
+ *       {@link CommittedTransactionMaterializationWorker}, which owns all
+ *       materialization and stamps {@code materialized_at}
+ *       (UT-7/TASK-052).</li>
  *   <li>Message (record_type=message): {@code _id = txn_id~msg_uuid}, one row per
  *       received {@link Message} with collection/action/data and Kafka source
  *       metadata. Rows appended before a rollback remain stored (audit); the
@@ -96,14 +100,14 @@ class TransactionMessagePersistenceService {
 
     private final ReactiveMongoTemplate mongoTemplate
     private final IdGenerator idGenerator
-    private final CommittedTransactionMaterializer materializer
+    private final CommittedTransactionMaterializationWorker materializationWorker
 
     TransactionMessagePersistenceService(ReactiveMongoTemplate mongoTemplate,
                                          IdGenerator idGenerator,
-                                         CommittedTransactionMaterializer materializer) {
+                                         CommittedTransactionMaterializationWorker materializationWorker) {
         this.mongoTemplate = mongoTemplate
         this.idGenerator = idGenerator
-        this.materializer = materializer
+        this.materializationWorker = materializationWorker
     }
 
     /**
@@ -192,9 +196,10 @@ class TransactionMessagePersistenceService {
                 .flatMap { Map existing ->
                     String state = existing.get(FIELD_STATE) as String
                     if (state == STATE_COMMITTED) {
+                        // No projection trigger here: the materialization worker
+                        // owns projection (TASK-052); its sweep covers any gap.
                         log.info('Commit re-delivered for already-committed transaction: txnId={}', txnId)
-                        return materializeQuietly(txnId)
-                                .thenReturn(PersistResult.COMMIT_DUPLICATE)
+                        return Mono.just(PersistResult.COMMIT_DUPLICATE)
                     }
                     if (state == STATE_ROLLED_BACK) {
                         log.error('Commit refused for rolled-back transaction: txnId={}, msgUuid={}',
@@ -213,10 +218,11 @@ class TransactionMessagePersistenceService {
                             .set(FIELD_COMMIT_DATA, message.data())
 
                     return mongoTemplate.updateFirst(query, update, COLLECTION_NAME)
-                            .doOnSuccess { log.info('Transaction committed: txnId={}, commitId={}',
-                                    txnId, commitId) }
+                            .doOnSuccess {
+                                log.info('Transaction committed: txnId={}, commitId={}', txnId, commitId)
+                                materializationWorker.nudge(txnId)
+                            }
                             .doOnError { ex -> log.error('Failed to commit transaction: txnId={}', txnId, ex) }
-                            .then(materializeQuietly(txnId))
                             .thenReturn(PersistResult.COMMITTED)
                 } as Mono<PersistResult>
     }
@@ -260,21 +266,6 @@ class TransactionMessagePersistenceService {
                             .doOnError { ex -> log.error('Failed to roll back transaction: txnId={}', txnId, ex) }
                             .thenReturn(PersistResult.ROLLED_BACK)
                 } as Mono<PersistResult>
-    }
-
-    /**
-     * Trigger the post-commit projection for {@code txnId} and swallow any
-     * failure. The {@code txn} commit is already durable when this runs; a
-     * projection failure must not invert that durability ordering or fail the
-     * outward {@link PersistResult}. A retry on commit re-delivery will re-run
-     * the materializer because the {@code COMMIT_DUPLICATE} branch also calls
-     * this method, so a transient projection gap can self-heal.
-     */
-    private Mono<Void> materializeQuietly(String txnId) {
-        return materializer.materialize(txnId)
-                .doOnError { ex -> log.warn('Post-commit materialization failed: txnId={}', txnId, ex) }
-                .onErrorResume({ Throwable ignored -> Mono.empty() } as java.util.function.Function)
-                .then() as Mono<Void>
     }
 
     private Mono<PersistResult> appendDataMessage(String txnId, Message message, KafkaSourceMetadata source) {

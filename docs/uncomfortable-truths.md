@@ -144,15 +144,32 @@ the ratified lifecycle work (plan tasks D/F, with UT-7).
 
 ## UT-7 — No re-drive of committed-but-unmaterialized transactions
 
-**Status: PLANNED** (plan task F decides the sweep) · **Priority:
-medium**
+**Status: RESOLVED (TASK-052, 2026-07-05)** · **Priority: medium**
 
-Commit is durable before projection, and a projection failure self-heals
-only if the commit is redelivered. If no redelivery arrives, committed
-data stays invisible forever, with nothing watching for it.
+What was true: commit was durable before projection, and a projection
+failure self-healed only if the commit happened to be redelivered. If no
+redelivery arrived, committed data stayed invisible forever, with
+nothing watching for it — committed-but-invisible data after a crash
+between commit and projection.
 
-- Failure permitted: committed-but-invisible data after a crash between
-  commit and projection, silent absent transport redelivery.
+Resolution (TASK-052, director-ratified 2026-07-05): projection is owned
+by a background worker; the commit path only marks the header and nudges.
+The worker materializes committed headers lacking the `materialized_at`
+watermark and stamps it on completion; a periodic sweep (plus one at
+startup) over committed-but-unwatermarked headers guarantees every
+committed transaction is eventually projected with no dependence on
+transport redelivery — and, as a bonus, the Kafka consumer thread no
+longer bears projection cost, so ingest throughput is decoupled from
+transaction size. Commit re-delivery no longer triggers projection at
+all. Proven by `MaterializationSweepIntegrationSpec`, which plants the
+crash-between-commit-and-projection state directly in MongoDB and shows
+the sweep alone heals it.
+
+Explicit residuals, by design: the watermark is header-coarse — the
+per-message `apply_state` / `applied` watermark, staging, and cleanup
+remain the ratified lifecycle work (plan task F); persistently failing
+projections retry every sweep with warnings rather than being
+quarantined.
 
 ## UT-8 — No permission enforcement anywhere
 

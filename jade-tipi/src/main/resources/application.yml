@@ -33,6 +33,12 @@ jadetipi:
   # Startup ensure for the reserved bootstrap usr root (usr~jdtp-admin).
   genesis:
     enabled: \${JADETIPI_GENESIS_ENABLED:true}
+  # Background materialization worker (TASK-052): the commit path only marks
+  # the header and nudges; this worker projects committed transactions and
+  # stamps materialized_at, with a periodic sweep as the guarantee (UT-7).
+  materialization:
+    enabled: \${JADETIPI_MATERIALIZATION_ENABLED:true}
+    sweep-interval: \${JADETIPI_MATERIALIZATION_SWEEP_INTERVAL:PT30S}
   # Narrow local CouchDB-to-JDTP import loop (TASK-043). Defaults target
   # the docker-compose CouchDB with its loopback-only dev credentials.
   import:

@@ -296,6 +296,33 @@ That plain `data.properties` form is first-pass only. The intended follow-on is
 to submit property-value writes as transaction messages, validate them against
 `typ`/`ppy`, and project them onto object documents keyed by `ppy` ID.
 
+## Transaction Materialization
+
+Ratified 2026-07-05: materialization is owned by a background worker, not
+by the commit path. Handling a `txn + commit` does exactly two cheap
+things — durably mark the header `committed` with the orderable
+`commit_id`, and nudge the worker — so the Kafka consumer thread never
+projects messages and ingest throughput is decoupled from projection
+cost. Nothing blocks the submitting client either way: commit is a
+published message, not a call awaiting a response.
+
+The worker projects committed transactions that lack a `materialized_at`
+watermark on their header, and stamps the watermark when a projection
+pass completes. The in-process nudge makes the typical case effectively
+immediate; a periodic sweep over committed-but-unwatermarked headers is
+the guarantee — it catches crashes between commit and projection, lost
+nudges, and anything else, with no dependence on transport redelivery
+(the classic outbox-processor pattern: best-effort signal, guaranteed
+sweep). Commit re-delivery no longer triggers projection at all; the
+worker owns it, and every projection is idempotent, so double runs are
+harmless.
+
+This is a deliberate step toward the ratified lifecycle (plan task F):
+the header watermark is the coarse-grained first cut of the per-message
+`apply_state` / `applied` watermark design, and it retires the last
+integrity gap in the commit family — committed data can no longer stay
+silently invisible when a projection fails (UT-7).
+
 ## Link-Centric Relationships
 
 Do not make `parent_location_id` canonical on `loc` records. Parentage and
