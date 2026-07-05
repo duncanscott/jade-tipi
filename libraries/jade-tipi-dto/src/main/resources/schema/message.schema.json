@@ -32,7 +32,7 @@
     },
     "data": {
       "type": "object",
-      "description": "Message-specific payload data. Property names must be snake_case for every collection except the grp permissions map, which is keyed by world-unique grp IDs."
+      "description": "Message-specific payload data. Property names must be snake_case for every collection except the grp permissions map (keyed by world-unique grp IDs) and the prc output_input map (keyed by object IDs)."
     }
   },
   "allOf": [
@@ -67,12 +67,15 @@
           "collection": {
             "enum": [
               "ent",
-              "ppy",
+              "fil",
+              "grp",
               "lnk",
               "loc",
-              "uni",
-              "grp",
+              "ppy",
+              "prc",
+              "tsk",
               "typ",
+              "uni",
               "vdn"
             ]
           }
@@ -94,7 +97,7 @@
       }
     },
     {
-      "description": "Pick the data payload schema by collection. grp uses GroupData (permits world-unique grp IDs as permissions map keys); every other collection uses SnakeCaseObject. In both branches a top-level data.id, when present, must follow the ObjectId convention.",
+      "description": "Pick the data payload schema by collection. grp uses GroupData (permits world-unique grp IDs as permissions map keys); prc uses ProcedureData (permits object IDs as output_input map keys); every other collection uses SnakeCaseObject. In every branch a top-level data.id, when present, must follow the ObjectId convention.",
       "if": {
         "properties": {
           "collection": {
@@ -120,16 +123,42 @@
         }
       },
       "else": {
-        "properties": {
-          "data": {
-            "allOf": [
-              {
-                "$ref": "#/$defs/SnakeCaseObject"
-              },
-              {
-                "$ref": "#/$defs/DataWithObjectId"
-              }
-            ]
+        "if": {
+          "properties": {
+            "collection": {
+              "const": "prc"
+            }
+          },
+          "required": [
+            "collection"
+          ]
+        },
+        "then": {
+          "properties": {
+            "data": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/ProcedureData"
+                },
+                {
+                  "$ref": "#/$defs/DataWithObjectId"
+                }
+              ]
+            }
+          }
+        },
+        "else": {
+          "properties": {
+            "data": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/SnakeCaseObject"
+                },
+                {
+                  "$ref": "#/$defs/DataWithObjectId"
+                }
+              ]
+            }
           }
         }
       }
@@ -214,12 +243,15 @@
       "type": "string",
       "enum": [
         "ent",
+        "fil",
         "grp",
         "lnk",
         "loc",
         "ppy",
-        "typ",
+        "prc",
+        "tsk",
         "txn",
+        "typ",
         "uni",
         "vdn"
       ]
@@ -276,6 +308,33 @@
         ]
       }
     },
+    "ProcedureData": {
+      "title": "ProcedureData",
+      "description": "prc payload. Outer property names are snake_case; the optional output_input property is the execution-provenance map keyed by output ent IDs.",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*$"
+      },
+      "properties": {
+        "output_input": {
+          "$ref": "#/$defs/OutputInput"
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/SnakeCaseValue"
+      }
+    },
+    "OutputInput": {
+      "title": "OutputInput",
+      "description": "Procedure execution provenance: keys are output ent IDs; each value maps the input ent IDs used to generate that output to an open contribution object (for a pooling procedure, typically the contributed volume). Contribution-object schemas will later be supplied by a vdn record associated with the procedure type.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "#/$defs/SnakeCaseObject"
+        }
+      }
+    },
     "SnakeCaseValue": {
       "title": "SnakeCaseValue",
       "description": "Value that may contain nested snake_case objects or arrays",
@@ -307,7 +366,7 @@
       "title": "ObjectId",
       "description": "World-unique object identifier per the TASK-044 convention: <org>~<grp>~<uuidv7>~<collection>~<suffix>, where the UUIDv7 is the creating transaction's or message's UUID. The literal genesis segment is sanctioned only for the reserved bootstrap usr. An optional second conforming block tolerates the deprecated legacy composite assignment id, which the materializer ignores.",
       "type": "string",
-      "pattern": "^[a-z][a-z0-9_-]*~[a-z][a-z0-9_-]*~([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|genesis)~(ent|ppy|lnk|loc|uni|grp|typ|vdn|usr)~[a-z0-9_-]+(~[a-z][a-z0-9_-]*~[a-z][a-z0-9_-]*~([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|genesis)~(ent|ppy|lnk|loc|uni|grp|typ|vdn|usr)~[a-z0-9_-]+)?$"
+      "pattern": "^[a-z][a-z0-9_-]*~[a-z][a-z0-9_-]*~([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|genesis)~(ent|fil|ppy|lnk|loc|prc|tsk|uni|grp|typ|vdn|usr)~[a-z0-9_-]+(~[a-z][a-z0-9_-]*~[a-z][a-z0-9_-]*~([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|genesis)~(ent|fil|ppy|lnk|loc|prc|tsk|uni|grp|typ|vdn|usr)~[a-z0-9_-]+)?$"
     },
     "DataWithObjectId": {
       "title": "DataWithObjectId",

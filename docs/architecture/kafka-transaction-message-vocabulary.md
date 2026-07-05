@@ -17,9 +17,9 @@ Every submitted message uses the DTO `Message` envelope and carries a first-clas
 ```
 
 Current schema note: `collection` is one of the Jade-Tipi collection
-abbreviations currently accepted by `message.schema.json`: `ent`, `ppy`,
-`lnk`, `loc`, `uni`, `grp`, `typ`, `vdn`, or `txn`. The backend stores it
-explicitly in transaction message documents.
+abbreviations currently accepted by `message.schema.json`: `ent`, `fil`,
+`ppy`, `lnk`, `loc`, `prc`, `tsk`, `uni`, `grp`, `typ`, `vdn`, or `txn`.
+The backend stores it explicitly in transaction message documents.
 
 Target direction: `usr` should be added as the local user/identity collection,
 and `msg` should be added as transient transaction-message staging. `txn`
@@ -28,7 +28,7 @@ remains special durable transaction metadata, not a normal domain collection.
 `txn`, `uuid`, `collection`, and `action` are all required by `message.schema.json`. The schema also enforces action/collection compatibility:
 
 - `collection: txn` → `action ∈ {open, rollback, commit}`.
-- `collection ∈ {ent, ppy, lnk, loc, uni, grp, typ, vdn}` → `action ∈ {create, update, delete}`.
+- `collection ∈ {ent, fil, ppy, lnk, loc, prc, tsk, uni, grp, typ, vdn}` → `action ∈ {create, update, delete}`.
 
 `Message.getId()` is `<txn.getId()>~<uuid>~<action>` and intentionally does not include the collection. The collection is stored as a first-class field on the message and (later) on the persisted `txn` message record, so it does not need to round-trip through the ID.
 
@@ -112,11 +112,22 @@ The early materializer may also tolerate older examples that put `name` and
 Current implementation note: the first materializer stores two record kinds in
 the `txn` MongoDB collection:
 
-- Transaction header: `_id = txn_id`, `record_type = "transaction"`.
+- Transaction header: `_id = txn_id`, `record_type = "transaction"`. The
+  header state is `open`, then terminally `committed` (with the orderable
+  backend `commit_id`, `committed_at`, `commit_data`) **or** `rolled_back`
+  (with `rolled_back_at` and the rollback message's `data` kept as
+  `rollback_data` — the audit fact; UT-2/TASK-050). The terminal states
+  are mutually exclusive: a commit arriving after a rollback is refused
+  (no `commit_id`, no materialization), a rollback arriving after a
+  commit is refused, rollback re-delivery is an idempotent duplicate, and
+  both transitions carry a `state: "open"` guard on the update query as
+  write-time defense in depth.
 - Message record: `_id = txn_id + "~" + msg_uuid`, `record_type = "message"`.
   Each message record stores the submitted envelope, including `collection`, so
   materializers and readers do not have to infer the target collection from
-  payload fields.
+  payload fields. Rows appended before a rollback remain stored (audit);
+  the committed-visibility gate keeps them from ever materializing.
+  Guarding *new* appends after a terminal state remains UT-6.
 
 That shape is transitional. The target direction is to split durable
 transaction metadata from transient message staging:
@@ -355,8 +366,9 @@ unknown `data.kind` values remain `skippedUnsupported`.
 
 ### Object-Targeted Property Assignment
 
-Current implementation (TASK-040): an assignment may target any supported
-object root directly with explicit `object_collection` (`ent` or `loc`) plus
+Current implementation (TASK-040/TASK-048/TASK-049): an assignment may
+target any supported object root directly with explicit
+`object_collection` (`ent`, `loc`, `prc`, `tsk`, or `fil`) plus
 `object_id`; the materializer never infers a collection from ID parsing.
 `data.id` is not required in this form because no standalone assignment root
 is created. The canonical example is `15-assign-object-property-value.json`.
@@ -461,6 +473,129 @@ A concrete `contents` link references the type and the two endpoints, and stores
 ```
 
 The schema accepts this envelope today on the strength of `lnk + create` and the snake_case property-name rule. Semantic checks — that `lnk.type_id` resolves to a committed `typ` record, that `left` and `right` resolve, and that the endpoint collections match the type's `allowed_left_collections` / `allowed_right_collections` — are not enforced by `message.schema.json` and remain a follow-up reader/materializer concern. Property-name values such as `position.label` ("A1") are stored verbatim; the snake_case rule applies to property keys, not to their string values.
+
+## Procedures And Tasks
+
+`prc` (procedure) and `tsk` (task) are first-class collections (TASK-048).
+A procedure is a performed procedure — the execution event that turns
+inputs into outputs. A task is the intention to perform a procedure of a
+given type on a set of inputs. Both accept `create`/`update`/`delete` in
+the schema's action matrix; the committed materializer supports
+`prc + create` and `tsk + create`.
+
+Type definitions are never overloaded: procedure types define `prc`
+objects and task types define `tsk` objects. Mirroring the `link_type`
+discriminator, the type declarations carry `kind: "procedure_type"` and
+`kind: "task_type"`, and the task type carries its associated procedure
+type as `procedure_type_id` (optionally with the human-readable
+`procedure_name`), so task instances need no per-instance procedure
+pointer:
+
+```json
+{
+  "collection": "typ",
+  "action": "create",
+  "data": {
+    "kind": "task_type",
+    "id": "jade-tipi-org~dev~018fd849-3c11-7222-8a02-171717171717~typ~dna_pooling_task",
+    "name": "dna_pooling_task",
+    "procedure_type_id": "jade-tipi-org~dev~018fd849-3c10-7111-8a01-161616161616~typ~dna_pooling",
+    "procedure_name": "dna_pooling"
+  }
+}
+```
+
+The materializer treats both kinds as ordinary `typ + create` roots (the
+kind discriminator is stored verbatim and not enforced, matching the
+`link_type` behavior).
+
+A `tsk + create` materializes a standard typed root. A `prc + create`
+materializes a typed root whose optional `data.output_input` map is
+hoisted to the top level of the root document — parallel to `lnk`'s
+`left`/`right` — and excluded from the inline `properties` bag:
+
+```json
+{
+  "collection": "prc",
+  "action": "create",
+  "data": {
+    "id": "jade-tipi-org~dev~018fd849-3c15-7666-8a06-202020202020~prc~pool_run_1",
+    "type_id": "jade-tipi-org~dev~018fd849-3c10-7111-8a01-161616161616~typ~dna_pooling",
+    "name": "pool_run_1",
+    "output_input": {
+      "<output ent id>": {
+        "<input ent id>": { "volume": 5.0 }
+      }
+    }
+  }
+}
+```
+
+`output_input` keys are output `ent` IDs; each value maps the input `ent`
+IDs used to generate that output to an open contribution object (for a
+pooling procedure, typically the contributed volume). Because those keys
+are object IDs rather than snake_case names, `message.schema.json` gives
+`prc` payloads their own `ProcedureData` branch (mirroring the grp
+`permissions` escape): `output_input` is schema-valid only on `prc`
+messages, and each contribution must be an object. Contribution-object
+schemas will later be supplied by a `vdn` record associated with the
+procedure type; that association is deferred (UT-4).
+
+The coarse relationships are canonical `lnk` records under ordinary
+link types — task inputs (e.g. `task_input`: `tsk` → `ent`), task
+fulfillment recorded on completion (e.g. `fulfills`: `prc` → `tsk`), and
+each output's produced-by pointer (e.g. `produced_by`: `ent` → `prc`).
+The fine-grained contribution weights live only in the procedure's
+`output_input` map: execution-owned data, not a duplicate of the links.
+Both `prc` and `tsk` roots accept object-targeted property assignments
+and are readable through the generic property-values read surface.
+`ProcedureTaskProvenanceKafkaMaterializeIntegrationSpec` proves the full
+loop end to end against Kafka and MongoDB.
+
+## Files
+
+`fil` (file) is a first-class collection for retrievable electronic
+assets (TASK-049; DIRECTION.md, Files) — including assets that are no
+longer retrievable (deleted) or only retrievable locally. Aggregates of
+files (datasets, run folders) remain `ent` records with membership links
+to their `fil` members. Files are expected to become the highest-volume
+object class; the dedicated collection keeps them out of `ent` scans and
+gives implementations a natural home for file-specific indexing.
+
+A `fil + create` materializes a **standard typed root** — deliberately
+nothing file-specific is hoisted. File types are ordinary `typ` records
+with ordinary inheritance, and file facts arrive as ordinary
+object-targeted property values:
+
+```json
+{
+  "collection": "fil",
+  "action": "create",
+  "data": {
+    "id": "jade-tipi-org~dev~018fd849-3d04-7444-8a04-262626262626~fil~run42_r1_fastq",
+    "type_id": "jade-tipi-org~dev~018fd849-3d01-7111-8a01-232323232323~typ~fastq",
+    "name": "run42_r1.fastq",
+    "description": "forward reads for sequencing run 42"
+  }
+}
+```
+
+A retrieval URL is one candidate property (the canonical examples
+register and assign `retrieval_url` on the file type), but not every
+file has a URL — some files have a retrieval protocol that is not a URL.
+By director ruling, the file property set is left to emerge from real
+imports; content-identity hoisting (checksums, sizes, locators), a
+`fil`-specific schema payload branch, and the deduplication policy for
+identical bytes are all deliberately deferred.
+
+Files slot into the procedure/task provenance model unchanged: link
+types admit `fil` endpoints through their ordinary
+`allowed_*_collections` declarations (e.g. `produced_by` with
+`allowed_left_collections: ["ent", "fil"]`), and `fil` roots accept
+object-targeted property assignments and the generic property-values
+read surface. `FileProvenanceKafkaMaterializeIntegrationSpec` proves the
+sequence — typed file, projected `retrieval_url`, produced_by link back
+to the creating `prc` — end to end against Kafka and MongoDB.
 
 ## Group Records And First-Pass Permissions
 
@@ -697,7 +832,7 @@ beyond the accepted `loc` and `ent` read services.
 projected onto this object root?" over the TASK-040 `property_values`
 contract (TASK-041, root-only — no overlay of committed-but-unapplied
 messages yet). It reads one object root by `_id` from a supported collection
-(`loc` or `ent`), extracts the `property_values` entries sorted by property
+(`ent`, `loc`, `prc`, `tsk`, or `fil`), extracts the `property_values` entries sorted by property
 ID, and resolves human-readable `propertyName` values by joining the
 referenced `ppy` definition roots; a dangling `property_id` leaves
 `propertyName == null`. The legacy first-pass inline `properties` bag is
@@ -781,8 +916,23 @@ A complete early transaction flow is bundled as resources under `libraries/jade-
 14. `13-create-group.json`
 15. `14-create-plate-type-extends-container.json`
 16. `15-assign-object-property-value.json`
+17. `16-create-procedure-type.json`
+18. `17-create-task-type.json`
+19. `18-create-task.json`
+20. `19-create-task-input-link-type.json`
+21. `19a-create-task-input-link.json`
+22. `20-create-procedure-with-output-input.json`
+23. `21-create-fulfills-link-type.json`
+24. `21a-create-fulfills-link.json`
+25. `22-create-produced-by-link-type.json`
+26. `22a-create-produced-by-link.json`
+27. `23-create-file-type.json`
+28. `24-create-property-definition-retrieval-url.json`
+29. `25-update-file-type-add-property.json`
+30. `26-create-file.json`
+31. `27-assign-file-property-value.json`
 
-`05a` registers the numeric `volume` property-definition on the same entity type as `05` registers `barcode`, so both canonical assignments (`07` and `08`) satisfy the materializer's type-registration gate within the one example transaction.
+`05a` registers the numeric `volume` property-definition on the same entity type as `05` registers `barcode`, so both canonical assignments (`07` and `08`) satisfy the materializer's type-registration gate within the one example transaction. `16`–`22a` walk the procedure/task provenance loop: the paired type declarations, the task and its input link, the procedure carrying `output_input`, and the fulfillment and produced-by links, cross-referencing one another by ID within the shared example transaction. `23`–`27` walk the file sequence: the file type, the `retrieval_url` definition and its registration on the file type, the typed `fil` create, and the object-targeted assignment onto the `fil` root.
 
 These examples are exercised by `MessageSpec` to round-trip through `JsonMapper` and pass `Message.validate()` against `message.schema.json`.
 

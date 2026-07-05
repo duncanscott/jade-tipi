@@ -16,7 +16,8 @@ Rules for this document:
 - Statuses: **OPEN** (needs a task or a director decision that is not yet
   scheduled), **PLANNED** (covered by a ratified drift-note plan task),
   **DELIBERATE** (a scoping decision, kept with an explicit revisit
-  trigger).
+  trigger), **RESOLVED** (fixed — the resolving task and date are
+  recorded inline; the entry stays).
 
 The specification's enforcement summary
 ([`jdtp-specification.md`](jdtp-specification.md) §4) is the normative
@@ -47,20 +48,29 @@ provenance promise.
 
 ## UT-2 — Rollback is not persisted
 
-**Status: OPEN — recommend a small dedicated task** · **Priority: high
+**Status: RESOLVED (TASK-050, 2026-07-04)** · **Priority: high
 (integrity)**
 
-`txn + rollback` is acknowledged and logged, then forgotten. The
-transaction header stays `open` forever, its appended messages remain
-stored, and there is no audit record that a rollback was requested.
+What was true: `txn + rollback` was acknowledged and logged, then
+forgotten. The transaction header stayed `open` forever, its appended
+messages remained stored, and there was no audit record that a rollback
+was requested. The permitted failure: a `commit` arriving **after** a
+rollback (replay, bug, or malice) committed and materialized the
+transaction as if the rollback never happened.
 
-- Failure permitted: a `commit` arriving **after** a rollback (replay,
-  bug, or malice) commits and materializes the transaction as if the
-  rollback never happened.
-- Fix shape (small): persist a `rolled_back` header state; refuse
-  commit-after-rollback; keep the rollback as an audit fact. Fits
-  naturally with the lifecycle work (plan task F) but is cheap enough to
-  do standalone first.
+Resolution (TASK-050): rollback durably marks the header
+`state: "rolled_back"` with `rolled_back_at` and the rollback message's
+`data` kept as `rollback_data` (the audit fact). The terminal states are
+mutually exclusive — commit-after-rollback and rollback-after-commit are
+refused, never overwritten, and both state transitions carry a
+`state: "open"` guard on the update query as write-time defense.
+Rollback re-delivery is an idempotent duplicate; rollback before open
+errors like commit before open. Appended message rows remain stored for
+rolled-back transactions (guarding *new* appends after a terminal state
+is still UT-6); the committed-visibility gate keeps them from
+materializing. Proven end to end by
+`RollbackPersistenceKafkaIntegrationSpec` (late commit refused under
+strict partition ordering).
 
 ## UT-3 — `value_schema` never validates submitted values
 

@@ -25,9 +25,12 @@ import java.util.List;
  */
 public enum Collection {
     ENTITY("entity", "ent"),
+    FILE("file", "fil"),
     GROUP("group", "grp"),
     LINK("link", "lnk"),
     LOCATION("location", "loc"),
+    PROCEDURE("procedure", "prc"),
+    TASK("task", "tsk"),
     UNIT("unit", "uni"),
     PROPERTY("property", "ppy"),
     TYPE("type", "typ"),

@@ -1,7 +1,24 @@
 # JDTP Specification
 
-**Version:** 0.1.1-draft · **Date:** 2026-07-04 · **Status:** Draft for
+**Version:** 0.3.1-draft · **Date:** 2026-07-04 · **Status:** Draft for
 director review
+
+*Changes in 0.3.1: rollback is durable (UT-2 resolved) — `txn + rollback`
+terminally marks the header `rolled_back` with audit data; commit and
+rollback are mutually exclusive, refusals never overwrite; §2.3, §2.4,
+and §4 updated accordingly.*
+
+*Changes in 0.3.0: §1.10 Files added as Normative — `fil` is a
+wire-accepted, materialized collection for retrievable electronic assets,
+implemented as a standard typed root; the file property set,
+content-identity hoisting, and the dedup policy are deliberately deferred
+director rulings, recorded in §1.10 and the open-decisions list.*
+
+*Changes in 0.2.0: §1.9 Procedures and tasks implemented and flipped to
+Normative — `prc`/`tsk` are wire-accepted, materialized collections; task
+types carry `procedure_type_id`; the `prc` root hoists `output_input`
+(schema-valid only on `prc` payloads, mirroring the `grp` permissions
+escape). The `vdn`-supplied contribution-schema association stays Planned.*
 
 *Changes in 0.1.1: identifier suffix charset tightened to `[a-z0-9_-]`
 (dots removed by director ruling — they were never authorized); §1.9
@@ -9,7 +26,7 @@ Procedures and tasks added as Planned.*
 
 JDTP (JSON Data Transparency Protocol) is a technology-agnostic protocol for
 world-mergeable, provenance-preserving scientific metadata. This document is
-the authoritative statement of the protocol as ratified through TASK-046 of
+the authoritative statement of the protocol as ratified through TASK-050 of
 the reference implementation. It stands apart from any one database, queue,
 or search product: the reference implementation currently uses Kafka and
 MongoDB, but those are adapters, not the definition.
@@ -44,13 +61,14 @@ exactly one collection. The peer domain collections are:
 | Collection | Abbrev. | Contents |
 |---|---|---|
 | entity | `ent` | Things, real or conceptual (samples, organisms, libraries) |
+| file | `fil` | Retrievable electronic assets: metadata about bytes stored elsewhere (§1.10) |
 | property | `ppy` | Property definitions (and, later, property policy) |
 | link | `lnk` | Relationships between objects |
 | location | `loc` | Physical/addressable locations and containers |
 | type | `typ` | Type definitions: entity types and link types |
 | group | `grp` | Ownership groups and group-to-group permission grants |
-| procedure | `prc` | Performed procedures: execution events turning inputs into outputs *(planned; see §1.9)* |
-| task | `tsk` | Intentions to perform a procedure of a given type on a set of inputs *(planned; see §1.9)* |
+| procedure | `prc` | Performed procedures: execution events turning inputs into outputs (§1.9) |
+| task | `tsk` | Intentions to perform a procedure of a given type on a set of inputs (§1.9) |
 | unit | `uni` | Measurement units *(wire-accepted; not yet materialized)* |
 | validation | `vdn` | Validation rules *(wire-accepted; not yet materialized)* |
 | user | `usr` | Local identity/audit records *(backend-internal today; not in the wire vocabulary)* |
@@ -260,10 +278,10 @@ retains the message. Closing that gap is the ratified writer-persistence
 work. (Known quirk for that work: an envelope serializing `"user": null`
 fails schema validation; all real clients send a user.)
 
-### 1.9 Procedures and tasks [Planned]
+### 1.9 Procedures and tasks [Normative; contribution schemas Planned]
 
 Two further collections realize the manifesto's process-tracing extension
-(director-ratified 2026-07-04):
+(director-ratified 2026-07-04; implemented in TASK-048):
 
 - A **procedure** (`prc`) is a *performed* procedure: the execution event
   that turns inputs into outputs. Its `type_id` references a procedure
@@ -284,9 +302,40 @@ Two further collections realize the manifesto's process-tracing extension
   canonical execution provenance: keys are output `ent` IDs; each value
   maps contributing input `ent` IDs to an open **contribution object**
   (e.g. `{ "volume": 12.5 }` for pooling). Contribution weights live only
-  here; the schema for contribution objects will be supplied by a `vdn`
-  record associated with the procedure type once `vdn` materializes
+  here. The map is hoisted onto the `prc` root top level, parallel to
+  `lnk`'s `left`/`right`, and excluded from the inline `properties` bag.
+  Because its keys are object IDs, the wire schema admits `output_input`
+  only on `prc` payloads (each contribution MUST be an object), mirroring
+  the `grp` permissions escape from the snake_case rule.
+- **[Planned]** The schema for contribution objects will be supplied by a
+  `vdn` record associated with the procedure type once `vdn` materializes
   (UT-4).
+
+### 1.10 Files [Normative]
+
+A **file** (`fil`) is a retrievable electronic asset — including assets
+that are no longer retrievable (deleted) or only retrievable locally.
+Files are the boundary objects between metadata and data: a `fil` record
+is metadata about bytes stored elsewhere. Aggregates of files (datasets,
+run folders) remain `ent` records with membership links to their `fil`
+members.
+
+A `fil` record is a standard typed root (§1.3): file types are ordinary
+`typ` records with ordinary inheritance (§1.4), and file facts are
+ordinary object-targeted property values (§2.3.1). A retrieval URL is
+one candidate property, but not every file has a URL — some files have a
+retrieval protocol that is not a URL.
+
+By director ruling, the file property set is left to emerge from real
+imports. Content-identity hoisting (checksums, sizes, locators), a
+file-specific payload schema, and the deduplication policy for identical
+bytes are **deliberately unspecified** — open decisions, not ratified
+direction — and are revisited when file imports reveal their shape.
+
+Files participate in the provenance model (§1.9) unchanged: link types
+admit `fil` endpoints through their ordinary `allowed_*_collections`
+declarations (a file is typically the output of a `prc` via
+`produced_by` and an input to a `tsk` via `task_input`).
 
 ---
 
@@ -326,8 +375,10 @@ Schema-enforced constraints:
 - Action/collection compatibility: `txn` takes only
   `open|commit|rollback`; the domain collections take only
   `create|update|delete`.
-- `data` property names are `snake_case`, recursively, with one exception:
-  the `grp` `permissions` map is keyed by world-unique group IDs.
+- `data` property names are `snake_case`, recursively, with two
+  exceptions: the `grp` `permissions` map is keyed by world-unique group
+  IDs, and the `prc` `output_input` map is keyed by object IDs (its
+  contribution values MUST be objects).
 - A top-level `data.id`, when present, MUST match the object identifier
   convention (§1.2).
 - Collection MUST be stated explicitly; it is never inferred from payload
@@ -342,9 +393,10 @@ record but skipped as unsupported at materialization, without error):
 |---|---|
 | `txn + open` | Opens the transaction (idempotent re-delivery confirmed). |
 | `txn + commit` | Commits: the backend assigns an opaque, **orderable** `commit_id` and triggers materialization. |
-| `txn + rollback` | Acknowledged and logged; **not persisted** in the current implementation. |
-| `loc/ent/grp + create` | Root document per §1.3; `data.type_id` surfaces as the root `type_id` (unresolved references are not checked). |
-| `typ + create` | Entity type (optionally with `parent_type_id`) or, with `kind: "link_type"`, a link type declaration. |
+| `txn + rollback` | Durably marks the header `rolled_back` (terminal), keeping the message's `data` as `rollback_data` — the audit fact. Re-delivery is idempotent; rollback-after-commit is refused; rollback before open is an error. |
+| `loc/ent/grp/tsk/fil + create` | Root document per §1.3; `data.type_id` surfaces as the root `type_id` (unresolved references are not checked). |
+| `prc + create` | Root document per §1.3 whose optional top-level `output_input` map is hoisted onto the root (§1.9), parallel to `lnk` endpoints. |
+| `typ + create` | Entity type (optionally with `parent_type_id`), or a declaration with a `kind` discriminator: `link_type`, `task_type` (carrying `procedure_type_id`), `procedure_type`. |
 | `typ + update`, `operation: "add_property"` | Registers `data.property_id` under the target type's `properties.property_refs` (verbatim metadata; no `ppy` resolution). |
 | `ppy + create`, `kind: "definition"` | Property definition root. |
 | `ppy + create`, `kind: "assignment"` | Object-targeted property value (§2.3.1). |
@@ -366,8 +418,9 @@ record but skipped as unsupported at materialization, without error):
 }
 ```
 
-- `object_collection` (currently `ent` or `loc`) is explicit; the
-  implementation MUST NOT infer a collection by parsing `object_id`.
+- `object_collection` (currently `ent`, `loc`, `prc`, `tsk`, or `fil`)
+  is explicit; the implementation MUST NOT infer a collection by parsing
+  `object_id`.
 - `data.id` is not required and is ignored.
 - **Deprecated alias:** a payload carrying only `entity_id` resolves as
   (`ent`, `entity_id`) with a deprecation warning; any legacy composite
@@ -384,13 +437,21 @@ record but skipped as unsupported at materialization, without error):
 
 **[Normative — current]** Submitted messages are appended to the durable
 transaction store as they arrive (header records and message records; no
-state guard on append). Commit durably marks the header with the orderable
-`commit_id` **before** any materialization; the post-commit projection then
-materializes supported messages in message-UUID order. A projection failure
-never un-commits: re-delivery of the commit re-runs materialization, and
-all projections are idempotent (§2.5), so gaps self-heal on redelivery.
-There is no background sweep for committed-but-unmaterialized transactions
-yet.
+state guard on append). The header has one non-terminal state (`open`) and
+two mutually exclusive terminal states: `committed` and `rolled_back`.
+Commit durably marks the header with the orderable `commit_id` **before**
+any materialization; the post-commit projection then materializes
+supported messages in message-UUID order. A projection failure never
+un-commits: re-delivery of the commit re-runs materialization, and all
+projections are idempotent (§2.5), so gaps self-heal on redelivery.
+Rollback durably marks the header `rolled_back` with `rolled_back_at` and
+`rollback_data`; a commit arriving after a rollback is **refused** (no
+`commit_id`, no materialization), as is a rollback arriving after a
+commit — terminal states are never overwritten, and both transitions are
+additionally guarded on the `open` state at write time. Message rows
+appended before a rollback remain stored as audit; the
+committed-visibility gate keeps them from materializing. There is no
+background sweep for committed-but-unmaterialized transactions yet.
 
 **[Planned]** The ratified lifecycle separates durable facts from staging:
 messages stage in transient `msg`; commit records a `message_count`;
@@ -426,8 +487,9 @@ Read views are projections over materialized roots; they perform no writes
 and add no hidden semantics. Two route styles are deliberate:
 
 - **Resource reads** require the subject root and answer 404 when it is
-  missing: object property values (`loc`, and `ent` via the same generic
-  contract), effective type properties, resolved location contents.
+  missing: object property values (`ent`, `loc`, `prc`, `tsk`, and `fil`
+  via one generic contract), effective type properties, resolved location
+  contents.
 - **Query reads** over link rows answer 200 with empty results and cannot
   prove the subject exists: flat contents by container/content, the
   plate-shaped grid view.
@@ -455,6 +517,7 @@ Contracts of note:
 |---|---|---|
 | Envelope shape, UUIDv7s, action/collection matrix, snake_case payloads | wire schema | Normative |
 | Object identifier convention on `data.id` | wire schema (+ materializer warning) | Normative |
+| `prc` `output_input` shape (ID-keyed map; object contributions; `prc`-only) | wire schema | Normative |
 | Type-registration gate for property values (inheritance-aware) | materializer | Normative |
 | Duplicate/conflict semantics (§2.5) | store + materializer | Normative |
 | `value_schema` validation of submitted values | — | Planned (read-time validator) |
@@ -463,9 +526,9 @@ Contracts of note:
 | Group permissions (read/write, property scope) | — | Planned |
 | Writer persistence (`writer.user_id` + snapshot) | — | Planned |
 
-The gaps in this table — and several sharper ones (unpersisted rollback,
-silently ignored `uni`/`vdn` submissions, unguarded late message appends)
-— are tracked as director-ratified TODO items with stable IDs in
+The gaps in this table — and several sharper ones (silently ignored
+`uni`/`vdn` submissions, unguarded late message appends) — are tracked as
+director-ratified TODO items with stable IDs in
 [`uncomfortable-truths.md`](uncomfortable-truths.md).
 
 ---
@@ -476,9 +539,9 @@ Ratified direction, in the migration plan's order: local `usr` identity
 resolution and durable writer persistence; the `txn`/`msg` split with the
 applied watermark and guarded cleanup; overlay reads; value updates;
 permission enforcement; retirement or formal reservation of the inline
-`properties` bag; link-property alignment; the procedure/task provenance
-model (§1.9); materialization of `uni` and
-`vdn`; an HTTP submission adapter over the same message vocabulary;
+`properties` bag; link-property alignment; materialization of `uni` and
+`vdn` (including the `vdn`-supplied contribution schemas of §1.9); an HTTP
+submission adapter over the same message vocabulary;
 extension pages for oversized objects; and derived-capability seams
 (`SearchProvider`, `GraphProvider`, `VectorProvider`, `ArchiveProvider`)
 that project from — and never replace — the canonical transaction and
@@ -487,13 +550,14 @@ repository state.
 **Open director decisions** (tracked in the drift note): the inline-bag
 endgame; link alignment; whether plate `format`/`rows`/`columns` are
 instance values or type facts; the bulk-import selection strategy; the
-payload-archive question that gates staged-message cleanup; rollback
-persistence semantics; null-user envelope handling.
+payload-archive question that gates staged-message cleanup; null-user
+envelope handling; file content-identity hoisting and the file dedup
+policy (§1.10).
 
 ---
 
 *Reference implementation notes (non-normative): the current stack is
-Spring Boot/WebFlux + Kafka + MongoDB; canonical example messages 01–15
+Spring Boot/WebFlux + Kafka + MongoDB; canonical example messages 01–27
 live in the DTO library and are exercised against the wire schema in CI;
 the typed container review seed and the live CouchDB import loop
 demonstrate the protocol against real laboratory records.*

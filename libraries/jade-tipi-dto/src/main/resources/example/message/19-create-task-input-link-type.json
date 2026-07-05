@@ -1,0 +1,26 @@
+{
+  "txn": {
+    "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+    "group": {
+      "org": "jade-tipi-org",
+      "grp": "dev"
+    },
+    "client": "kli",
+    "user": "0000-0002-1825-0097"
+  },
+  "uuid": "018fd849-3c13-7444-8a04-191919191919",
+  "collection": "typ",
+  "action": "create",
+  "data": {
+    "kind": "link_type",
+    "id": "jade-tipi-org~dev~018fd849-3c13-7444-8a04-191919191919~typ~task_input",
+    "name": "task_input",
+    "description": "an ent input a task intends to consume",
+    "left_role": "task",
+    "right_role": "input",
+    "left_to_right_label": "has_input",
+    "right_to_left_label": "input_of",
+    "allowed_left_collections": ["tsk"],
+    "allowed_right_collections": ["ent"]
+  }
+}

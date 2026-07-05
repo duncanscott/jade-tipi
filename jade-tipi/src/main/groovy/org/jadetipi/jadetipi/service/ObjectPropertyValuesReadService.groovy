@@ -24,9 +24,10 @@ import reactor.core.publisher.Mono
 import java.time.Instant
 
 /**
- * Reads one materialized object root ({@code loc} or {@code ent}) and its
- * projected {@code property_values} entries (TASK-041; root-only per drift
- * note 8.4 — no overlay of committed-but-unapplied messages).
+ * Reads one materialized object root ({@code ent}, {@code loc}, {@code prc},
+ * {@code tsk}, or {@code fil}) and its projected {@code property_values}
+ * entries (TASK-041; root-only per drift note 8.4 — no overlay of
+ * committed-but-unapplied messages).
  *
  * <p>Property names are resolved by joining the referenced {@code ppy}
  * definition roots; a dangling {@code property_id} is tolerated and leaves
@@ -43,8 +44,13 @@ class ObjectPropertyValuesReadService {
 
     static final String COLLECTION_ENT = 'ent'
     static final String COLLECTION_LOC = 'loc'
+    static final String COLLECTION_PRC = 'prc'
+    static final String COLLECTION_TSK = 'tsk'
+    static final String COLLECTION_FIL = 'fil'
     static final String COLLECTION_PPY = 'ppy'
-    static final Set<String> SUPPORTED_COLLECTIONS = Set.of(COLLECTION_ENT, COLLECTION_LOC)
+    static final Set<String> SUPPORTED_COLLECTIONS =
+            Set.of(COLLECTION_ENT, COLLECTION_LOC, COLLECTION_PRC, COLLECTION_TSK,
+                    COLLECTION_FIL)
 
     static final String FIELD_ID = '_id'
     static final String FIELD_TYPE_ID = 'type_id'

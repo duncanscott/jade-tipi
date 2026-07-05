@@ -64,9 +64,9 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
                 Collection.TRANSACTION, Action.COMMIT, data)
     }
 
-    private static Message rollbackMessage() {
+    private static Message rollbackMessage(Map data = [:]) {
         return new Message(TXN, '88888888-8888-7888-8888-888888888888',
-                Collection.TRANSACTION, Action.ROLLBACK, [:])
+                Collection.TRANSACTION, Action.ROLLBACK, data)
     }
 
     private static Message dataMessage(String uuid = '22222222-2222-7222-8222-222222222222',
@@ -226,8 +226,10 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
                 state: 'open'
         ])
         idGenerator.nextId() >> 'COMMIT-001'
+        Query capturedQuery = null
         Update capturedUpdate = null
         mongoTemplate.updateFirst(_ as Query, _ as Update, COLLECTION) >> { Query q, Update u, String _c ->
+            capturedQuery = q
             capturedUpdate = u
             return Mono.empty()
         }
@@ -243,6 +245,10 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
         updateObject.get('commit_id') == 'COMMIT-001'
         updateObject.get('commit_data') == [reason: 'done']
         updateObject.containsKey('committed_at')
+
+        and: 'the transition is guarded on the open state in the update query'
+        capturedQuery.getQueryObject().get('_id') == TXN_ID
+        capturedQuery.getQueryObject().get('state') == 'open'
     }
 
     def 'commit re-delivered after commit returns COMMIT_DUPLICATE without re-generating id'() {
@@ -355,18 +361,105 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
         0 * mongoTemplate.updateFirst(_, _, _)
     }
 
-    def 'rollback returns ROLLBACK_NOT_PERSISTED and writes nothing'() {
+    def 'rollback on an open transaction durably marks the header rolled_back with audit data'() {
         given:
-        def message = rollbackMessage()
+        def message = rollbackMessage(reason: 'user abort')
+        mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just([
+                _id: TXN_ID,
+                state: 'open'
+        ])
+        Query capturedQuery = null
+        Update capturedUpdate = null
+        mongoTemplate.updateFirst(_ as Query, _ as Update, COLLECTION) >> { Query q, Update u, String _c ->
+            capturedQuery = q
+            capturedUpdate = u
+            return Mono.empty()
+        }
 
         when:
         def result = service.persist(message, source()).block()
 
         then:
-        result == PersistResult.ROLLBACK_NOT_PERSISTED
-        0 * mongoTemplate.findById(_, _, _)
-        0 * mongoTemplate.upsert(_, _, _)
-        0 * mongoTemplate.insert(_, _)
+        result == PersistResult.ROLLED_BACK
+        def updateObject = capturedUpdate.getUpdateObject().get('$set')
+        updateObject.get('state') == 'rolled_back'
+        updateObject.get('rollback_data') == [reason: 'user abort']
+        updateObject.containsKey('rolled_back_at')
+        !updateObject.containsKey('commit_id')
+
+        and: 'the transition is guarded on the open state in the update query'
+        capturedQuery.getQueryObject().get('_id') == TXN_ID
+        capturedQuery.getQueryObject().get('state') == 'open'
+
+        and: 'no commit id is generated and nothing materializes'
+        0 * idGenerator.nextId()
+        0 * materializer.materialize(_)
+    }
+
+    def 'rollback re-delivered for a rolled-back transaction returns ROLLBACK_DUPLICATE without writing'() {
+        given:
+        def message = rollbackMessage()
+        mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just([
+                _id: TXN_ID,
+                state: 'rolled_back'
+        ])
+
+        when:
+        def result = service.persist(message, source()).block()
+
+        then:
+        result == PersistResult.ROLLBACK_DUPLICATE
+        0 * mongoTemplate.updateFirst(_, _, _)
+        0 * idGenerator.nextId()
+    }
+
+    def 'rollback after commit is refused and never touches the committed header'() {
+        given:
+        def message = rollbackMessage()
+        mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just([
+                _id: TXN_ID,
+                state: 'committed',
+                commit_id: 'COMMIT-001'
+        ])
+
+        when:
+        def result = service.persist(message, source()).block()
+
+        then:
+        result == PersistResult.ROLLBACK_REFUSED_COMMITTED
+        0 * mongoTemplate.updateFirst(_, _, _)
+        0 * idGenerator.nextId()
+    }
+
+    def 'commit after rollback is refused: no commit id, no update, no materialization'() {
+        given:
+        def message = commitMessage()
+        mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just([
+                _id: TXN_ID,
+                state: 'rolled_back'
+        ])
+
+        when:
+        def result = service.persist(message, source()).block()
+
+        then:
+        result == PersistResult.COMMIT_REFUSED_ROLLED_BACK
+        0 * idGenerator.nextId()
+        0 * mongoTemplate.updateFirst(_, _, _)
+        0 * materializer.materialize(_)
+    }
+
+    def 'rollback before open errors with IllegalStateException'() {
+        given:
+        def message = rollbackMessage()
+        mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.empty()
+
+        when:
+        service.persist(message, source()).block()
+
+        then:
+        IllegalStateException ex = thrown()
+        ex.message.contains(TXN_ID)
         0 * mongoTemplate.updateFirst(_, _, _)
         0 * idGenerator.nextId()
     }

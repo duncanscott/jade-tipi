@@ -38,6 +38,11 @@ class CommittedTransactionMaterializerIdConventionSpec extends Specification {
                 'jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e501~loc~esp_bin_019a3a60-9628',
                 // the sanctioned genesis exception
                 'jade-tipi-org~dev~genesis~usr~jdtp-admin',
+                // procedure and task collections (TASK-048)
+                'jade-tipi-org~dev~018fd849-3b03-7333-8a03-cccccccccccc~prc~pool_run_1',
+                'jade-tipi-org~dev~018fd849-3b04-7444-8a04-dddddddddddd~tsk~pool_batch_7',
+                // file collection (TASK-049)
+                'jade-tipi-org~dev~018fd849-3e02-7222-8a02-bbbbbbbbbbbb~fil~run42_r1_fastq',
                 // composite legacy assignment id: object + property
                 OBJ + '~' + PPY
         ]

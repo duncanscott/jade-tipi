@@ -1,0 +1,19 @@
+{
+  "txn": {
+    "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+    "group": {
+      "org": "jade-tipi-org",
+      "grp": "dev"
+    },
+    "client": "kli",
+    "user": "0000-0002-1825-0097"
+  },
+  "uuid": "018fd849-3d01-7111-8a01-232323232323",
+  "collection": "typ",
+  "action": "create",
+  "data": {
+    "id": "jade-tipi-org~dev~018fd849-3d01-7111-8a01-232323232323~typ~fastq",
+    "name": "fastq",
+    "description": "FASTQ sequencing-reads file"
+  }
+}

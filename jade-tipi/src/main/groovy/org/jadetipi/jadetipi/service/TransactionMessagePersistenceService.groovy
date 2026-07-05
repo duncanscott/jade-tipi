@@ -39,10 +39,19 @@ import static org.jadetipi.jadetipi.util.Constants.TRANSACTION_ID_SEPARATOR
  *
  * <p>Two record kinds live in {@code txn}:
  * <ul>
- *   <li>Header (record_type=transaction): {@code _id = txn_id}, holds open/commit
- *       state and (after commit) an orderable backend-generated {@code commit_id}.</li>
+ *   <li>Header (record_type=transaction): {@code _id = txn_id}, holds the
+ *       lifecycle state — {@code open}, then terminally {@code committed}
+ *       (with an orderable backend-generated {@code commit_id}) or
+ *       {@code rolled_back} (with {@code rolled_back_at} and the rollback
+ *       message's {@code rollback_data} as the audit fact; UT-2/TASK-050).
+ *       The two terminal states are mutually exclusive: commit-after-rollback
+ *       and rollback-after-commit are refused, never overwritten, and the
+ *       state transitions are additionally guarded by a {@code state: open}
+ *       condition on the update query.</li>
  *   <li>Message (record_type=message): {@code _id = txn_id~msg_uuid}, one row per
- *       received {@link Message} with collection/action/data and Kafka source metadata.</li>
+ *       received {@link Message} with collection/action/data and Kafka source
+ *       metadata. Rows appended before a rollback remain stored (audit); the
+ *       committed-visibility gate keeps them from ever materializing.</li>
  * </ul>
  *
  * <p>The service is intentionally Kafka-free and HTTP-free: a thin HTTP adapter can
@@ -58,8 +67,10 @@ class TransactionMessagePersistenceService {
     static final String FIELD_COMMIT_ID = 'commit_id'
     static final String FIELD_OPENED_AT = 'opened_at'
     static final String FIELD_COMMITTED_AT = 'committed_at'
+    static final String FIELD_ROLLED_BACK_AT = 'rolled_back_at'
     static final String FIELD_OPEN_DATA = 'open_data'
     static final String FIELD_COMMIT_DATA = 'commit_data'
+    static final String FIELD_ROLLBACK_DATA = 'rollback_data'
     static final String FIELD_MSG_UUID = 'msg_uuid'
     static final String FIELD_COLLECTION = 'collection'
     static final String FIELD_ACTION = 'action'
@@ -72,6 +83,7 @@ class TransactionMessagePersistenceService {
 
     static final String STATE_OPEN = 'open'
     static final String STATE_COMMITTED = 'committed'
+    static final String STATE_ROLLED_BACK = 'rolled_back'
 
     private static final String COLLECTION_NAME = COLLECTION_TRANSACTIONS
 
@@ -124,9 +136,7 @@ class TransactionMessagePersistenceService {
                 case Action.COMMIT:
                     return commitHeader(txnId, message)
                 case Action.ROLLBACK:
-                    log.info('Rollback received but not persisted: txnId={}, msgUuid={}',
-                            txnId, message.uuid())
-                    return Mono.just(PersistResult.ROLLBACK_NOT_PERSISTED)
+                    return rollbackHeader(txnId, message)
                 default:
                     return Mono.error(new IllegalArgumentException(
                             "Unsupported action for collection 'txn': ${action}"))
@@ -179,10 +189,16 @@ class TransactionMessagePersistenceService {
                         return materializeQuietly(txnId)
                                 .thenReturn(PersistResult.COMMIT_DUPLICATE)
                     }
+                    if (state == STATE_ROLLED_BACK) {
+                        log.error('Commit refused for rolled-back transaction: txnId={}, msgUuid={}',
+                                txnId, message.uuid())
+                        return Mono.just(PersistResult.COMMIT_REFUSED_ROLLED_BACK)
+                    }
 
                     String commitId = idGenerator.nextId()
                     Instant now = Instant.now()
-                    Query query = Query.query(Criteria.where('_id').is(txnId))
+                    Query query = Query.query(Criteria.where('_id').is(txnId)
+                            .and(FIELD_STATE).is(STATE_OPEN))
                     Update update = new Update()
                             .set(FIELD_STATE, STATE_COMMITTED)
                             .set(FIELD_COMMIT_ID, commitId)
@@ -195,6 +211,47 @@ class TransactionMessagePersistenceService {
                             .doOnError { ex -> log.error('Failed to commit transaction: txnId={}', txnId, ex) }
                             .then(materializeQuietly(txnId))
                             .thenReturn(PersistResult.COMMITTED)
+                } as Mono<PersistResult>
+    }
+
+    /**
+     * Durably mark the header {@code rolled_back} (UT-2/TASK-050). The
+     * rollback message's {@code data} is kept as {@code rollback_data} — the
+     * audit fact that a rollback was requested and honored. Re-delivery is an
+     * idempotent duplicate; a rollback arriving after commit is refused
+     * without touching the header; a rollback before open errors like a
+     * commit before open. The {@code state: open} condition on the update
+     * query is write-time defense in depth against a racing terminal
+     * transition. Appended message rows remain stored; the
+     * committed-visibility gate keeps them from ever materializing.
+     */
+    private Mono<PersistResult> rollbackHeader(String txnId, Message message) {
+        return mongoTemplate.findById(txnId, Map.class, COLLECTION_NAME)
+                .switchIfEmpty(Mono.error(new IllegalStateException(
+                        "Cannot roll back transaction before open: txnId=${txnId}")))
+                .flatMap { Map existing ->
+                    String state = existing.get(FIELD_STATE) as String
+                    if (state == STATE_ROLLED_BACK) {
+                        log.info('Rollback re-delivered for already-rolled-back transaction: txnId={}', txnId)
+                        return Mono.just(PersistResult.ROLLBACK_DUPLICATE)
+                    }
+                    if (state == STATE_COMMITTED) {
+                        log.error('Rollback refused for committed transaction: txnId={}, msgUuid={}',
+                                txnId, message.uuid())
+                        return Mono.just(PersistResult.ROLLBACK_REFUSED_COMMITTED)
+                    }
+
+                    Query query = Query.query(Criteria.where('_id').is(txnId)
+                            .and(FIELD_STATE).is(STATE_OPEN))
+                    Update update = new Update()
+                            .set(FIELD_STATE, STATE_ROLLED_BACK)
+                            .set(FIELD_ROLLED_BACK_AT, Instant.now())
+                            .set(FIELD_ROLLBACK_DATA, message.data())
+
+                    return mongoTemplate.updateFirst(query, update, COLLECTION_NAME)
+                            .doOnSuccess { log.info('Transaction rolled back: txnId={}', txnId) }
+                            .doOnError { ex -> log.error('Failed to roll back transaction: txnId={}', txnId, ex) }
+                            .thenReturn(PersistResult.ROLLED_BACK)
                 } as Mono<PersistResult>
     }
 

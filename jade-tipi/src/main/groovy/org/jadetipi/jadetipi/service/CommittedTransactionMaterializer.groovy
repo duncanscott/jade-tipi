@@ -61,6 +61,21 @@ import java.time.Instant
  *       permissions map (keyed by world-unique grp IDs with values {@code "rw"}
  *       or {@code "r"}) is copied verbatim through {@code properties.permissions};
  *       no permission enforcement is added at materialization time.</li>
+ *   <li>{@code prc + create} → {@code prc} collection. A top-level
+ *       {@code data.output_input} map (execution provenance:
+ *       {@code {output_id: {input_id: contribution}}}) is hoisted to the
+ *       root top level — parallel to {@code lnk}'s {@code left}/{@code right}
+ *       — and excluded from the inline {@code properties} bag. Contribution
+ *       objects are copied verbatim; validation against a procedure-type
+ *       {@code vdn} schema is deferred (spec §1.9, UT-4).</li>
+ *   <li>{@code tsk + create} → {@code tsk} collection as a standard typed
+ *       root. Task semantics (task-type {@code procedure_type_id}, input and
+ *       fulfillment links) live in {@code typ} and {@code lnk} records and
+ *       are not interpreted here.</li>
+ *   <li>{@code fil + create} → {@code fil} collection as a standard typed
+ *       root (TASK-049). File facts — retrieval URL and the like — are
+ *       ordinary typed property values; content-identity hoisting and
+ *       dedup are deliberately deferred (DIRECTION.md, Files).</li>
  *   <li>{@code ppy + create} with {@code data.kind == "definition"} →
  *       {@code ppy} collection. The wire-shape {@code data.kind},
  *       {@code data.name}, and {@code data.value_schema} land verbatim
@@ -74,8 +89,8 @@ import java.time.Instant
  *       {@code { value, txn_id, commit_id, msg_uuid, applied_at }} via a
  *       dotted-path {@code $set} (TASK-040/TASK-045; drift-note contracts
  *       8.2.6/8.2.7). The target is explicit
- *       {@code data.object_collection} in {@code {ent, loc}} plus
- *       {@code data.object_id}; a payload carrying only the deprecated
+ *       {@code data.object_collection} in {@code {ent, loc, prc, tsk, fil}}
+ *       plus {@code data.object_id}; a payload carrying only the deprecated
  *       {@code entity_id} resolves as ({@code ent}, {@code entity_id})
  *       with a warning. Registration is inheritance-aware: the property
  *       must be listed under {@code properties.property_refs} on the
@@ -151,6 +166,9 @@ class CommittedTransactionMaterializer {
     static final String COLLECTION_GRP = 'grp'
     static final String COLLECTION_ENT = 'ent'
     static final String COLLECTION_PPY = 'ppy'
+    static final String COLLECTION_PRC = 'prc'
+    static final String COLLECTION_TSK = 'tsk'
+    static final String COLLECTION_FIL = 'fil'
 
     static final String ACTION_CREATE = 'create'
     static final String ACTION_UPDATE = 'update'
@@ -166,6 +184,7 @@ class CommittedTransactionMaterializer {
     static final String FIELD_OBJECT_ID = 'object_id'
     static final String FIELD_PROPERTY_VALUES = 'property_values'
     static final String FIELD_PARENT_TYPE_ID = 'parent_type_id'
+    static final String FIELD_OUTPUT_INPUT = 'output_input'
     static final String ENTRY_APPLIED_AT = 'applied_at'
 
     static final String OPERATION_ADD_PROPERTY = 'add_property'
@@ -174,7 +193,8 @@ class CommittedTransactionMaterializer {
 
     /** Collections that may receive object-targeted property assignments. */
     static final Set<String> OBJECT_ASSIGNMENT_COLLECTIONS =
-            Set.of(COLLECTION_ENT, COLLECTION_LOC)
+            Set.of(COLLECTION_ENT, COLLECTION_LOC, COLLECTION_PRC, COLLECTION_TSK,
+                    COLLECTION_FIL)
 
     /** Bound on the {@code parent_type_id} walk; prevents runaway chains. */
     static final int MAX_TYPE_INHERITANCE_DEPTH = 10
@@ -193,7 +213,7 @@ class CommittedTransactionMaterializer {
             '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
     static final String GENESIS_SEGMENT = 'genesis'
     static final Set<String> ID_COLLECTION_SEGMENTS =
-            Set.of('ent', 'ppy', 'lnk', 'loc', 'uni', 'grp', 'typ', 'vdn', 'usr')
+            Set.of('ent', 'fil', 'ppy', 'lnk', 'loc', 'prc', 'tsk', 'uni', 'grp', 'typ', 'vdn', 'usr')
 
     private final ReactiveMongoTemplate mongoTemplate
     private final CommittedTransactionReadService readService
@@ -660,6 +680,12 @@ class CommittedTransactionMaterializer {
                     return true
                 case COLLECTION_ENT:
                     return true
+                case COLLECTION_PRC:
+                    return true
+                case COLLECTION_TSK:
+                    return true
+                case COLLECTION_FIL:
+                    return true
                 case COLLECTION_TYP:
                     return true
                 case COLLECTION_PPY:
@@ -741,6 +767,13 @@ class CommittedTransactionMaterializer {
         doc.put(FIELD_COLLECTION, message.collection)
         doc.put(FIELD_TYPE_ID, data.get(FIELD_TYPE_ID))
 
+        if (COLLECTION_PRC == message.collection
+                && data.get(FIELD_OUTPUT_INPUT) instanceof Map) {
+            // Canonical execution provenance is hoisted top-level, parallel
+            // to lnk's left/right (DIRECTION.md, Procedures And Tasks).
+            doc.put(FIELD_OUTPUT_INPUT, copyProperties(data.get(FIELD_OUTPUT_INPUT)))
+        }
+
         if (COLLECTION_LNK == message.collection) {
             doc.put(FIELD_LEFT, data.get(FIELD_LEFT))
             doc.put(FIELD_RIGHT, data.get(FIELD_RIGHT))
@@ -761,7 +794,8 @@ class CommittedTransactionMaterializer {
     private static Map<String, Object> buildInlineProperties(Map<String, Object> data) {
         Map<String, Object> properties = new LinkedHashMap<>()
         data.each { String key, Object value ->
-            if (key != FIELD_DATA_ID && key != FIELD_TYPE_ID && key != FIELD_LINKS) {
+            if (key != FIELD_DATA_ID && key != FIELD_TYPE_ID && key != FIELD_LINKS
+                    && key != FIELD_OUTPUT_INPUT) {
                 properties.put(key, value)
             }
         }

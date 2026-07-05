@@ -1,0 +1,22 @@
+{
+  "txn": {
+    "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+    "group": {
+      "org": "jade-tipi-org",
+      "grp": "dev"
+    },
+    "client": "kli",
+    "user": "0000-0002-1825-0097"
+  },
+  "uuid": "018fd849-3c11-7222-8a02-171717171717",
+  "collection": "typ",
+  "action": "create",
+  "data": {
+    "kind": "task_type",
+    "id": "jade-tipi-org~dev~018fd849-3c11-7222-8a02-171717171717~typ~dna_pooling_task",
+    "name": "dna_pooling_task",
+    "description": "intention to run dna_pooling on a set of input samples",
+    "procedure_type_id": "jade-tipi-org~dev~018fd849-3c10-7111-8a01-161616161616~typ~dna_pooling",
+    "procedure_name": "dna_pooling"
+  }
+}

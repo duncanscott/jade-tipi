@@ -1,0 +1,20 @@
+{
+  "txn": {
+    "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+    "group": {
+      "org": "jade-tipi-org",
+      "grp": "dev"
+    },
+    "client": "kli",
+    "user": "0000-0002-1825-0097"
+  },
+  "uuid": "018fd849-3c12-7333-8a03-181818181818",
+  "collection": "tsk",
+  "action": "create",
+  "data": {
+    "id": "jade-tipi-org~dev~018fd849-3c12-7333-8a03-181818181818~tsk~pool_batch_7",
+    "type_id": "jade-tipi-org~dev~018fd849-3c11-7222-8a02-171717171717~typ~dna_pooling_task",
+    "name": "pool_batch_7",
+    "description": "pool the batch 7 samples into one library pool"
+  }
+}

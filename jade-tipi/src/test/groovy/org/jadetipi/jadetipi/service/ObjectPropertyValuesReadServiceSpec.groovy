@@ -176,6 +176,26 @@ class ObjectPropertyValuesReadServiceSpec extends Specification {
         record.collection == 'ent'
     }
 
+    def 'prc, tsk, and fil roots are supported by the generic service'() {
+        given:
+        mongoTemplate.findById(objectId, Map.class, collection) >> Mono.just([
+                _id: objectId, collection: collection, type_id: TYP_ID, properties: [:], links: [:]
+        ] as Map)
+
+        when:
+        ObjectPropertyValuesRecord record = service.findPropertyValues(collection, objectId).block()
+
+        then:
+        record.objectId == objectId
+        record.collection == collection
+
+        where:
+        collection | objectId
+        'prc'      | 'jade-tipi-org~dev~018fd849-3b03-7333-8a03-cccccccccccc~prc~pool_run_1'
+        'tsk'      | 'jade-tipi-org~dev~018fd849-3b04-7444-8a04-dddddddddddd~tsk~pool_batch_7'
+        'fil'      | 'jade-tipi-org~dev~018fd849-3e02-7222-8a02-bbbbbbbbbbbb~fil~run42_r1_fastq'
+    }
+
     def 'blank arguments and unsupported collections are rejected'() {
         when:
         service.findPropertyValues(collection, objectId)

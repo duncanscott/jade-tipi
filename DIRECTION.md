@@ -119,6 +119,36 @@ fine-grained contribution weights live only in the procedure's
 Instances stay in their own collections regardless of the type hierarchy:
 tasks are `tsk` records and procedures are `prc` records.
 
+## Files
+
+JDTP adds a first-class `fil` (file) collection for retrievable
+electronic assets. If it is a retrievable electronic asset, it is a file
+— including assets that are no longer retrievable (deleted) or only
+retrievable locally. Aggregates of files (datasets, run folders) remain
+`ent` records with membership links to their `fil` members.
+
+Files are the boundary objects between metadata and data: a `fil` record
+is metadata about bytes stored elsewhere. Files are expected to become
+the highest-volume object class, and their properties are highly regular
+across instances; a dedicated peer collection keeps them out of `ent`
+scans and gives implementations a natural home for file-specific
+indexing.
+
+A `fil` record is a standard typed root: file types live in `typ` with
+ordinary inheritance, and file facts arrive as ordinary typed property
+values. No file-specific root structure is hoisted yet — the property
+set will become evident as real file objects are imported. A retrieval
+URL is one candidate property, but not every file has a URL; some files
+have a retrieval protocol that is not a URL. Content-identity hoisting
+(checksums, sizes, locators), a schema-shaped `fil` payload branch, and
+the deduplication policy for identical bytes are all deliberately
+deferred until usage reveals what they should be.
+
+Files slot into the procedure/task provenance model unchanged: a file is
+typically the output of a `prc` (`produced_by`) and an input to a `tsk`
+(`task_input`); link types admit `fil` endpoints through their ordinary
+`allowed_*_collections` declarations.
+
 ## Users, Groups, And Permissions
 
 `usr` records are first-class Jade-Tipi identity/audit objects. They represent

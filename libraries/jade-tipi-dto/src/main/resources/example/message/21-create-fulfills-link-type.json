@@ -1,0 +1,26 @@
+{
+  "txn": {
+    "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+    "group": {
+      "org": "jade-tipi-org",
+      "grp": "dev"
+    },
+    "client": "kli",
+    "user": "0000-0002-1825-0097"
+  },
+  "uuid": "018fd849-3c16-7777-8a07-212121212121",
+  "collection": "typ",
+  "action": "create",
+  "data": {
+    "kind": "link_type",
+    "id": "jade-tipi-org~dev~018fd849-3c16-7777-8a07-212121212121~typ~fulfills",
+    "name": "fulfills",
+    "description": "the performed procedure that fulfilled a task",
+    "left_role": "procedure",
+    "right_role": "task",
+    "left_to_right_label": "fulfills",
+    "right_to_left_label": "fulfilled_by",
+    "allowed_left_collections": ["prc"],
+    "allowed_right_collections": ["tsk"]
+  }
+}

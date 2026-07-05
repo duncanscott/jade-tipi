@@ -37,7 +37,22 @@ class MessageSpec extends Specification {
             '/example/message/12-create-contents-link-plate-sample.json',
             '/example/message/13-create-group.json',
             '/example/message/14-create-plate-type-extends-container.json',
-            '/example/message/15-assign-object-property-value.json'
+            '/example/message/15-assign-object-property-value.json',
+            '/example/message/16-create-procedure-type.json',
+            '/example/message/17-create-task-type.json',
+            '/example/message/18-create-task.json',
+            '/example/message/19-create-task-input-link-type.json',
+            '/example/message/19a-create-task-input-link.json',
+            '/example/message/20-create-procedure-with-output-input.json',
+            '/example/message/21-create-fulfills-link-type.json',
+            '/example/message/21a-create-fulfills-link.json',
+            '/example/message/22-create-produced-by-link-type.json',
+            '/example/message/22a-create-produced-by-link.json',
+            '/example/message/23-create-file-type.json',
+            '/example/message/24-create-property-definition-retrieval-url.json',
+            '/example/message/25-update-file-type-add-property.json',
+            '/example/message/26-create-file.json',
+            '/example/message/27-assign-file-property-value.json'
     ]
 
     private static String readResource(String path) {
@@ -709,6 +724,221 @@ class MessageSpec extends Specification {
         typData.allowed_right_collections.contains('ent')
         lnkData.left.contains('~loc~')
         lnkData.right.contains('~ent~')
+    }
+
+    def "Collection.fromJson resolves prc and tsk and serializes back to the abbreviations"() {
+        expect:
+        Collection.fromJson('prc') == Collection.PROCEDURE
+        Collection.fromJson('procedure') == Collection.PROCEDURE
+        Collection.PROCEDURE.toJson() == 'prc'
+        Collection.PROCEDURE.actions == [Action.CREATE, Action.UPDATE, Action.DELETE]
+        Collection.fromJson('tsk') == Collection.TASK
+        Collection.fromJson('task') == Collection.TASK
+        Collection.TASK.toJson() == 'tsk'
+        Collection.TASK.actions == [Action.CREATE, Action.UPDATE, Action.DELETE]
+    }
+
+    def "Collection.fromJson resolves fil and serializes back to the abbreviation"() {
+        expect:
+        Collection.fromJson('fil') == Collection.FILE
+        Collection.fromJson('file') == Collection.FILE
+        Collection.FILE.toJson() == 'fil'
+        Collection.FILE.abbreviation == 'fil'
+        Collection.FILE.name == 'file'
+        Collection.FILE.actions == [Action.CREATE, Action.UPDATE, Action.DELETE]
+    }
+
+    def "file example sequence shares one txn id and wires the typed file and its assignment by id"() {
+        given: 'the file type, retrieval_url definition, registration, file, and assignment examples'
+        Message fileType = JsonMapper.fromJson(
+                readResource('/example/message/23-create-file-type.json'), Message)
+        Message urlDefinition = JsonMapper.fromJson(
+                readResource('/example/message/24-create-property-definition-retrieval-url.json'), Message)
+        Message addProperty = JsonMapper.fromJson(
+                readResource('/example/message/25-update-file-type-add-property.json'), Message)
+        Message file = JsonMapper.fromJson(
+                readResource('/example/message/26-create-file.json'), Message)
+        Message assignment = JsonMapper.fromJson(
+                readResource('/example/message/27-assign-file-property-value.json'), Message)
+
+        expect: 'all five messages chain through the same transaction uuid'
+        String txnUuid = fileType.txn().uuid()
+        [urlDefinition, addProperty, file, assignment].every { it.txn().uuid() == txnUuid }
+
+        and: 'the file is a fil create typed by the ordinary file type — no kind discriminator, no hoisted structure'
+        file.collection() == Collection.FILE
+        file.action() == Action.CREATE
+        !fileType.data().containsKey('kind')
+        file.data().type_id == fileType.data().id
+        file.data().keySet() == ['id', 'type_id', 'name', 'description'] as Set
+
+        and: 'the registration joins the retrieval_url definition to the file type'
+        addProperty.data().id == fileType.data().id
+        addProperty.data().property_id == urlDefinition.data().id
+
+        and: 'the assignment targets the fil root through the object-targeted form'
+        assignment.data().kind == 'assignment'
+        assignment.data().object_collection == 'fil'
+        assignment.data().object_id == file.data().id
+        assignment.data().property_id == urlDefinition.data().id
+        (assignment.data().value as Map).containsKey('url')
+    }
+
+    def "prc + create example carries a top-level output_input map keyed by output and input ids"() {
+        given:
+        Message message = JsonMapper.fromJson(
+                readResource('/example/message/20-create-procedure-with-output-input.json'), Message)
+
+        expect:
+        message.collection() == Collection.PROCEDURE
+        message.action() == Action.CREATE
+
+        and: 'the root facts are the id, the procedure type, a name, and output_input'
+        Map data = message.data()
+        data.id == 'jade-tipi-org~dev~018fd849-3c15-7666-8a06-202020202020~prc~pool_run_1'
+        data.type_id == 'jade-tipi-org~dev~018fd849-3c10-7111-8a01-161616161616~typ~dna_pooling'
+        data.keySet() == ['id', 'type_id', 'name', 'output_input'] as Set
+
+        and: 'output_input maps each output ent to its inputs and open contribution objects'
+        Map outputInput = data.output_input as Map
+        outputInput.size() == 1
+        String outputId = outputInput.keySet().first()
+        outputId.contains('~ent~')
+        Map inputs = outputInput[outputId] as Map
+        inputs.size() == 2
+        inputs.keySet().every { it.contains('~ent~') }
+        inputs.values().every { (it as Map).containsKey('volume') }
+    }
+
+    def "procedure-task example sequence shares one txn id and wires the full provenance loop by id"() {
+        given: 'the procedure type, task type, task, input link, procedure, fulfillment, and produced-by examples'
+        Message procedureType = JsonMapper.fromJson(
+                readResource('/example/message/16-create-procedure-type.json'), Message)
+        Message taskType = JsonMapper.fromJson(
+                readResource('/example/message/17-create-task-type.json'), Message)
+        Message task = JsonMapper.fromJson(
+                readResource('/example/message/18-create-task.json'), Message)
+        Message inputLinkType = JsonMapper.fromJson(
+                readResource('/example/message/19-create-task-input-link-type.json'), Message)
+        Message inputLink = JsonMapper.fromJson(
+                readResource('/example/message/19a-create-task-input-link.json'), Message)
+        Message procedure = JsonMapper.fromJson(
+                readResource('/example/message/20-create-procedure-with-output-input.json'), Message)
+        Message fulfillsType = JsonMapper.fromJson(
+                readResource('/example/message/21-create-fulfills-link-type.json'), Message)
+        Message fulfills = JsonMapper.fromJson(
+                readResource('/example/message/21a-create-fulfills-link.json'), Message)
+        Message producedByType = JsonMapper.fromJson(
+                readResource('/example/message/22-create-produced-by-link-type.json'), Message)
+        Message producedBy = JsonMapper.fromJson(
+                readResource('/example/message/22a-create-produced-by-link.json'), Message)
+
+        expect: 'all ten messages chain through the same transaction uuid'
+        String txnUuid = procedureType.txn().uuid()
+        [taskType, task, inputLinkType, inputLink, procedure,
+         fulfillsType, fulfills, producedByType, producedBy].every {
+            it.txn().uuid() == txnUuid
+        }
+
+        and: 'the type kinds mirror the link_type discriminator convention'
+        procedureType.data().kind == 'procedure_type'
+        taskType.data().kind == 'task_type'
+        [inputLinkType, fulfillsType, producedByType].every { it.data().kind == 'link_type' }
+
+        and: 'the task type carries the procedure type by id, so instances need no procedure pointer'
+        taskType.data().procedure_type_id == procedureType.data().id
+        taskType.data().procedure_name == procedureType.data().name
+        task.data().type_id == taskType.data().id
+        !task.data().containsKey('procedure_type_id')
+
+        and: 'the procedure instance is typed by the procedure type, not the task type'
+        procedure.collection() == Collection.PROCEDURE
+        task.collection() == Collection.TASK
+        procedure.data().type_id == procedureType.data().id
+
+        and: 'the input link joins the task to an input ent under the task_input type'
+        inputLink.data().type_id == inputLinkType.data().id
+        inputLink.data().left == task.data().id
+        String inputEntId = inputLink.data().right
+        inputEntId.contains('~ent~')
+
+        and: 'the fulfillment link records the procedure that fulfilled the task'
+        fulfills.data().type_id == fulfillsType.data().id
+        fulfills.data().left == procedure.data().id
+        fulfills.data().right == task.data().id
+
+        and: 'the produced-by link joins an output_input output to the procedure'
+        producedBy.data().type_id == producedByType.data().id
+        producedBy.data().right == procedure.data().id
+        Map outputInput = procedure.data().output_input as Map
+        outputInput.containsKey(producedBy.data().left)
+
+        and: 'the linked input ent contributed to that output'
+        (outputInput[producedBy.data().left] as Map).containsKey(inputEntId)
+    }
+
+    def "schema rejects a prc create whose output_input contribution is not an object"() {
+        given: 'a contribution value that is a bare number instead of an open contribution object'
+        String json = '''
+            {
+              "txn": {
+                "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+                "group": { "org": "jade-tipi-org", "grp": "dev" },
+                "client": "kli",
+                "user": "0000-0002-1825-0097"
+              },
+              "uuid": "018fd849-3c15-7666-8a06-202020202020",
+              "collection": "prc",
+              "action": "create",
+              "data": {
+                "id": "jade-tipi-org~dev~018fd849-3c15-7666-8a06-202020202020~prc~pool_run_1",
+                "output_input": {
+                  "jade-tipi-org~dev~018fd849-3c22-7ccc-8a0c-c3c3c3c3c3c3~ent~pool_1": {
+                    "jade-tipi-org~dev~018fd849-3c20-7aaa-8a0a-a1a1a1a1a1a1~ent~sample_a": 5.0
+                  }
+                }
+              }
+            }
+        '''
+        Message message = JsonMapper.fromJson(json, Message)
+
+        when:
+        message.validate()
+
+        then:
+        thrown(ValidationException)
+    }
+
+    def "schema rejects a non-prc message whose data carries object-id keys under output_input"() {
+        given: 'the same output_input map on an ent create, where snake_case keys are required'
+        String json = '''
+            {
+              "txn": {
+                "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+                "group": { "org": "jade-tipi-org", "grp": "dev" },
+                "client": "kli",
+                "user": "0000-0002-1825-0097"
+              },
+              "uuid": "018fd849-3c23-7ddd-8a0d-d4d4d4d4d4d4",
+              "collection": "ent",
+              "action": "create",
+              "data": {
+                "id": "jade-tipi-org~dev~018fd849-3c23-7ddd-8a0d-d4d4d4d4d4d4~ent~pool_1",
+                "output_input": {
+                  "jade-tipi-org~dev~018fd849-3c22-7ccc-8a0c-c3c3c3c3c3c3~ent~pool_1": {
+                    "jade-tipi-org~dev~018fd849-3c20-7aaa-8a0a-a1a1a1a1a1a1~ent~sample_a": { "volume": 5.0 }
+                  }
+                }
+              }
+            }
+        '''
+        Message message = JsonMapper.fromJson(json, Message)
+
+        when:
+        message.validate()
+
+        then:
+        thrown(ValidationException)
     }
 
     def "ppy + create definition example uses the human-readable kind, id, name, and value_schema shape"() {

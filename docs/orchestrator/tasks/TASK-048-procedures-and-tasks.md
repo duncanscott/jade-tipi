@@ -3,8 +3,8 @@
 ID: TASK-048
 TYPE: implementation
 ARTIFACT_INTENT: production-change
-STATUS: READY_FOR_IMPLEMENTATION
-OWNER: unassigned
+STATUS: READY_FOR_REVIEW
+OWNER: claude
 SOURCE_TASK:
   - TASK-047
 OWNED_PATHS:
@@ -88,3 +88,63 @@ VERIFICATION:
 - `./gradlew :libraries:jade-tipi-dto:test :jade-tipi:test`
 - `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest`
 - `git diff --check`
+
+IMPLEMENTATION_REPORT (2026-07-04):
+- Wire layer: `Collection` gains `PROCEDURE("procedure","prc")` and
+  `TASK("task","tsk")` (create/update/delete via the existing non-txn
+  constructor branch). `message.schema.json` adds both to the collection
+  enum, the data-action matrix branch, and the `ObjectId` collection
+  segment set.
+- Schema addition beyond the acceptance list, forced by the snake_case
+  rule: `output_input` keys are object IDs, so `prc` payloads get their
+  own `ProcedureData` branch (a three-way data picker: grp → GroupData,
+  prc → ProcedureData, else SnakeCaseObject) with an `OutputInput` `$def`
+  — ID-keyed map of ID-keyed maps whose contribution values must be
+  objects. This mirrors the grp `permissions` escape exactly; on every
+  other collection an ID-keyed `output_input` still fails snake_case.
+  Negative `MessageSpec` features pin both directions (non-object
+  contribution rejected on prc; ID-keyed map rejected on ent).
+- Materializer: `prc`/`tsk` join `ID_COLLECTION_SEGMENTS` and the
+  supported creates; `prc + create` hoists a top-level
+  `data.output_input` map onto the root (parallel to `lnk` left/right,
+  `copyProperties` verbatim) and `buildInlineProperties` excludes it;
+  `tsk + create` is a standard typed root.
+  `OBJECT_ASSIGNMENT_COLLECTIONS` and the generic
+  `ObjectPropertyValuesReadService.SUPPORTED_COLLECTIONS` become
+  {ent, loc, prc, tsk}; the inheritance-aware gate is untouched.
+- New `CommittedTransactionMaterializerProcedureTaskSpec` (six features:
+  hoist with inline bag, hoist with explicit data.properties, absent
+  output_input, tsk root, assignment onto tsk, assignment onto prc);
+  reader spec gains a prc/tsk feature; the ID-convention spec gains
+  conforming prc/tsk identifiers.
+- Canonical examples 16–22a (ten files, message-UUID-form IDs, one shared
+  example transaction): procedure type, task type carrying
+  `procedure_type_id`/`procedure_name`, task, task_input link type +
+  instance, prc with `output_input` (two inputs → one pool), fulfills
+  link type + instance (prc → tsk), produced_by link type + instance
+  (ent → prc). All registered in `MessageSpec` EXAMPLE_PATHS; three new
+  positive features pin the enum, the prc wire shape, and the full
+  cross-referenced provenance loop.
+- Integration: `ProcedureTaskProvenanceKafkaMaterializeIntegrationSpec`
+  drives one 20-message transaction (types incl. the three link types and
+  a material type, three typed ents, task, two input links, procedure
+  with output_input, fulfills + produced_by links, note assignment onto
+  the tsk root, commit) and asserts the typed prc root with the hoisted
+  map (and its absence from properties), the typed tsk root with the
+  projected note entry, the task type's procedure_type_id, and all four
+  link records.
+- kli: `--collection` help and the unknown-collection error list prc/tsk.
+- Docs: vocabulary doc gains the Procedures And Tasks section (wire
+  shapes, ProcedureData escape, link relations) plus updated collection
+  lists, assignment targets, reader surface, and the 16–22a example
+  inventory. Specification bumped to 0.2.0-draft: §1.1 rows normative,
+  §1.9 flipped to [Normative; contribution schemas Planned], §2.2 records
+  the second snake_case exception, §2.3 vocabulary table gains
+  tsk/prc rows and the kind discriminators, §2.3.1 and §3 list the four
+  assignment/read collections, §4 gains the output_input enforcement row,
+  §5 drops the implemented model (vdn association stays).
+- Verification results: `:libraries:jade-tipi-dto:test` and
+  `:jade-tipi:test` BUILD SUCCESSFUL; full `JADETIPI_IT_KAFKA=1
+  :jade-tipi:integrationTest` BUILD SUCCESSFUL (1m22s) with the new spec
+  running live (1 test, 0 failures) and zero object-identifier-convention
+  warnings; `git diff --check` clean.
