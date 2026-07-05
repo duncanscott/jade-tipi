@@ -20,7 +20,7 @@
     "right_role": "procedure",
     "left_to_right_label": "produced_by",
     "right_to_left_label": "produced",
-    "allowed_left_collections": ["ent"],
+    "allowed_left_collections": ["ent", "fil"],
     "allowed_right_collections": ["prc"]
   }
 }

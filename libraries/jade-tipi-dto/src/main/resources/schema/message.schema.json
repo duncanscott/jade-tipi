@@ -310,7 +310,7 @@
     },
     "ProcedureData": {
       "title": "ProcedureData",
-      "description": "prc payload. Outer property names are snake_case; the optional output_input property is the execution-provenance map keyed by output ent IDs.",
+      "description": "prc payload. Outer property names are snake_case; the optional output_input property is the execution-provenance map keyed by output object IDs.",
       "type": "object",
       "propertyNames": {
         "pattern": "^[a-z][a-z0-9_]*$"
@@ -326,7 +326,7 @@
     },
     "OutputInput": {
       "title": "OutputInput",
-      "description": "Procedure execution provenance: keys are output ent IDs; each value maps the input ent IDs used to generate that output to an open contribution object (for a pooling procedure, typically the contributed volume). Contribution-object schemas will later be supplied by a vdn record associated with the procedure type.",
+      "description": "Procedure execution provenance: keys are output object IDs; each value maps the input object IDs used to generate that output to an open contribution object (for a pooling procedure, typically the contributed volume). Input and output collections are not constrained by the protocol. Contribution-object schemas will later be supplied by a vdn record associated with the procedure type.",
       "type": "object",
       "additionalProperties": {
         "type": "object",

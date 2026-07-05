@@ -148,3 +148,20 @@ IMPLEMENTATION_REPORT (2026-07-04):
   :jade-tipi:integrationTest` BUILD SUCCESSFUL (1m22s) with the new spec
   running live (1 test, 0 failures) and zero object-identifier-convention
   warnings; `git diff --check` clean.
+
+REVIEW_AMENDMENT (2026-07-05, director):
+- Task inputs are **not** constrained to `ent` — an input may be an
+  object of any collection (e.g. the new `fil`); constraints are not
+  baked into the protocol at this juncture. Applied symmetrically to
+  procedure outputs, whose `ent`-only prose was already contradicted by
+  TASK-049's `FileProvenanceKafkaMaterializeIntegrationSpec` (a `prc`
+  producing a `fil` via `produced_by`). Nothing in enforcement ever
+  constrained either side — the correction is prose: DIRECTION.md, the
+  specification (§1.9; 0.3.2-draft), the vocabulary doc, and the
+  schema's ProcedureData/OutputInput descriptions now state that input
+  and output collections are unconstrained by the protocol (typically
+  `ent` or `fil`) and that only per-deployment link-type
+  `allowed_*_collections` declarations may constrain them. Canonical
+  examples 19/22 broadened to `["ent", "fil"]` on the input/output
+  sides to model the unconstrained reading. The DESIGN section above is
+  left as the historical pre-review record.

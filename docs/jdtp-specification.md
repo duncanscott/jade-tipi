@@ -1,7 +1,13 @@
 # JDTP Specification
 
-**Version:** 0.3.1-draft · **Date:** 2026-07-04 · **Status:** Draft for
+**Version:** 0.3.2-draft · **Date:** 2026-07-05 · **Status:** Draft for
 director review
+
+*Changes in 0.3.2: task-input and procedure-output collections are
+explicitly unconstrained by the protocol (director ruling 2026-07-05) —
+earlier §1.9 prose implied `ent`-only inputs and outputs; typically they
+are `ent` or `fil`, and only per-deployment link-type
+`allowed_*_collections` declarations may constrain them.*
 
 *Changes in 0.3.1: rollback is durable (UT-2 resolved) — `txn + rollback`
 terminally marks the header `rolled_back` with audit data; commit and
@@ -294,13 +300,16 @@ Two further collections realize the manifesto's process-tracing extension
   per-instance procedure pointer. Task and procedure type declarations
   carry `kind: "task_type"` / `kind: "procedure_type"` discriminators,
   mirroring `link_type`.
-- Task inputs are `ent` objects; the input relationships, the
-  task-fulfilled-by-procedure relationship (recorded on completion), and
-  each output's produced-by relationship are **canonical `lnk` records**.
-  On-root pointers arrive with the planned `links` projection.
+- Task inputs and procedure outputs may be objects of any collection —
+  typically `ent` or `fil`. The protocol does not constrain input or
+  output collections; a deployment may constrain them through link-type
+  `allowed_*_collections` declarations (§1.6). The input relationships,
+  the task-fulfilled-by-procedure relationship (recorded on completion),
+  and each output's produced-by relationship are **canonical `lnk`
+  records**. On-root pointers arrive with the planned `links` projection.
 - The procedure root carries a top-level `output_input` map — the
-  canonical execution provenance: keys are output `ent` IDs; each value
-  maps contributing input `ent` IDs to an open **contribution object**
+  canonical execution provenance: keys are output object IDs; each value
+  maps contributing input object IDs to an open **contribution object**
   (e.g. `{ "volume": 12.5 }` for pooling). Contribution weights live only
   here. The map is hoisted onto the `prc` root top level, parallel to
   `lnk`'s `left`/`right`, and excluded from the inline `properties` bag.

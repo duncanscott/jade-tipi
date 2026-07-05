@@ -21,6 +21,6 @@
     "left_to_right_label": "has_input",
     "right_to_left_label": "input_of",
     "allowed_left_collections": ["tsk"],
-    "allowed_right_collections": ["ent"]
+    "allowed_right_collections": ["ent", "fil"]
   }
 }

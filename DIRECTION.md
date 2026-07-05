@@ -82,19 +82,24 @@ no per-instance procedure pointer. Working proposal, mirroring the
 `link_type` discriminator: task and procedure type declarations in `typ`
 carry `kind: "task_type"` and `kind: "procedure_type"`.
 
-A task's inputs are `ent` objects, represented canonically as `lnk`
-records. When a task is completed, the procedure that fulfilled it is
-recorded as a `lnk` between the task and the `prc` record.
+A task's inputs may be objects of any collection — typically `ent` or
+`fil` — represented canonically as `lnk` records. The protocol does not
+constrain input collections (director ruling 2026-07-05: constraints are
+not baked into JDTP at this juncture); a deployment may constrain them
+through its link-type `allowed_*_collections` declarations. When a task
+is completed, the procedure that fulfilled it is recorded as a `lnk`
+between the task and the `prc` record.
 
-A procedure optionally produces outputs of type `ent`. The procedure root
-carries the canonical execution provenance as a top-level `output_input`
-map (parallel to `lnk`'s top-level `left`/`right`):
+A procedure optionally produces outputs — likewise unconstrained by the
+protocol, typically `ent` or `fil`. The procedure root carries the
+canonical execution provenance as a top-level `output_input` map
+(parallel to `lnk`'s top-level `left`/`right`):
 
 ```json
 {
   "output_input": {
-    "<output ent id>": {
-      "<input ent id>": { "volume": 12.5 }
+    "<output id>": {
+      "<input id>": { "volume": 12.5 }
     }
   }
 }

@@ -523,18 +523,22 @@ hoisted to the top level of the root document — parallel to `lnk`'s
     "type_id": "jade-tipi-org~dev~018fd849-3c10-7111-8a01-161616161616~typ~dna_pooling",
     "name": "pool_run_1",
     "output_input": {
-      "<output ent id>": {
-        "<input ent id>": { "volume": 5.0 }
+      "<output id>": {
+        "<input id>": { "volume": 5.0 }
       }
     }
   }
 }
 ```
 
-`output_input` keys are output `ent` IDs; each value maps the input `ent`
-IDs used to generate that output to an open contribution object (for a
-pooling procedure, typically the contributed volume). Because those keys
-are object IDs rather than snake_case names, `message.schema.json` gives
+`output_input` keys are output object IDs; each value maps the input
+object IDs used to generate that output to an open contribution object
+(for a pooling procedure, typically the contributed volume). Input and
+output collections are not constrained by the protocol (director ruling
+2026-07-05) — inputs and outputs are typically `ent` or `fil` objects; a
+deployment may constrain them through its link-type
+`allowed_*_collections` declarations. Because `output_input` keys are
+object IDs rather than snake_case names, `message.schema.json` gives
 `prc` payloads their own `ProcedureData` branch (mirroring the grp
 `permissions` escape): `output_input` is schema-valid only on `prc`
 messages, and each contribution must be an object. Contribution-object
@@ -542,9 +546,10 @@ schemas will later be supplied by a `vdn` record associated with the
 procedure type; that association is deferred (UT-4).
 
 The coarse relationships are canonical `lnk` records under ordinary
-link types — task inputs (e.g. `task_input`: `tsk` → `ent`), task
-fulfillment recorded on completion (e.g. `fulfills`: `prc` → `tsk`), and
-each output's produced-by pointer (e.g. `produced_by`: `ent` → `prc`).
+link types — task inputs (e.g. `task_input`: `tsk` → `ent` or `fil`),
+task fulfillment recorded on completion (e.g. `fulfills`: `prc` → `tsk`),
+and each output's produced-by pointer (e.g. `produced_by`: `ent` or
+`fil` → `prc`).
 The fine-grained contribution weights live only in the procedure's
 `output_input` map: execution-owned data, not a duplicate of the links.
 Both `prc` and `tsk` roots accept object-targeted property assignments
