@@ -23,7 +23,16 @@ import org.springframework.stereotype.Component
 class MongoDbInitializer implements CommandLineRunner {
 
     private final ReactiveMongoTemplate mongoTemplate
-    private static final String COLLECTION_NAME = "tipi"
+
+    /**
+     * Backend-internal collections that are not part of the wire
+     * {@link Collection} vocabulary. {@code usr} holds local user/identity
+     * records (spec section 1.8); creating it here keeps the collection
+     * visible even when {@code jadetipi.genesis.enabled} is off. The
+     * planned {@code msg} staging collection is deliberately absent until
+     * the txn/msg split is implemented.
+     */
+    private static final List<String> BACKEND_COLLECTIONS = ['usr']
 
     MongoDbInitializer(ReactiveMongoTemplate mongoTemplate) {
         this.mongoTemplate = mongoTemplate
@@ -33,35 +42,27 @@ class MongoDbInitializer implements CommandLineRunner {
     void run(String... args) throws Exception {
         log.info "Initializing MongoDB collections"
 
-        // Create the tipi metadata collection
-        mongoTemplate.collectionExists(COLLECTION_NAME)
-                .flatMap { exists ->
-                    if (!exists) {
-                        log.info "Creating collection '{}'", COLLECTION_NAME
-                        mongoTemplate.createCollection(COLLECTION_NAME)
-                    } else {
-                        log.info "Collection '{}' already exists", COLLECTION_NAME
-                        return mongoTemplate.getCollection(COLLECTION_NAME)
-                    }
-                }
-                .block()
-
-        // Create collections from the Collection enum
         Collection.values().each { collection ->
-            def collectionName = collection.abbreviation
-            mongoTemplate.collectionExists(collectionName)
-                    .flatMap { exists ->
-                        if (!exists) {
-                            log.info "Creating collection '{}'", collectionName
-                            mongoTemplate.createCollection(collectionName)
-                        } else {
-                            log.info "Collection '{}' already exists", collectionName
-                            return mongoTemplate.getCollection(collectionName)
-                        }
-                    }
-                    .block()
+            ensureCollection(collection.abbreviation)
+        }
+        BACKEND_COLLECTIONS.each { collectionName ->
+            ensureCollection(collectionName)
         }
 
         log.info "MongoDB initialization completed"
+    }
+
+    private void ensureCollection(String collectionName) {
+        mongoTemplate.collectionExists(collectionName)
+                .flatMap { exists ->
+                    if (!exists) {
+                        log.info "Creating collection '{}'", collectionName
+                        mongoTemplate.createCollection(collectionName)
+                    } else {
+                        log.info "Collection '{}' already exists", collectionName
+                        return mongoTemplate.getCollection(collectionName)
+                    }
+                }
+                .block()
     }
 }
