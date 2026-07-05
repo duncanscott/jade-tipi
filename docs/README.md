@@ -1,4 +1,4 @@
-# Jade-Tipi: JSON Transparent Data Protocol
+# Jade-Tipi: JSON Data Transparency Protocol
 
 **A Modern Protocol for Managing Metadata at the JGI and Beyond**
 
@@ -8,7 +8,7 @@
 
 Jade-Tipi (JDTP) is designed to be a domain-agnostic, technology-agnostic foundation for any organization needing scalable, FAIR, machine-actionable metadata. By addressing key shortcomings of current FAIR systems, Jade-Tipi provides a frictionless ecosystem where scientific data is easily shared and fully machine-actionable.
 
-The protocol is entirely text-based, using the commonplace JSON format, and is consequently free of any tie-in to particular vendor implementations. The JSON objects that comprise the system are completely transparent to machine actors seeking to ingest and develop insights from the repository.
+The protocol is entirely text-based, using the commonplace JSON format, and is consequently free of any tie-in to particular vendor implementations. The normative protocol contract is maintained in [`jdtp-specification.md`](jdtp-specification.md); this document is the narrative restatement. The JSON objects that comprise the system are completely transparent to machine actors seeking to ingest and develop insights from the repository.
 
 ## Vision
 

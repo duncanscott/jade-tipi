@@ -130,10 +130,19 @@ Next useful slices:
 Goal: keep implementation decisions feeding a protocol document rather than
 remaining only code behavior.
 
+Current state:
+
+- `TASK-047` extracted the ratified contracts into
+  `docs/jdtp-specification.md` (version 0.1.0-draft): identifiers, the
+  root-document contract, types and inheritance, property values, links,
+  groups, users and writer audit, the message vocabulary and lifecycle,
+  idempotency, read models, and an enforcement summary — every section
+  tagged Normative vs Planned.
+
 Next useful slices:
 
-- Extract the accepted root-document contract, transaction envelope, collection
-  vocabulary, and read-model behavior into a specification-oriented document.
+- Keep the specification current with each ratified change; bump its
+  version when a Planned section becomes Normative.
 - Maintain canonical example transactions for `loc`, `lnk`, `ent`, `typ`,
   `ppy`, and `grp`.
 - Keep example IDs and source-system mappings stable enough that reviewers can

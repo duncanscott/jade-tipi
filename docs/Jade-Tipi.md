@@ -1,4 +1,4 @@
-# **Jade-Tipi: JSON Transparent Data Protocol**
+# **Jade-Tipi: JSON Data Transparency Protocol**
 
 **A Modern Protocol for Managing Metadata at the JGI and Beyond**
 

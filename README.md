@@ -13,7 +13,7 @@ Modern labs capture torrents of contextual data, yet that knowledge often hides 
 - **Reuse becomes routine**: machine-actionable JSON descriptions flow into downstream tools, lakehouses, or analytics stacks.
 - **Adaptability is built in**: new data shapes are welcomed without disruptive schema rewrites or vendor lock-in.
 
-These objectives are explored in depth inside `docs/`, especially the living narrative in `docs/Jade-Tipi.md`, the concise restatement in `docs/README.md`, the current snapshot in `docs/OVERVIEW.md`, and the development roadmap in `docs/ROADMAP.md`.
+These objectives are explored in depth inside `docs/`, especially the living narrative in `docs/Jade-Tipi.md`, the normative protocol statement in `docs/jdtp-specification.md`, the concise restatement in `docs/README.md`, the current snapshot in `docs/OVERVIEW.md`, and the development roadmap in `docs/ROADMAP.md`.
 
 ## What You’ll Find Here
 
@@ -31,8 +31,9 @@ Think of the code as a conversation starter: it evolves quickly and exists to de
 If you are new to the project, we recommend this path:
 
 1. Read `docs/Jade-Tipi.md` for the manifesto, terminology, and design motivations.
-2. Skim `docs/README.md`, `docs/OVERVIEW.md`, and `docs/ROADMAP.md` to understand the current scope and development direction of the reference stack.
-3. Explore the services, UI, or clients that align with your interests; each reinforces the same guiding objective of portable, mergeable metadata.
+2. Read `docs/jdtp-specification.md` for the normative protocol contract (identifiers, documents, types, messages, lifecycle), with Normative vs Planned tagging.
+3. Skim `docs/README.md`, `docs/OVERVIEW.md`, and `docs/ROADMAP.md` to understand the current scope and development direction of the reference stack.
+4. Explore the services, UI, or clients that align with your interests; each reinforces the same guiding objective of portable, mergeable metadata.
 
 For hands-on setup instructions, architecture diagrams, and API details, follow the pointers in the documents above. They stay authoritative so this README can remain focused on the “why.”
 
