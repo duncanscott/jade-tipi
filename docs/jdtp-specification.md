@@ -1,7 +1,14 @@
 # JDTP Specification
 
-**Version:** 0.5.0-draft · **Date:** 2026-07-05 · **Status:** Draft for
+**Version:** 0.5.1-draft · **Date:** 2026-07-05 · **Status:** Draft for
 director review
+
+*Changes in 0.5.1: link references gain a warn-only validation layer
+(UT-9 resolved) — `lnk + create` materialization resolves the type, the
+endpoints, `allowed_*_collections`, and `assignable_properties`, warning
+and counting per issue without ever blocking; enforcement stays an open
+director decision. `value_schema` validation recorded as deferred by
+director ruling (schemas follow real data).*
 
 *Changes in 0.5.0: the first lifecycle slice flips from Planned to
 Normative — commit fixes `message_count` on the header, and the
@@ -67,7 +74,7 @@ Procedures and tasks added as Planned.*
 
 JDTP (JSON Data Transparency Protocol) is a technology-agnostic protocol for
 world-mergeable, provenance-preserving scientific metadata. This document is
-the authoritative statement of the protocol as ratified through TASK-056 of
+the authoritative statement of the protocol as ratified through TASK-058 of
 the reference implementation. It stands apart from any one database, queue,
 or search product: the reference implementation currently uses Kafka and
 MongoDB, but those are adapters, not the definition. What is **not** an
@@ -602,9 +609,9 @@ Contracts of note:
 | `prc` `output_input` shape (ID-keyed map; object contributions; `prc`-only) | wire schema | Normative |
 | Type-registration gate for property values (inheritance-aware) | materializer | Normative |
 | Duplicate/conflict semantics (§2.5) | store + materializer | Normative |
-| `value_schema` validation of submitted values | — | Planned (read-time validator) |
+| `value_schema` validation of submitted values | — | Deferred by director ruling (2026-07-05): schemas follow real data; not required before bulk import |
 | `required` property references | — | Deliberately not implemented |
-| Link endpoint/collection resolution | — | Planned |
+| Link endpoint/collection resolution and `assignable_properties` | materializer warning (warn-only; one count per issue) | Normative warn layer; enforcement is an open director decision |
 | Group permissions (read/write, property scope) | — | Planned |
 | Writer persistence (`writer.user_id` + snapshot) | — | Planned |
 

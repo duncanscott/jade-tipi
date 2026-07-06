@@ -185,16 +185,30 @@ membership are all future work.
 
 ## UT-9 — Link endpoints and declared constraints are never validated
 
-**Status: OPEN — reader/validator concern, unscheduled** · **Priority:
+**Status: RESOLVED (TASK-058, 2026-07-05 — warn layer)** · **Priority:
 medium-low**
 
-A `lnk` may reference a nonexistent `type_id`, nonexistent endpoints, or
-endpoint collections the link type forbids; the link type's
-`assignable_properties` list is likewise unenforced. Read views tolerate
-dangling references by design, so the damage is contained but real.
+What was true: a `lnk` could reference a nonexistent `type_id`,
+nonexistent endpoints, or endpoint collections the link type forbids —
+and the link type's `assignable_properties` list was unenforced — all
+silently. Read views tolerate dangling references by design, so the
+damage was contained but invisible.
 
-- Fix shape: semantic resolution at materialization (or a validation
-  pass), sharing machinery with UT-3.
+Resolution (TASK-058): warn-only semantic validation at `lnk + create`
+materialization — the warn rung of the document → warn → enforce ladder
+used for object IDs. The materializer resolves `type_id` (existence and
+`kind: "link_type"`), both endpoints (conformance and existence), the
+type's `allowed_*_collections`, and its `assignable_properties`, logging
+one structured warning and counting `linkValidationWarnings` per issue;
+a warned link always still materializes. Sequential processing means
+declare-before-use references within a transaction resolve; forward
+references warn by design, and the dependency-ordered bulk import
+(director ruling 2026-07-05) satisfies declare-before-use by
+construction.
+
+Explicit residual: enforcement (refusing or skipping invalid links) is a
+future director decision — the final rung of the ladder, to be revisited
+with bulk-import experience.
 
 ## UT-10 — Ingestion is create-only; source changes never propagate
 

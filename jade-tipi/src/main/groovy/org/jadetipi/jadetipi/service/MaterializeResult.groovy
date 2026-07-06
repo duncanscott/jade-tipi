@@ -45,6 +45,14 @@ class MaterializeResult {
     int skippedUnregisteredProperty = 0
 
     /**
+     * Warn-only link-reference issues observed on {@code lnk + create}
+     * messages (UT-9/TASK-058): one count per issue. Deliberately excluded
+     * from {@link #counters()} — a warned link still applies, so warnings
+     * are not terminal apply_state outcomes.
+     */
+    int linkValidationWarnings = 0
+
+    /**
      * Counter values in a fixed order, index-aligned with
      * {@code CommittedTransactionMaterializer.APPLY_STATES} — the projection
      * loop diffs consecutive snapshots of this list to name each message's

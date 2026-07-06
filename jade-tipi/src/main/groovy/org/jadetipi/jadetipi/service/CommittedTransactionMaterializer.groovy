@@ -201,6 +201,10 @@ class CommittedTransactionMaterializer {
     static final String OPERATION_ADD_PROPERTY = 'add_property'
     static final String KIND_DEFINITION = 'definition'
     static final String KIND_ASSIGNMENT = 'assignment'
+    static final String KIND_LINK_TYPE = 'link_type'
+    static final String FIELD_ALLOWED_LEFT_COLLECTIONS = 'allowed_left_collections'
+    static final String FIELD_ALLOWED_RIGHT_COLLECTIONS = 'allowed_right_collections'
+    static final String FIELD_ASSIGNABLE_PROPERTIES = 'assignable_properties'
 
     /** Collections that may receive object-targeted property assignments. */
     static final Set<String> OBJECT_ASSIGNMENT_COLLECTIONS =
@@ -345,8 +349,12 @@ class CommittedTransactionMaterializer {
         }
         warnIfNonconformingObjectId(docId, snapshot, message)
 
+        Mono<Void> linkValidation = COLLECTION_LNK == message.collection
+                ? validateLinkReferences(snapshot, message, data, result)
+                : Mono.<Void>empty()
+
         Map<String, Object> doc = buildDocument(docId, snapshot, message)
-        return mongoTemplate.insert(doc, message.collection)
+        return linkValidation.then(mongoTemplate.insert(doc, message.collection))
                 .doOnSuccess({ Object inserted ->
                     log.info('Materialized {} root: id={}, txnId={}, commitId={}',
                             message.collection, docId, snapshot.txnId, snapshot.commitId)
@@ -810,6 +818,156 @@ class CommittedTransactionMaterializer {
                     '<org>~<grp>~<uuidv7>~<collection>~<suffix>: id={}, collection={}, txnId={}, msgUuid={}',
                     docId, message.collection, snapshot.txnId, message.msgUuid)
         }
+    }
+
+    /**
+     * Warn-only semantic validation for {@code lnk + create} (UT-9/TASK-058)
+     * — the warn rung of the document → warn → enforce ladder; enforcement
+     * remains a future director decision. Checks that {@code type_id}
+     * resolves to a {@code kind: "link_type"} root, that both endpoints
+     * conform and resolve, that endpoint collections respect the type's
+     * {@code allowed_*_collections}, and that link {@code properties} keys
+     * respect the type's {@code assignable_properties}. One warning and one
+     * {@code linkValidationWarnings} count per issue; never blocks. Sequential
+     * processing means same-transaction declare-before-use references
+     * resolve; forward references warn by design.
+     */
+    private Mono<Void> validateLinkReferences(CommittedTransactionSnapshot snapshot,
+                                              CommittedTransactionMessage message,
+                                              Map<String, Object> data,
+                                              MaterializeResult result) {
+        String linkId = data.get(FIELD_DATA_ID) as String
+        String typeId = data.get(FIELD_TYPE_ID) as String
+        String left = data.get(FIELD_LEFT) as String
+        String right = data.get(FIELD_RIGHT) as String
+
+        return Mono.zip(lookupRoot(typeId, COLLECTION_TYP),
+                lookupRoot(left, endpointCollectionSegment(left)),
+                lookupRoot(right, endpointCollectionSegment(right)))
+                .doOnNext { tuple ->
+                    Map typeRoot = tuple.getT1().orElse(null)
+                    checkLinkType(snapshot, message, linkId, typeId, typeRoot, result)
+                    checkEndpoint(snapshot, message, linkId, 'left', left,
+                            tuple.getT2().isPresent(), typeRoot, FIELD_ALLOWED_LEFT_COLLECTIONS, result)
+                    checkEndpoint(snapshot, message, linkId, 'right', right,
+                            tuple.getT3().isPresent(), typeRoot, FIELD_ALLOWED_RIGHT_COLLECTIONS, result)
+                    checkAssignableProperties(snapshot, message, linkId, data, typeRoot, result)
+                }
+                .then() as Mono<Void>
+    }
+
+    /**
+     * Resolve a root by id, tolerating an unresolvable input: a blank id or
+     * null collection resolves {@code Optional.empty()} without a read (the
+     * caller warns on the underlying defect). The null-Mono guard tolerates
+     * partially stubbed test doubles; the production template never returns
+     * null.
+     */
+    private Mono<Optional<Map>> lookupRoot(String id, String collection) {
+        if (id == null || id.trim().isEmpty() || collection == null) {
+            return Mono.just(Optional.<Map>empty())
+        }
+        Mono<Map> lookup = mongoTemplate.findById(id, Map.class, collection)
+        if (lookup == null) {
+            return Mono.just(Optional.<Map>empty())
+        }
+        return lookup.map { Map root -> Optional.of(root) }
+                .defaultIfEmpty(Optional.<Map>empty()) as Mono<Optional<Map>>
+    }
+
+    /** The lookup collection named by a conforming endpoint id, else null. */
+    private static String endpointCollectionSegment(String id) {
+        if (id == null) {
+            return null
+        }
+        String[] segments = id.split('~')
+        if (segments.length != 5) {
+            return null
+        }
+        String segment = segments[3]
+        return ID_COLLECTION_SEGMENTS.contains(segment) ? segment : null
+    }
+
+    private void checkLinkType(CommittedTransactionSnapshot snapshot,
+                               CommittedTransactionMessage message,
+                               String linkId, String typeId, Map typeRoot,
+                               MaterializeResult result) {
+        if (typeId == null || typeId.trim().isEmpty()) {
+            warnLink(snapshot, message, linkId, result,
+                    'link has no type_id', null)
+            return
+        }
+        if (typeRoot == null) {
+            warnLink(snapshot, message, linkId, result,
+                    'link type_id does not resolve to a typ root', typeId)
+            return
+        }
+        Object kind = (typeRoot.get(FIELD_PROPERTIES) as Map)?.get(FIELD_KIND)
+        if (KIND_LINK_TYPE != kind) {
+            warnLink(snapshot, message, linkId, result,
+                    "link type_id resolves to a typ root whose kind is '${kind}', not 'link_type'",
+                    typeId)
+        }
+    }
+
+    private void checkEndpoint(CommittedTransactionSnapshot snapshot,
+                               CommittedTransactionMessage message,
+                               String linkId, String side, String endpointId,
+                               boolean resolved, Map typeRoot, String allowedField,
+                               MaterializeResult result) {
+        if (endpointId == null || endpointId.trim().isEmpty()) {
+            warnLink(snapshot, message, linkId, result,
+                    "link has no ${side} endpoint", null)
+            return
+        }
+        String segment = endpointCollectionSegment(endpointId)
+        if (segment == null) {
+            warnLink(snapshot, message, linkId, result,
+                    "link ${side} endpoint id is nonconforming and cannot be resolved", endpointId)
+            return
+        }
+        if (!resolved) {
+            warnLink(snapshot, message, linkId, result,
+                    "link ${side} endpoint does not resolve to a ${segment} root", endpointId)
+        }
+        Object allowed = (typeRoot?.get(FIELD_PROPERTIES) as Map)?.get(allowedField)
+        if (allowed instanceof List && !((List) allowed).isEmpty()
+                && !((List) allowed).contains(segment)) {
+            warnLink(snapshot, message, linkId, result,
+                    "link ${side} endpoint collection '${segment}' is not in the type's ${allowedField} ${allowed}",
+                    endpointId)
+        }
+    }
+
+    private void checkAssignableProperties(CommittedTransactionSnapshot snapshot,
+                                           CommittedTransactionMessage message,
+                                           String linkId, Map<String, Object> data,
+                                           Map typeRoot, MaterializeResult result) {
+        Object assignable = (typeRoot?.get(FIELD_PROPERTIES) as Map)?.get(FIELD_ASSIGNABLE_PROPERTIES)
+        if (!(assignable instanceof List) || ((List) assignable).isEmpty()) {
+            return
+        }
+        Object linkProperties = data.get(FIELD_PROPERTIES)
+        if (!(linkProperties instanceof Map)) {
+            return
+        }
+        List<String> undeclared = ((Map) linkProperties).keySet()
+                .collect { Object key -> key.toString() }
+                .findAll { String key -> !((List) assignable).contains(key) }
+        if (!undeclared.isEmpty()) {
+            warnLink(snapshot, message, linkId, result,
+                    "link properties ${undeclared} are not in the type's assignable_properties ${assignable}",
+                    null)
+        }
+    }
+
+    private static void warnLink(CommittedTransactionSnapshot snapshot,
+                                 CommittedTransactionMessage message,
+                                 String linkId, MaterializeResult result,
+                                 String issue, String offendingValue) {
+        result.linkValidationWarnings++
+        log.warn('Link validation (warn-only): {}: linkId={}, value={}, txnId={}, msgUuid={}',
+                issue, linkId, offendingValue, snapshot.txnId, message.msgUuid)
     }
 
     private static Map<String, Object> buildDocument(String docId,

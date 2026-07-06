@@ -494,7 +494,7 @@ A concrete `contents` link references the type and the two endpoints, and stores
 }
 ```
 
-The schema accepts this envelope today on the strength of `lnk + create` and the snake_case property-name rule. Semantic checks — that `lnk.type_id` resolves to a committed `typ` record, that `left` and `right` resolve, and that the endpoint collections match the type's `allowed_left_collections` / `allowed_right_collections` — are not enforced by `message.schema.json` and remain a follow-up reader/materializer concern. Property-name values such as `position.label` ("A1") are stored verbatim; the snake_case rule applies to property keys, not to their string values.
+The schema accepts this envelope today on the strength of `lnk + create` and the snake_case property-name rule. Semantic checks are a warn-only materializer layer (UT-9/TASK-058, the warn rung of the document → warn → enforce ladder): at `lnk + create` materialization the type is resolved (existence and `kind: "link_type"`), both endpoints are resolved (conformance and existence, using the ID's collection segment), endpoint collections are checked against the type's `allowed_left_collections` / `allowed_right_collections`, and link `properties` keys are checked against the type's `assignable_properties` — one structured warning and one `linkValidationWarnings` count per issue, never blocking. Declare-before-use references within a transaction resolve (processing is sequential); forward references warn by design. Enforcement remains an open director decision. Property-name values such as `position.label` ("A1") are stored verbatim; the snake_case rule applies to property keys, not to their string values.
 
 ## Procedures And Tasks
 
