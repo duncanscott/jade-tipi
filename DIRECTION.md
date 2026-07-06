@@ -305,6 +305,27 @@ That plain `data.properties` form is first-pass only. The intended follow-on is
 to submit property-value writes as transaction messages, validate them against
 `typ`/`ppy`, and project them onto object documents keyed by `ppy` ID.
 
+## Bulk Import
+
+Ratified 2026-07-05 (full design:
+`docs/architecture/bulk-import-design.md`). The Clarity and ESP CouchDB
+replicas import through two source-specific importers sharing one
+discipline: a **persistent dependency-ordered queue** (an entity's
+dependencies — its producing process, that process's inputs, containers —
+are queued ahead of it, recursively; a MongoDB `import_queue` collection
+with a monotonic sequence). Clarity imports first (it is static and has
+first-class process entities that map directly to `prc`); the
+continuously-replicating esp-entity database imports second. Where the
+same entity appears in both sources, **esp-entity properties take
+precedence** — which requires value-update semantics before a real
+production import (create-only ingestion is first-value-wins today).
+`value_schema` validation is not required before bulk import: schemas are
+easier to establish once real data exists. ESP workflow → procedure
+reconstruction is deferred as its own phase (esp has no process
+entities; inputs/outputs must be inferred from `begat` edges and sample
+sheets). Staged message payloads are deleted after application — no
+archive; an optional output feed can be added later if wanted.
+
 ## Transaction Materialization
 
 Ratified 2026-07-05: materialization is owned by a background worker, not

@@ -1,7 +1,12 @@
 # JDTP Specification
 
-**Version:** 0.5.1-draft · **Date:** 2026-07-05 · **Status:** Draft for
+**Version:** 0.5.2-draft · **Date:** 2026-07-05 · **Status:** Draft for
 director review
+
+*Changes in 0.5.2: the staged-payload question is decided (director
+ruling 2026-07-05) — cleanly-applied staged payloads are deleted, not
+archived, with an optional future output feed if wanted; §2.4 Planned and
+the §5 open-decisions list updated.*
 
 *Changes in 0.5.1: link references gain a warn-only validation layer
 (UT-9 resolved) — `lnk + create` materialization resolves the type, the
@@ -544,9 +549,11 @@ committed-visibility gate keeps them from materializing.
 facts from staging: messages stage in transient `msg`; the header reaches
 an `applied` watermark only when every staged message has a terminal
 outcome (with today's synchronous projection, `materialized_at` plays
-that role); cleanup deletes only cleanly-applied staged messages
-**after** the watermark is durable (skipped/conflicting payloads are
-retained as quarantine). Readers then overlay committed-but-unapplied
+that role); cleanup **deletes** cleanly-applied staged messages **after**
+the watermark is durable — no archiving (director ruling 2026-07-05;
+applied payloads may optionally be emitted to a Kafka topic or other
+output queue if a feed is ever wanted). Skipped/conflicting payloads are
+retained as quarantine. Readers then overlay committed-but-unapplied
 messages over root documents; read-your-own-open-transaction support is
 deferred.
 
@@ -639,9 +646,9 @@ repository state.
 **Open director decisions** (tracked in the drift note): the inline-bag
 endgame; link alignment; whether plate `format`/`rows`/`columns` are
 instance values or type facts; the bulk-import selection strategy; the
-payload-archive question that gates staged-message cleanup; null-user
-envelope handling; file content-identity hoisting and the file dedup
-policy (§1.10).
+null-user envelope handling; file content-identity hoisting and the file
+dedup policy (§1.10). The payload-archive question is decided:
+cleanly-applied staged payloads are deleted, not archived (§2.4).
 
 ---
 

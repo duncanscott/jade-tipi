@@ -1,0 +1,118 @@
+{
+  "_id": "processes_24-35613",
+  "index": 37,
+  "initialized": {
+    "array": [
+      2023,
+      9,
+      17,
+      3,
+      20,
+      52,
+      740
+    ],
+    "date": "2023-10-17T03:20:52.740Z"
+  },
+  "json": {
+    "date-run": "2016-07-16",
+    "field": [
+      {
+        "": "Unknown",
+        "name": "Printer",
+        "type": "String"
+      },
+      {
+        "": "Unknown",
+        "name": "Liquid Handling Instrument",
+        "type": "String"
+      }
+    ],
+    "input-output-map": [
+      {
+        "input": {
+          "limsid": "DES439A6PA1",
+          "post-process-uri": "https://jgi-prd.claritylims.com/api/v2/artifacts/DES439A6PA1?state=54962",
+          "uri": "https://jgi-prd.claritylims.com/api/v2/artifacts/DES439A6PA1?state=54962"
+        },
+        "output": {
+          "limsid": "2-79367",
+          "output-generation-type": "PerInput",
+          "output-type": "Analyte",
+          "uri": "https://jgi-prd.claritylims.com/api/v2/artifacts/2-79367?state=56212"
+        }
+      },
+      {
+        "input": {
+          "limsid": "DES439A6PA1",
+          "post-process-uri": "https://jgi-prd.claritylims.com/api/v2/artifacts/DES439A6PA1?state=54962",
+          "uri": "https://jgi-prd.claritylims.com/api/v2/artifacts/DES439A6PA1?state=54962"
+        },
+        "output": {
+          "limsid": "92-79368",
+          "output-generation-type": "PerAllInputs",
+          "output-type": "ResultFile",
+          "uri": "https://jgi-prd.claritylims.com/api/v2/artifacts/92-79368?state=56213"
+        }
+      },
+      {
+        "input": {
+          "limsid": "DES439A6PA1",
+          "post-process-uri": "https://jgi-prd.claritylims.com/api/v2/artifacts/DES439A6PA1?state=54962",
+          "uri": "https://jgi-prd.claritylims.com/api/v2/artifacts/DES439A6PA1?state=54962"
+        },
+        "output": {
+          "limsid": "92-79369",
+          "output-generation-type": "PerAllInputs",
+          "output-type": "ResultFile",
+          "uri": "https://jgi-prd.claritylims.com/api/v2/artifacts/92-79369?state=56214"
+        }
+      }
+    ],
+    "limsid": "24-35613",
+    "process-parameter": {
+      "name": "RouteToNextWorkflow"
+    },
+    "technician": {
+      "first-name": "Clarity",
+      "last-name": "Migration",
+      "uri": "https://jgi-prd.claritylims.com/api/v2/researchers/104"
+    },
+    "type": {
+      "": "AC Sample Aliquot Creation",
+      "uri": "https://jgi-prd.claritylims.com/api/v2/processtypes/6"
+    },
+    "uri": "https://jgi-prd.claritylims.com/api/v2/processes/24-35613"
+  },
+  "limsid": "24-35613",
+  "path": "processes/24-35613",
+  "start": {
+    "array": [
+      2023,
+      9,
+      17,
+      3,
+      20,
+      53,
+      100
+    ],
+    "date": "2023-10-17T03:20:53.100Z"
+  },
+  "type": {
+    "path": "processes",
+    "rel": "processes"
+  },
+  "update": {
+    "array": [
+      2025,
+      7,
+      2,
+      13,
+      4,
+      15,
+      928
+    ],
+    "date": "2025-08-02T13:04:15.928Z"
+  },
+  "uri": "https://jgi-prd.claritylims.com/api/v2/processes/24-35613",
+  "url": "https://jgi-prd.claritylims.com/api/v2/processes/24-35613"
+}

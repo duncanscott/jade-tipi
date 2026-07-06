@@ -1,0 +1,78 @@
+{
+  "_id": "artifacts_DES439A6PA1",
+  "index": 6118738,
+  "initialized": {
+    "array": [
+      2023,
+      9,
+      26,
+      11,
+      17,
+      25,
+      300
+    ],
+    "date": "2023-10-26T11:17:25.300Z"
+  },
+  "json": {
+    "limsid": "DES439A6PA1",
+    "location": {
+      "container": {
+        "limsid": "27-8528",
+        "uri": "https://jgi-prd.claritylims.com/api/v2/containers/27-8528"
+      },
+      "value": "1:1"
+    },
+    "name": "94209",
+    "output-type": "Analyte",
+    "qc-flag": "UNKNOWN",
+    "reagent-label": {
+      "name": "SOW Item Id - 125510"
+    },
+    "sample": {
+      "limsid": "DES439A6",
+      "uri": "https://jgi-prd.claritylims.com/api/v2/samples/DES439A6"
+    },
+    "type": "Analyte",
+    "uri": "https://jgi-prd.claritylims.com/api/v2/artifacts/DES439A6PA1?state=54962",
+    "workflow-stages": {
+      "workflow-stage": {
+        "name": "AC Sample Aliquot Creation",
+        "status": "COMPLETE",
+        "uri": "https://jgi-prd.claritylims.com/api/v2/configuration/workflows/74/stages/128"
+      }
+    },
+    "working-flag": "true"
+  },
+  "limsid": "DES439A6PA1",
+  "path": "artifacts/DES439A6PA1",
+  "start": {
+    "array": [
+      2023,
+      9,
+      26,
+      11,
+      17,
+      25,
+      535
+    ],
+    "date": "2023-10-26T11:17:25.535Z"
+  },
+  "type": {
+    "path": "artifacts",
+    "rel": "artifacts"
+  },
+  "update": {
+    "array": [
+      2025,
+      6,
+      12,
+      6,
+      28,
+      46,
+      877
+    ],
+    "date": "2025-07-12T06:28:46.877Z"
+  },
+  "uri": "https://jgi-prd.claritylims.com/api/v2/artifacts/DES439A6PA1?state=54962",
+  "url": "https://jgi-prd.claritylims.com/api/v2/artifacts/DES439A6PA1"
+}

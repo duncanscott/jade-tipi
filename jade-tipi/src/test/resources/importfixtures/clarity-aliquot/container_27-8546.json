@@ -1,0 +1,81 @@
+{
+  "_id": "containers_27-8546",
+  "index": 1543598,
+  "initialized": {
+    "array": [
+      2023,
+      9,
+      17,
+      6,
+      30,
+      41,
+      291
+    ],
+    "date": "2023-10-17T06:30:41.291Z"
+  },
+  "json": {
+    "field": [
+      {
+        "": "999.9999999999999",
+        "name": "Final Aliquot Mass (ng)",
+        "type": "Numeric"
+      },
+      {
+        "": "50",
+        "name": "Final Aliquot Volume (uL)",
+        "type": "Numeric"
+      },
+      {
+        "": "Pass",
+        "name": "Lab Result",
+        "type": "String"
+      }
+    ],
+    "limsid": "27-8546",
+    "name": "27-119999",
+    "occupied-wells": "1",
+    "placement": {
+      "limsid": "2-79367",
+      "uri": "https://jgi-prd.claritylims.com/api/v2/artifacts/2-79367",
+      "value": "1:1"
+    },
+    "state": "Populated",
+    "type": {
+      "name": "Tube",
+      "uri": "https://jgi-prd.claritylims.com/api/v2/containertypes/2"
+    },
+    "uri": "https://jgi-prd.claritylims.com/api/v2/containers/27-8546"
+  },
+  "limsid": "27-8546",
+  "path": "containers/27-8546",
+  "start": {
+    "array": [
+      2023,
+      9,
+      17,
+      6,
+      30,
+      41,
+      526
+    ],
+    "date": "2023-10-17T06:30:41.526Z"
+  },
+  "type": {
+    "path": "containers",
+    "rel": "containers"
+  },
+  "update": {
+    "array": [
+      2025,
+      7,
+      4,
+      15,
+      3,
+      32,
+      982
+    ],
+    "date": "2025-08-04T15:03:32.982Z"
+  },
+  "uri": "https://jgi-prd.claritylims.com/api/v2/containers/27-8546",
+  "url": "https://jgi-prd.claritylims.com/api/v2/containers/27-8546"
+}

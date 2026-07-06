@@ -1,0 +1,69 @@
+{
+  "_id": "containers_27-8528",
+  "index": 1543582,
+  "initialized": {
+    "array": [
+      2023,
+      9,
+      17,
+      6,
+      30,
+      22,
+      284
+    ],
+    "date": "2023-10-17T06:30:22.284Z"
+  },
+  "json": {
+    "field": {
+      "": "Human",
+      "name": "Label",
+      "type": "String"
+    },
+    "limsid": "27-8528",
+    "name": "27-119423",
+    "occupied-wells": "1",
+    "placement": {
+      "limsid": "DES439A6PA1",
+      "uri": "https://jgi-prd.claritylims.com/api/v2/artifacts/DES439A6PA1",
+      "value": "1:1"
+    },
+    "state": "Populated",
+    "type": {
+      "name": "Tube",
+      "uri": "https://jgi-prd.claritylims.com/api/v2/containertypes/2"
+    },
+    "uri": "https://jgi-prd.claritylims.com/api/v2/containers/27-8528"
+  },
+  "limsid": "27-8528",
+  "path": "containers/27-8528",
+  "start": {
+    "array": [
+      2023,
+      9,
+      17,
+      6,
+      30,
+      22,
+      518
+    ],
+    "date": "2023-10-17T06:30:22.518Z"
+  },
+  "type": {
+    "path": "containers",
+    "rel": "containers"
+  },
+  "update": {
+    "array": [
+      2025,
+      7,
+      4,
+      14,
+      57,
+      11,
+      829
+    ],
+    "date": "2025-08-04T14:57:11.829Z"
+  },
+  "uri": "https://jgi-prd.claritylims.com/api/v2/containers/27-8528",
+  "url": "https://jgi-prd.claritylims.com/api/v2/containers/27-8528"
+}

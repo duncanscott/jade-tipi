@@ -1,0 +1,109 @@
+{
+  "_id": "artifacts_2-79367",
+  "index": 5504821,
+  "initialized": {
+    "array": [
+      2023,
+      9,
+      25,
+      21,
+      0,
+      32,
+      374
+    ],
+    "date": "2023-10-25T21:00:32.374Z"
+  },
+  "json": {
+    "field": [
+      {
+        "": "0",
+        "name": "Volume (uL)",
+        "type": "Numeric"
+      },
+      {
+        "": "19.999999999999996",
+        "name": "Concentration (ng/uL)",
+        "type": "Numeric"
+      },
+      {
+        "": "999.9999999999999",
+        "name": "Final Aliquot Mass (ng)",
+        "type": "Numeric"
+      },
+      {
+        "": "50",
+        "name": "Final Aliquot Volume (uL)",
+        "type": "Numeric"
+      },
+      {
+        "": "Pass",
+        "name": "Lab Result",
+        "type": "String"
+      }
+    ],
+    "limsid": "2-79367",
+    "location": {
+      "container": {
+        "limsid": "27-8546",
+        "uri": "https://jgi-prd.claritylims.com/api/v2/containers/27-8546"
+      },
+      "value": "1:1"
+    },
+    "name": "aq 94209",
+    "output-type": "Analyte",
+    "parent-process": {
+      "limsid": "24-35613",
+      "uri": "https://jgi-prd.claritylims.com/api/v2/processes/24-35613"
+    },
+    "qc-flag": "PASSED",
+    "reagent-label": {
+      "name": "SOW Item Id - 125510"
+    },
+    "sample": {
+      "limsid": "DES439A6",
+      "uri": "https://jgi-prd.claritylims.com/api/v2/samples/DES439A6"
+    },
+    "type": "Analyte",
+    "uri": "https://jgi-prd.claritylims.com/api/v2/artifacts/2-79367?state=57460",
+    "workflow-stages": {
+      "workflow-stage": {
+        "name": "LC Library Creation",
+        "status": "COMPLETE",
+        "uri": "https://jgi-prd.claritylims.com/api/v2/configuration/workflows/30/stages/172"
+      }
+    },
+    "working-flag": "true"
+  },
+  "limsid": "2-79367",
+  "path": "artifacts/2-79367",
+  "start": {
+    "array": [
+      2023,
+      9,
+      25,
+      21,
+      0,
+      32,
+      620
+    ],
+    "date": "2023-10-25T21:00:32.620Z"
+  },
+  "type": {
+    "path": "artifacts",
+    "rel": "artifacts"
+  },
+  "update": {
+    "array": [
+      2025,
+      5,
+      15,
+      14,
+      57,
+      42,
+      995
+    ],
+    "date": "2025-06-15T14:57:42.995Z"
+  },
+  "uri": "https://jgi-prd.claritylims.com/api/v2/artifacts/2-79367?state=57460",
+  "url": "https://jgi-prd.claritylims.com/api/v2/artifacts/2-79367"
+}

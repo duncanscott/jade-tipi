@@ -1,0 +1,68 @@
+{
+  "_id": "artifacts_92-79369",
+  "index": 5868503,
+  "initialized": {
+    "array": [
+      2023,
+      9,
+      26,
+      5,
+      20,
+      52,
+      907
+    ],
+    "date": "2023-10-26T05:20:52.907Z"
+  },
+  "json": {
+    "limsid": "92-79369",
+    "name": "Upload Aliquot Creation Worksheet",
+    "output-type": "ResultFile",
+    "parent-process": {
+      "limsid": "24-35613",
+      "uri": "https://jgi-prd.claritylims.com/api/v2/processes/24-35613"
+    },
+    "qc-flag": "UNKNOWN",
+    "reagent-label": {
+      "name": "SOW Item Id - 125510"
+    },
+    "sample": {
+      "limsid": "DES439A6",
+      "uri": "https://jgi-prd.claritylims.com/api/v2/samples/DES439A6"
+    },
+    "type": "ResultFile",
+    "uri": "https://jgi-prd.claritylims.com/api/v2/artifacts/92-79369?state=56214",
+    "workflow-stages": ""
+  },
+  "limsid": "92-79369",
+  "path": "artifacts/92-79369",
+  "start": {
+    "array": [
+      2023,
+      9,
+      26,
+      5,
+      20,
+      53,
+      117
+    ],
+    "date": "2023-10-26T05:20:53.117Z"
+  },
+  "type": {
+    "path": "artifacts",
+    "rel": "artifacts"
+  },
+  "update": {
+    "array": [
+      2025,
+      6,
+      1,
+      7,
+      52,
+      41,
+      686
+    ],
+    "date": "2025-07-01T07:52:41.686Z"
+  },
+  "uri": "https://jgi-prd.claritylims.com/api/v2/artifacts/92-79369?state=56214",
+  "url": "https://jgi-prd.claritylims.com/api/v2/artifacts/92-79369"
+}
