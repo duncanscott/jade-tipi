@@ -88,6 +88,7 @@ class TransactionMessagePersistenceService {
     static final String FIELD_RECEIVED_AT = 'received_at'
     static final String FIELD_KAFKA = 'kafka'
     static final String FIELD_LATE_APPEND = 'late_append'
+    static final String FIELD_MESSAGE_COUNT = 'message_count'
 
     static final String RECORD_TYPE_TRANSACTION = 'transaction'
     static final String RECORD_TYPE_MESSAGE = 'message'
@@ -209,21 +210,33 @@ class TransactionMessagePersistenceService {
 
                     String commitId = idGenerator.nextId()
                     Instant now = Instant.now()
-                    Query query = Query.query(Criteria.where('_id').is(txnId)
-                            .and(FIELD_STATE).is(STATE_OPEN))
-                    Update update = new Update()
-                            .set(FIELD_STATE, STATE_COMMITTED)
-                            .set(FIELD_COMMIT_ID, commitId)
-                            .set(FIELD_COMMITTED_AT, now)
-                            .set(FIELD_COMMIT_DATA, message.data())
+                    // The committed set is fixed at commit time: strict partition
+                    // ordering means every pre-commit row is already appended, and
+                    // the late-append guard (TASK-051) flags anything later.
+                    Query messageCountQuery = Query.query(
+                            Criteria.where(FIELD_RECORD_TYPE).is(RECORD_TYPE_MESSAGE)
+                                    .and(FIELD_TXN_ID).is(txnId)
+                                    .and(FIELD_LATE_APPEND).ne(true))
+                    return mongoTemplate.count(messageCountQuery, COLLECTION_NAME)
+                            .flatMap { Long messageCount ->
+                                Query query = Query.query(Criteria.where('_id').is(txnId)
+                                        .and(FIELD_STATE).is(STATE_OPEN))
+                                Update update = new Update()
+                                        .set(FIELD_STATE, STATE_COMMITTED)
+                                        .set(FIELD_COMMIT_ID, commitId)
+                                        .set(FIELD_COMMITTED_AT, now)
+                                        .set(FIELD_COMMIT_DATA, message.data())
+                                        .set(FIELD_MESSAGE_COUNT, messageCount)
 
-                    return mongoTemplate.updateFirst(query, update, COLLECTION_NAME)
-                            .doOnSuccess {
-                                log.info('Transaction committed: txnId={}, commitId={}', txnId, commitId)
-                                materializationWorker.nudge(txnId)
+                                return mongoTemplate.updateFirst(query, update, COLLECTION_NAME)
+                                        .doOnSuccess {
+                                            log.info('Transaction committed: txnId={}, commitId={}, messageCount={}',
+                                                    txnId, commitId, messageCount)
+                                            materializationWorker.nudge(txnId)
+                                        }
+                                        .doOnError { ex -> log.error('Failed to commit transaction: txnId={}', txnId, ex) }
+                                        .thenReturn(PersistResult.COMMITTED)
                             }
-                            .doOnError { ex -> log.error('Failed to commit transaction: txnId={}', txnId, ex) }
-                            .thenReturn(PersistResult.COMMITTED)
                 } as Mono<PersistResult>
     }
 

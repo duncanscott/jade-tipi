@@ -55,6 +55,8 @@ class CommittedTransactionMaterializerProcedureTaskSpec extends Specification {
         mongoTemplate = Mock(ReactiveMongoTemplate)
         readService = Mock(CommittedTransactionReadService)
         materializer = new CommittedTransactionMaterializer(mongoTemplate, readService)
+        // apply_state stamps (TASK-056) write to the txn WAL rows
+        mongoTemplate.updateFirst(_ as Query, _ as Update, 'txn') >> Mono.empty()
     }
 
     private static CommittedTransactionSnapshot snapshot(List<CommittedTransactionMessage> messages) {
@@ -281,7 +283,7 @@ class CommittedTransactionMaterializerProcedureTaskSpec extends Specification {
                 Mono.just(objectRoot(TSK_ID, 'tsk', TYP_TASK))
         mongoTemplate.findById(TYP_TASK, Map.class, 'typ') >>
                 Mono.just(typRoot(TYP_TASK, [name: 'dna_pooling_task', property_refs: [(PPY_NAME): [:]]]))
-        mongoTemplate.updateFirst(_ as Query, _ as Update, _ as String) >> {
+        mongoTemplate.updateFirst(_ as Query, _ as Update, 'tsk') >> {
             Query q, Update u, String coll ->
                 capturedUpdate = u
                 capturedCollection = coll
@@ -310,7 +312,7 @@ class CommittedTransactionMaterializerProcedureTaskSpec extends Specification {
                 Mono.just(objectRoot(PRC_ID, 'prc', TYP_PROCEDURE))
         mongoTemplate.findById(TYP_PROCEDURE, Map.class, 'typ') >>
                 Mono.just(typRoot(TYP_PROCEDURE, [name: 'dna_pooling', property_refs: [(PPY_NAME): [:]]]))
-        mongoTemplate.updateFirst(_ as Query, _ as Update, _ as String) >> {
+        mongoTemplate.updateFirst(_ as Query, _ as Update, 'prc') >> {
             Query q, Update u, String coll ->
                 capturedCollection = coll
                 return Mono.empty()

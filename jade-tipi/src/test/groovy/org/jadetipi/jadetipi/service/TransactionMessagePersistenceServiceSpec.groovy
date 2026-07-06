@@ -284,6 +284,11 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
                 state: 'open'
         ])
         idGenerator.nextId() >> 'COMMIT-001'
+        Query capturedCountQuery = null
+        mongoTemplate.count(_ as Query, COLLECTION) >> { Query q, String _c ->
+            capturedCountQuery = q
+            return Mono.just(2L)
+        }
         Query capturedQuery = null
         Update capturedUpdate = null
         mongoTemplate.updateFirst(_ as Query, _ as Update, COLLECTION) >> { Query q, Update u, String _c ->
@@ -302,6 +307,12 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
         updateObject.get('commit_id') == 'COMMIT-001'
         updateObject.get('commit_data') == [reason: 'done']
         updateObject.containsKey('committed_at')
+
+        and: 'the committed set size is fixed on the header at commit time (TASK-056)'
+        updateObject.get('message_count') == 2L
+        capturedCountQuery.getQueryObject().get('record_type') == 'message'
+        capturedCountQuery.getQueryObject().get('txn_id') == TXN_ID
+        (capturedCountQuery.getQueryObject().get('late_append') as Map).get('$ne') == true
 
         and: 'the transition is guarded on the open state in the update query'
         capturedQuery.getQueryObject().get('_id') == TXN_ID

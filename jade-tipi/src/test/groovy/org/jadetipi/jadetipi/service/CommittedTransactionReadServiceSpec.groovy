@@ -108,6 +108,19 @@ class CommittedTransactionReadServiceSpec extends Specification {
         first.kafka.timestampMs == 1700000000000L
     }
 
+    def 'the snapshot carries the message_count recorded at commit time'() {
+        given:
+        mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just(
+                committedHeader(message_count: 7))
+        mongoTemplate.find(_ as Query, Map.class, COLLECTION) >> Flux.empty()
+
+        when:
+        CommittedTransactionSnapshot snapshot = service.findCommitted(TXN_ID).block()
+
+        then:
+        snapshot.messageCount == 7
+    }
+
     def 'the message query excludes late_append rows from the committed snapshot'() {
         given:
         Query capturedQuery = null

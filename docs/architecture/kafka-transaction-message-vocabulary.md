@@ -127,7 +127,18 @@ the `txn` MongoDB collection:
   never projects — it marks the header and nudges the worker, whose
   periodic sweep over committed-but-unwatermarked headers guarantees
   projection with no dependence on transport redelivery. Commit
-  re-delivery does not trigger projection.
+  re-delivery does not trigger projection. The commit also fixes the
+  committed set's size as `message_count` — the transaction's non-late
+  message rows at commit time (UT-6 guard makes that set immutable;
+  TASK-056).
+- Message rows additionally carry a terminal `apply_state` once a
+  projection pass has processed them (`applied`, `duplicate`,
+  `conflict`, or a `skipped_*` reason, plus `apply_state_at`;
+  TASK-056). The stamp is guarded on the field being absent — the first
+  terminal outcome wins, so idempotent re-runs (whose repeats naturally
+  resolve `duplicate`) cannot overwrite the original truth. Late-append
+  rows are excluded from the snapshot and are therefore never stamped. A
+  `message_count`/snapshot-size mismatch logs a warning.
 - Message record: `_id = txn_id + "~" + msg_uuid`, `record_type = "message"`.
   Each message record stores the submitted envelope, including `collection`, so
   materializers and readers do not have to infer the target collection from

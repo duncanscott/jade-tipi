@@ -43,4 +43,16 @@ class MaterializeResult {
      * {@code properties.property_refs} entry for the property.
      */
     int skippedUnregisteredProperty = 0
+
+    /**
+     * Counter values in a fixed order, index-aligned with
+     * {@code CommittedTransactionMaterializer.APPLY_STATES} — the projection
+     * loop diffs consecutive snapshots of this list to name each message's
+     * terminal {@code apply_state} (TASK-056).
+     */
+    List<Integer> counters() {
+        return [materialized, duplicateMatching, conflictingDuplicate,
+                skippedUnsupported, skippedInvalid, skippedMissingTarget,
+                skippedUnregisteredProperty]
+    }
 }

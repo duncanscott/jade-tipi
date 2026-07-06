@@ -47,6 +47,8 @@ class CommittedTransactionMaterializerFileSpec extends Specification {
         mongoTemplate = Mock(ReactiveMongoTemplate)
         readService = Mock(CommittedTransactionReadService)
         materializer = new CommittedTransactionMaterializer(mongoTemplate, readService)
+        // apply_state stamps (TASK-056) write to the txn WAL rows
+        mongoTemplate.updateFirst(_ as Query, _ as Update, 'txn') >> Mono.empty()
     }
 
     private static CommittedTransactionSnapshot snapshot(List<CommittedTransactionMessage> messages) {
@@ -143,7 +145,7 @@ class CommittedTransactionMaterializerFileSpec extends Specification {
                 properties: [name: 'fastq', property_refs: [(PPY_RETRIEVAL_URL): [:]]],
                 links: [:]
         ] as Map)
-        mongoTemplate.updateFirst(_ as Query, _ as Update, _ as String) >> {
+        mongoTemplate.updateFirst(_ as Query, _ as Update, 'fil') >> {
             Query q, Update u, String coll ->
                 capturedUpdate = u
                 capturedCollection = coll

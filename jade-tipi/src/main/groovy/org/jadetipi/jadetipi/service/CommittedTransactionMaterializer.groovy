@@ -26,6 +26,9 @@ import reactor.core.publisher.Mono
 
 import java.time.Instant
 
+import static org.jadetipi.jadetipi.util.Constants.COLLECTION_TRANSACTIONS
+import static org.jadetipi.jadetipi.util.Constants.TRANSACTION_ID_SEPARATOR
+
 /**
  * Projects committed transaction messages from the {@code txn} write-ahead log
  * into root-shaped long-term MongoDB documents. Reads via
@@ -187,6 +190,14 @@ class CommittedTransactionMaterializer {
     static final String FIELD_OUTPUT_INPUT = 'output_input'
     static final String ENTRY_APPLIED_AT = 'applied_at'
 
+    static final String FIELD_APPLY_STATE = 'apply_state'
+    static final String FIELD_APPLY_STATE_AT = 'apply_state_at'
+    static final String APPLY_STATE_UNKNOWN = 'unknown'
+    /** Terminal apply_state names, index-aligned with {@link MaterializeResult#counters()}. */
+    static final List<String> APPLY_STATES = List.of(
+            'applied', 'duplicate', 'conflict', 'skipped_unsupported',
+            'skipped_invalid', 'skipped_missing_target', 'skipped_unregistered_property')
+
     static final String OPERATION_ADD_PROPERTY = 'add_property'
     static final String KIND_DEFINITION = 'definition'
     static final String KIND_ASSIGNMENT = 'assignment'
@@ -249,11 +260,56 @@ class CommittedTransactionMaterializer {
         }
         MaterializeResult result = new MaterializeResult()
         List<CommittedTransactionMessage> messages = snapshot.messages ?: []
+        if (snapshot.messageCount != null && snapshot.messageCount != messages.size()) {
+            log.warn('Committed snapshot size differs from the message_count recorded at ' +
+                    'commit time — possible tampering or bug: txnId={}, messageCount={}, snapshotSize={}',
+                    snapshot.txnId, snapshot.messageCount, messages.size())
+        }
         return Flux.fromIterable(messages)
                 .concatMap { CommittedTransactionMessage message ->
+                    // Every terminal path increments exactly one counter and
+                    // processing is strictly sequential, so the counter diff
+                    // around one message names its apply_state (TASK-056).
+                    List<Integer> before = result.counters()
                     processMessage(snapshot, message, result)
+                            .then(Mono.defer {
+                                stampApplyState(snapshot, message, applyStateOf(before, result.counters()))
+                            })
                 }
                 .then(Mono.just(result)) as Mono<MaterializeResult>
+    }
+
+    private static String applyStateOf(List<Integer> before, List<Integer> after) {
+        for (int i = 0; i < APPLY_STATES.size(); i++) {
+            if (after[i] > before[i]) {
+                return APPLY_STATES[i]
+            }
+        }
+        return APPLY_STATE_UNKNOWN
+    }
+
+    /**
+     * Stamp the WAL message row with its terminal outcome (TASK-056). The
+     * {@code apply_state}-absent guard makes the FIRST terminal outcome win:
+     * an idempotent re-run, whose repeat naturally resolves {@code duplicate},
+     * cannot overwrite the original truth. A failed stamp fails the pass, so
+     * the header stays unwatermarked and the sweep retries.
+     */
+    private Mono<Void> stampApplyState(CommittedTransactionSnapshot snapshot,
+                                       CommittedTransactionMessage message,
+                                       String applyState) {
+        if (applyState == APPLY_STATE_UNKNOWN) {
+            log.warn('No counter moved for a processed message; apply_state left unstamped: ' +
+                    'txnId={}, msgUuid={}', snapshot.txnId, message.msgUuid)
+            return Mono.empty()
+        }
+        String rowId = "${snapshot.txnId}${TRANSACTION_ID_SEPARATOR}${message.msgUuid}"
+        Query query = Query.query(Criteria.where(FIELD_ID).is(rowId)
+                .and(FIELD_APPLY_STATE).exists(false))
+        Update update = new Update()
+                .set(FIELD_APPLY_STATE, applyState)
+                .set(FIELD_APPLY_STATE_AT, Instant.now())
+        return mongoTemplate.updateFirst(query, update, COLLECTION_TRANSACTIONS).then() as Mono<Void>
     }
 
     private Mono<Void> processMessage(CommittedTransactionSnapshot snapshot,

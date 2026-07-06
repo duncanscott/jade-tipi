@@ -1,7 +1,14 @@
 # JDTP Specification
 
-**Version:** 0.4.3-draft · **Date:** 2026-07-05 · **Status:** Draft for
+**Version:** 0.5.0-draft · **Date:** 2026-07-05 · **Status:** Draft for
 director review
+
+*Changes in 0.5.0: the first lifecycle slice flips from Planned to
+Normative — commit fixes `message_count` on the header, and the
+projection stamps each message row's terminal `apply_state` (first
+outcome wins), making a committed transaction's application auditable
+row by row. The `msg` staging split, cleanup, and overlay reads remain
+Planned.*
 
 *Changes in 0.4.3: HTTP JSON response bodies are snake_case (director
 ruling 2026-07-05) — the read surface carries the same field conventions
@@ -60,7 +67,7 @@ Procedures and tasks added as Planned.*
 
 JDTP (JSON Data Transparency Protocol) is a technology-agnostic protocol for
 world-mergeable, provenance-preserving scientific metadata. This document is
-the authoritative statement of the protocol as ratified through TASK-052 of
+the authoritative statement of the protocol as ratified through TASK-056 of
 the reference implementation. It stands apart from any one database, queue,
 or search product: the reference implementation currently uses Kafka and
 MongoDB, but those are adapters, not the definition. What is **not** an
@@ -509,6 +516,15 @@ projected, with no dependence on transport redelivery. A projection
 failure never un-commits: the header stays unwatermarked and the next
 sweep retries; all projections are idempotent (§2.5). Commit re-delivery
 does not trigger projection.
+Commit also fixes the committed set's size on the header as
+`message_count` — the transaction's non-late message rows at commit time —
+and the projection stamps each row's terminal `apply_state` (`applied`,
+`duplicate`, `conflict`, or a `skipped_*` reason) with `apply_state_at`,
+guarded so the **first** terminal outcome wins: an idempotent re-run,
+whose repeats naturally resolve `duplicate`, cannot overwrite the original
+truth. A mismatch between `message_count` and the committed snapshot's
+size logs a warning (they agree by construction; a difference signals
+tampering or a bug).
 Rollback durably marks the header `rolled_back` with `rolled_back_at` and
 `rollback_data`; a commit arriving after a rollback is **refused** (no
 `commit_id`, no materialization), as is a rollback arriving after a
@@ -517,14 +533,15 @@ additionally guarded on the `open` state at write time. Message rows
 appended before a rollback remain stored as audit; the
 committed-visibility gate keeps them from materializing.
 
-**[Planned]** The ratified lifecycle separates durable facts from staging:
-messages stage in transient `msg`; commit records a `message_count`;
-projection records a per-message `apply_state`; the header reaches an
-`applied` watermark only when every staged message has a terminal outcome;
-cleanup deletes only cleanly-applied staged messages **after** the
-watermark is durable (skipped/conflicting payloads are retained as
-quarantine). Readers then overlay committed-but-unapplied messages over
-root documents; read-your-own-open-transaction support is deferred.
+**[Planned]** The remaining ratified lifecycle work separates durable
+facts from staging: messages stage in transient `msg`; the header reaches
+an `applied` watermark only when every staged message has a terminal
+outcome (with today's synchronous projection, `materialized_at` plays
+that role); cleanup deletes only cleanly-applied staged messages
+**after** the watermark is durable (skipped/conflicting payloads are
+retained as quarantine). Readers then overlay committed-but-unapplied
+messages over root documents; read-your-own-open-transaction support is
+deferred.
 
 ### 2.5 Idempotency and duplicates [Normative]
 

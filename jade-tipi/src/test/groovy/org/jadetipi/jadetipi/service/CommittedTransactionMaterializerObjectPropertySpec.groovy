@@ -51,6 +51,8 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
         mongoTemplate = Mock(ReactiveMongoTemplate)
         readService = Mock(CommittedTransactionReadService)
         materializer = new CommittedTransactionMaterializer(mongoTemplate, readService)
+        // apply_state stamps (TASK-056) write to the txn WAL rows
+        mongoTemplate.updateFirst(_ as Query, _ as Update, 'txn') >> Mono.empty()
     }
 
     private static CommittedTransactionSnapshot snapshot(List<CommittedTransactionMessage> messages) {
@@ -119,7 +121,7 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
                 Mono.just(objectRoot(LOC_PLATE, 'loc', TYP_PLATE96))
         mongoTemplate.findById(TYP_PLATE96, Map.class, 'typ') >>
                 Mono.just(typRoot(TYP_PLATE96, [name: 'plate_96_well', property_refs: [(PPY_BARCODE): [:]]]))
-        mongoTemplate.updateFirst(_ as Query, _ as Update, _ as String) >> {
+        mongoTemplate.updateFirst(_ as Query, _ as Update, 'loc') >> {
             Query q, Update u, String coll ->
                 capturedQuery = q
                 capturedUpdate = u
@@ -165,7 +167,7 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
                 Mono.just(typRoot(TYP_PLATE, [name: 'plate', parent_type_id: TYP_CONTAINER]))
         mongoTemplate.findById(TYP_CONTAINER, Map.class, 'typ') >>
                 Mono.just(typRoot(TYP_CONTAINER, [name: 'container', property_refs: [(PPY_BARCODE): [:]]]))
-        mongoTemplate.updateFirst(_ as Query, _ as Update, _ as String) >> {
+        mongoTemplate.updateFirst(_ as Query, _ as Update, 'loc') >> {
             Query q, Update u, String coll ->
                 capturedUpdate = u
                 return Mono.empty()
@@ -187,7 +189,7 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
                 Mono.just(objectRoot(ENT_SAMPLE, 'ent', TYP_CONTAINER))
         mongoTemplate.findById(TYP_CONTAINER, Map.class, 'typ') >>
                 Mono.just(typRoot(TYP_CONTAINER, [name: 'container', property_refs: [(PPY_BARCODE): [:]]]))
-        mongoTemplate.updateFirst(_ as Query, _ as Update, _ as String) >> {
+        mongoTemplate.updateFirst(_ as Query, _ as Update, 'ent') >> {
             Query q, Update u, String coll ->
                 capturedCollection = coll
                 return Mono.empty()
@@ -218,7 +220,7 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
         then:
         result.skippedUnregisteredProperty == 1
         result.materialized == 0
-        0 * mongoTemplate.updateFirst(*_)
+        0 * mongoTemplate.updateFirst(_, _, !'txn')
     }
 
     def 'skips as unregistered when an ancestor typ root is missing'() {
@@ -235,7 +237,7 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
         then:
         result.skippedUnregisteredProperty == 1
         result.materialized == 0
-        0 * mongoTemplate.updateFirst(*_)
+        0 * mongoTemplate.updateFirst(_, _, !'txn')
     }
 
     def 'terminates and skips as unregistered when the parent chain has a cycle'() {
@@ -316,7 +318,7 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
         then: 'each malformed message is counted and nothing is read or written'
         result.skippedInvalid == 4
         result.materialized == 0
-        0 * mongoTemplate.updateFirst(*_)
+        0 * mongoTemplate.updateFirst(_, _, !'txn')
         0 * mongoTemplate.insert(_, _)
     }
 
@@ -356,7 +358,7 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
         result.duplicateMatching == 1
         result.conflictingDuplicate == 0
         result.materialized == 0
-        0 * mongoTemplate.updateFirst(*_)
+        0 * mongoTemplate.updateFirst(_, _, !'txn')
     }
 
     def 'an existing differing entry is conflicting-duplicate and never overwritten'() {
@@ -381,7 +383,7 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
         result.conflictingDuplicate == 1
         result.duplicateMatching == 0
         result.materialized == 0
-        0 * mongoTemplate.updateFirst(*_)
+        0 * mongoTemplate.updateFirst(_, _, !'txn')
     }
 
     def 'a legacy entity_id-only assignment resolves through the deprecated alias onto the ent root'() {
@@ -392,7 +394,7 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
                 Mono.just(objectRoot(ENT_SAMPLE, 'ent', TYP_CONTAINER))
         mongoTemplate.findById(TYP_CONTAINER, Map.class, 'typ') >>
                 Mono.just(typRoot(TYP_CONTAINER, [name: 'container', property_refs: [(PPY_BARCODE): [:]]]))
-        mongoTemplate.updateFirst(_ as Query, _ as Update, _ as String) >> {
+        mongoTemplate.updateFirst(_ as Query, _ as Update, 'ent') >> {
             Query q, Update u, String coll ->
                 capturedCollection = coll
                 capturedUpdate = u

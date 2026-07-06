@@ -55,6 +55,8 @@ class CommittedTransactionMaterializerSpec extends Specification {
         mongoTemplate = Mock(ReactiveMongoTemplate)
         readService = Mock(CommittedTransactionReadService)
         materializer = new CommittedTransactionMaterializer(mongoTemplate, readService)
+        // apply_state stamps (TASK-056) write to the txn WAL rows
+        mongoTemplate.updateFirst(_ as Query, _ as Update, 'txn') >> Mono.empty()
     }
 
     private static CommittedTransactionSnapshot snapshot(List<CommittedTransactionMessage> messages) {
@@ -623,7 +625,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
         mongoTemplate.findById(ENT_TYPE_ID, Map.class, 'typ') >> Mono.just(existing)
         mongoTemplate.updateFirst(_ as Query,
                 _ as Update,
-                _ as String) >> {
+                'typ') >> {
             Query q,
             Update u,
             String coll ->
@@ -671,7 +673,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
         mongoTemplate.findById(ENT_TYPE_ID, Map.class, 'typ') >> Mono.just(existing)
         mongoTemplate.updateFirst(_ as Query,
                 _ as Update,
-                _ as String) >> { _q, Update u, _c ->
+                'typ') >> { _q, Update u, _c ->
             capturedUpdate = u
             return Mono.empty()
         }
@@ -722,7 +724,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
         result.skippedInvalid == 0
         result.skippedMissingTarget == 0
         0 * mongoTemplate.insert(_, _)
-        0 * mongoTemplate.updateFirst(_, _, _)
+        0 * mongoTemplate.updateFirst(_, _, !'txn')
         0 * mongoTemplate.findById(_, _, _)
 
         where:
@@ -744,7 +746,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
         result.skippedMissingTarget == 1
         result.skippedInvalid == 0
         result.skippedUnsupported == 0
-        0 * mongoTemplate.updateFirst(_, _, _)
+        0 * mongoTemplate.updateFirst(_, _, !'txn')
         0 * mongoTemplate.insert(_, _)
     }
 
@@ -778,7 +780,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
         result.skippedUnsupported == 0
         result.skippedMissingTarget == 0
         result.skippedInvalid == 0
-        0 * mongoTemplate.updateFirst(_, _, _)
+        0 * mongoTemplate.updateFirst(_, _, !'txn')
         0 * mongoTemplate.insert(_, _)
     }
 
@@ -811,7 +813,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
         result.skippedUnsupported == 0
         result.skippedMissingTarget == 0
         result.skippedInvalid == 0
-        0 * mongoTemplate.updateFirst(_, _, _)
+        0 * mongoTemplate.updateFirst(_, _, !'txn')
         0 * mongoTemplate.insert(_, _)
     }
 
@@ -840,7 +842,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
         result.skippedMissingTarget == 0
         result.skippedUnsupported == 0
         0 * mongoTemplate.findById(_, _, _)
-        0 * mongoTemplate.updateFirst(_, _, _)
+        0 * mongoTemplate.updateFirst(_, _, !'txn')
 
         where:
         missingId << [null, '', '   ']
@@ -871,7 +873,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
         result.skippedMissingTarget == 0
         result.skippedUnsupported == 0
         0 * mongoTemplate.findById(_, _, _)
-        0 * mongoTemplate.updateFirst(_, _, _)
+        0 * mongoTemplate.updateFirst(_, _, !'txn')
 
         where:
         missingPropertyId << [null, '', '   ']
@@ -895,7 +897,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
         mongoTemplate.findById(ENT_TYPE_ID, Map.class, 'typ') >> Mono.just(existing)
         mongoTemplate.updateFirst(_ as Query,
                 _ as Update,
-                _ as String) >> { _q, Update u, _c ->
+                'typ') >> { _q, Update u, _c ->
             capturedUpdate = u
             return Mono.empty()
         }
@@ -991,7 +993,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
         result.conflictingDuplicate == 1
 
         and: 'no save, update, or overwrite path is taken'
-        0 * mongoTemplate.updateFirst(_, _, _)
+        0 * mongoTemplate.updateFirst(_, _, !'txn')
         0 * mongoTemplate.save(_, _)
     }
 
@@ -1458,7 +1460,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
         result.conflictingDuplicate == 1
 
         and: 'no save, update, or overwrite path is taken'
-        0 * mongoTemplate.updateFirst(_, _, _)
+        0 * mongoTemplate.updateFirst(_, _, !'txn')
         0 * mongoTemplate.save(_, _)
     }
 
@@ -1640,7 +1642,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
         result.conflictingDuplicate == 1
 
         and: 'no save, update, or overwrite path is taken'
-        0 * mongoTemplate.updateFirst(_, _, _)
+        0 * mongoTemplate.updateFirst(_, _, !'txn')
         0 * mongoTemplate.save(_, _)
     }
 
@@ -1696,7 +1698,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
         result.skippedInvalid == 0
 
         and: 'no second insert or update is attempted'
-        0 * mongoTemplate.updateFirst(_, _, _)
+        0 * mongoTemplate.updateFirst(_, _, !'txn')
         0 * mongoTemplate.save(_, _)
     }
 
@@ -1741,7 +1743,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
         result.skippedInvalid == 0
 
         and: 'no save, update, or overwrite path is taken'
-        0 * mongoTemplate.updateFirst(_, _, _)
+        0 * mongoTemplate.updateFirst(_, _, !'txn')
         0 * mongoTemplate.save(_, _)
     }
 

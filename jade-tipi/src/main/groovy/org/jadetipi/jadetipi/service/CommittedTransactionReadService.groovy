@@ -33,6 +33,7 @@ import static org.jadetipi.jadetipi.service.TransactionMessagePersistenceService
 import static org.jadetipi.jadetipi.service.TransactionMessagePersistenceService.FIELD_DATA
 import static org.jadetipi.jadetipi.service.TransactionMessagePersistenceService.FIELD_KAFKA
 import static org.jadetipi.jadetipi.service.TransactionMessagePersistenceService.FIELD_LATE_APPEND
+import static org.jadetipi.jadetipi.service.TransactionMessagePersistenceService.FIELD_MESSAGE_COUNT
 import static org.jadetipi.jadetipi.service.TransactionMessagePersistenceService.FIELD_MSG_UUID
 import static org.jadetipi.jadetipi.service.TransactionMessagePersistenceService.FIELD_OPENED_AT
 import static org.jadetipi.jadetipi.service.TransactionMessagePersistenceService.FIELD_OPEN_DATA
@@ -140,6 +141,7 @@ class CommittedTransactionReadService {
                 committedAt: toInstant(header.get(FIELD_COMMITTED_AT)),
                 openData: header.get(FIELD_OPEN_DATA) as Map<String, Object>,
                 commitData: header.get(FIELD_COMMIT_DATA) as Map<String, Object>,
+                messageCount: header.get(FIELD_MESSAGE_COUNT) as Integer,
                 messages: messages
         )
     }

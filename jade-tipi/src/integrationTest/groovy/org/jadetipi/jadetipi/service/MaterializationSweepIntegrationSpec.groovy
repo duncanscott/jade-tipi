@@ -92,15 +92,17 @@ class MaterializationSweepIntegrationSpec extends Specification {
         given: 'the crash-between-commit-and-projection state, planted directly in Mongo'
         Instant now = Instant.now()
         Map header = [
-                _id         : txnId,
-                txn_id      : txnId,
-                record_type : 'transaction',
-                state       : 'committed',
-                commit_id   : "SWEEP-ITEST-${txn.uuid()}".toString(),
-                opened_at   : now,
-                committed_at: now,
-                open_data   : [description: 'planted committed transaction, never projected'],
-                commit_data : [summary: 'sweep must pick this up']
+                _id          : txnId,
+                txn_id       : txnId,
+                record_type  : 'transaction',
+                state        : 'committed',
+                commit_id    : "SWEEP-ITEST-${txn.uuid()}".toString(),
+                opened_at    : now,
+                committed_at : now,
+                open_data    : [description: 'planted committed transaction, never projected'],
+                commit_data  : [summary: 'sweep must pick this up'],
+                // non-late rows at commit time (TASK-056); the late row below is excluded
+                message_count: 1
         ] as Map<String, Object>
         String msgUuid = '018fd849-5a01-7111-8a01-515151515151'
         Map locRow = [
@@ -150,8 +152,17 @@ class MaterializationSweepIntegrationSpec extends Specification {
         )
         stamped.state == 'committed'
 
-        and: 'the late_append row never materializes on the sweep path either'
+        and: 'the projected row is stamped with its terminal apply_state (TASK-056)'
+        Map appliedRow = mongoTemplate.findById("${txnId}~${msgUuid}".toString(), Map, TXN_COLLECTION)
+                .block(MONGO_BLOCK_TIMEOUT)
+        appliedRow.apply_state == 'applied'
+        appliedRow.apply_state_at != null
+
+        and: 'the late_append row never materializes on the sweep path either, and is never stamped'
         mongoTemplate.findById(lateLocId, Map, LOC_COLLECTION).block(MONGO_BLOCK_TIMEOUT) == null
+        Map lateRowAfter = mongoTemplate.findById("${txnId}~${lateMsgUuid}".toString(), Map, TXN_COLLECTION)
+                .block(MONGO_BLOCK_TIMEOUT)
+        !lateRowAfter.containsKey('apply_state')
     }
 
     private static <T> T awaitMongo(Supplier<Mono<T>> source,

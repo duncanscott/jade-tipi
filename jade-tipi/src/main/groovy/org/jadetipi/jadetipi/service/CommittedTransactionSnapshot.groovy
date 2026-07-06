@@ -35,5 +35,7 @@ class CommittedTransactionSnapshot {
     Instant committedAt
     Map<String, Object> openData
     Map<String, Object> commitData
+    /** Non-late rows counted at commit time (TASK-056); null on pre-TASK-056 headers. */
+    Integer messageCount
     List<CommittedTransactionMessage> messages
 }

@@ -13,6 +13,8 @@
 package org.jadetipi.jadetipi.service
 
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
+import org.springframework.data.mongodb.core.query.Query
+import org.springframework.data.mongodb.core.query.Update
 import reactor.core.publisher.Mono
 import spock.lang.Specification
 
@@ -66,6 +68,8 @@ class ClarityEspContainerMappingSpec extends Specification {
         mongoTemplate = Mock(ReactiveMongoTemplate)
         readService = Mock(CommittedTransactionReadService)
         materializer = new CommittedTransactionMaterializer(mongoTemplate, readService)
+        // apply_state stamps (TASK-056) write to the txn WAL rows
+        mongoTemplate.updateFirst(_ as Query, _ as Update, 'txn') >> Mono.empty()
         insertsByCollection = [loc: [], typ: [], lnk: []]
         insertOrder = []
         mongoTemplate.insert(_ as Map, _ as String) >> { Map doc, String collection ->

@@ -257,6 +257,13 @@ class LateAppendGuardKafkaIntegrationSpec extends Specification {
                 .block(MONGO_BLOCK_TIMEOUT)
         headerAfter.state == 'committed'
         headerAfter.commit_id == committedHeader.commit_id
+
+        and: 'the commit fixed the committed set size and the applied row is stamped (TASK-056)'
+        headerAfter.message_count == 1
+        Map appliedRow = mongoTemplate.findById("${committedTxnId}~${firstLocMsg.uuid()}".toString(),
+                Map, TXN_COLLECTION).block(MONGO_BLOCK_TIMEOUT)
+        appliedRow.apply_state == 'applied'
+        !lateRow.containsKey('apply_state')
     }
 
     private void send(Message message) {
