@@ -67,11 +67,11 @@ function ValueCell({ value }: { value: Record<string, unknown> }) {
 
 function WellEntryChip({ entry }: { entry: PlateContentsEntry }) {
   const label = entry.entity
-    ? displayName(entry.entity.properties, entry.objectId)
-    : idSuffix(entry.objectId);
+    ? displayName(entry.entity.properties, entry.object_id)
+    : idSuffix(entry.object_id);
   return (
     <span
-      title={entry.objectId}
+      title={entry.object_id}
       style={{
         display: 'inline-block',
         padding: '0.1rem 0.35rem',
@@ -135,8 +135,8 @@ export default function ContainerViewPage() {
         setRoot(rootResult);
         setPlate(plateResult);
         setFlatContents(contentsResult);
-        if (rootResult.typeId) {
-          const typeResult = await getTypeEffectiveProperties(rootResult.typeId, token);
+        if (rootResult.type_id) {
+          const typeResult = await getTypeEffectiveProperties(rootResult.type_id, token);
           if (!cancelled) setTypeInfo(typeResult);
         } else {
           setTypeInfo(null);
@@ -233,25 +233,25 @@ export default function ContainerViewPage() {
     );
   }
 
-  const values = Object.values(root.propertyValues || {});
-  const effectiveProps = typeInfo ? Object.values(typeInfo.effectiveProperties || {}) : [];
-  const isPlate = !!(plate && plate.rowCount && plate.columnCount);
+  const values = Object.values(root.property_values || {});
+  const effectiveProps = typeInfo ? Object.values(typeInfo.effective_properties || {}) : [];
+  const isPlate = !!(plate && plate.row_count && plate.column_count);
   const flatEntries = flatContents?.contents || [];
 
   return (
     <div style={{ padding: '1rem' }}>
       <div style={{ marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border)' }}>
         <h1 style={{ margin: '0 0 0.35rem 0', fontSize: '1.5rem', fontWeight: 600 }}>
-          {displayName(root.properties, root.objectId)}
+          {displayName(root.properties, root.object_id)}
         </h1>
-        <p style={{ ...monoStyle, margin: '0 0 0.35rem 0' }}>{root.objectId}</p>
+        <p style={{ ...monoStyle, margin: '0 0 0.35rem 0' }}>{root.object_id}</p>
         <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--muted)' }}>
           collection <code>{root.collection}</code>
-          {root.typeId && (
+          {root.type_id && (
             <>
               {' · '}type{' '}
-              <span title={root.typeId}>
-                <code>{typeInfo?.typeName || idSuffix(root.typeId)}</code>
+              <span title={root.type_id}>
+                <code>{typeInfo?.type_name || idSuffix(root.type_id)}</code>
               </span>
             </>
           )}
@@ -279,16 +279,16 @@ export default function ContainerViewPage() {
               </thead>
               <tbody>
                 {values.map((entry) => (
-                  <tr key={entry.propertyId}>
+                  <tr key={entry.property_id}>
                     <td style={tdStyle}>
-                      <span title={entry.propertyId}>
-                        {entry.propertyName || idSuffix(entry.propertyId)}
+                      <span title={entry.property_id}>
+                        {entry.property_name || idSuffix(entry.property_id)}
                       </span>
                     </td>
                     <td style={tdStyle}><ValueCell value={entry.value} /></td>
-                    <td style={{ ...tdStyle, ...monoStyle }}>{entry.txnId}</td>
-                    <td style={{ ...tdStyle, ...monoStyle }}>{entry.commitId}</td>
-                    <td style={{ ...tdStyle, ...monoStyle }}>{entry.appliedAt}</td>
+                    <td style={{ ...tdStyle, ...monoStyle }}>{entry.txn_id}</td>
+                    <td style={{ ...tdStyle, ...monoStyle }}>{entry.commit_id}</td>
+                    <td style={{ ...tdStyle, ...monoStyle }}>{entry.applied_at}</td>
                   </tr>
                 ))}
               </tbody>
@@ -297,27 +297,27 @@ export default function ContainerViewPage() {
         )}
       </section>
 
-      {root.typeId && (
+      {root.type_id && (
         <section style={panelStyle} aria-label="Type">
           <h2 style={{ margin: '0 0 0.75rem 0', fontSize: '1.05rem', fontWeight: 600 }}>
             Type
           </h2>
           {!typeInfo && (
             <p style={{ color: 'var(--muted)', margin: 0 }}>
-              Type root not materialized: <span style={monoStyle}>{root.typeId}</span>
+              Type root not materialized: <span style={monoStyle}>{root.type_id}</span>
             </p>
           )}
           {typeInfo && (
             <>
               <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.875rem' }}>
-                {typeInfo.typeChain.map((typeId, index) => (
+                {typeInfo.type_chain.map((typeId, index) => (
                   <span key={typeId} title={typeId}>
                     {index > 0 && <span style={{ color: 'var(--muted)' }}> → </span>}
                     <code>{idSuffix(typeId)}</code>
                   </span>
                 ))}
               </p>
-              {!typeInfo.chainComplete && (
+              {!typeInfo.chain_complete && (
                 <p style={{
                   margin: '0 0 0.75rem 0',
                   padding: '0.5rem 0.75rem',
@@ -346,15 +346,15 @@ export default function ContainerViewPage() {
                     </thead>
                     <tbody>
                       {effectiveProps.map((prop) => (
-                        <tr key={prop.propertyId}>
+                        <tr key={prop.property_id}>
                           <td style={tdStyle}>
-                            <span title={prop.propertyId}>
-                              {prop.propertyName || idSuffix(prop.propertyId)}
+                            <span title={prop.property_id}>
+                              {prop.property_name || idSuffix(prop.property_id)}
                             </span>
                           </td>
                           <td style={tdStyle}>
-                            <span title={prop.sourceTypeId}>
-                              <code>{idSuffix(prop.sourceTypeId)}</code>
+                            <span title={prop.source_type_id}>
+                              <code>{idSuffix(prop.source_type_id)}</code>
                             </span>
                           </td>
                           <td style={tdStyle}><ValueCell value={prop.reference} /></td>
@@ -381,7 +381,7 @@ export default function ContainerViewPage() {
                 <thead>
                   <tr>
                     <th style={{ ...thStyle, borderBottom: 'none' }} />
-                    {plate.columnLabels.map((column) => (
+                    {plate.column_labels.map((column) => (
                       <th key={column} style={{ ...thStyle, textAlign: 'center', borderBottom: 'none' }}>
                         {column}
                       </th>
@@ -389,10 +389,10 @@ export default function ContainerViewPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {plate.rowLabels.map((row) => (
+                  {plate.row_labels.map((row) => (
                     <tr key={row}>
                       <th style={{ ...thStyle, borderBottom: 'none' }}>{row}</th>
-                      {plate.columnLabels.map((column) => {
+                      {plate.column_labels.map((column) => {
                         const well = plate.wells.find(
                           (candidate) => candidate.row === row && candidate.column === column);
                         const occupants = well?.contents || [];
@@ -411,7 +411,7 @@ export default function ContainerViewPage() {
                             }}
                           >
                             {occupants.map((entry) => (
-                              <WellEntryChip key={entry.linkId} entry={entry} />
+                              <WellEntryChip key={entry.link_id} entry={entry} />
                             ))}
                           </td>
                         );
@@ -421,17 +421,17 @@ export default function ContainerViewPage() {
                 </tbody>
               </table>
             </div>
-            {plate.unplacedContents.length > 0 && (
+            {plate.unplaced_contents.length > 0 && (
               <div style={{ marginTop: '0.75rem' }}>
                 <h3 style={{ margin: '0 0 0.4rem 0', fontSize: '0.875rem', color: 'var(--muted)' }}>
                   Unplaced contents
                 </h3>
-                {plate.unplacedContents.map((entry) => (
-                  <p key={entry.linkId} style={{ margin: '0.2rem 0', fontSize: '0.875rem' }}>
+                {plate.unplaced_contents.map((entry) => (
+                  <p key={entry.link_id} style={{ margin: '0.2rem 0', fontSize: '0.875rem' }}>
                     <WellEntryChip entry={entry} />
-                    {entry.unplacedReason && (
+                    {entry.unplaced_reason && (
                       <span style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>
-                        {' '}({entry.unplacedReason})
+                        {' '}({entry.unplaced_reason})
                       </span>
                     )}
                   </p>
@@ -459,16 +459,16 @@ export default function ContainerViewPage() {
                   </thead>
                   <tbody>
                     {flatEntries.map((entry) => {
-                      const isLocation = !!entry.contentLocation;
+                      const isLocation = !!entry.content_location;
                       const label = isLocation
-                        ? displayName(entry.contentLocation?.properties, entry.contentId)
-                        : displayName(entry.contentEntity?.properties, entry.contentId);
+                        ? displayName(entry.content_location?.properties, entry.content_id)
+                        : displayName(entry.content_entity?.properties, entry.content_id);
                       return (
-                        <tr key={entry.linkId}>
+                        <tr key={entry.link_id}>
                           <td style={tdStyle}>
                             {isLocation ? (
                               <Link
-                                href={`/containers/${encodeURIComponent(entry.contentId)}`}
+                                href={`/containers/${encodeURIComponent(entry.content_id)}`}
                                 style={{ color: '#3b82f6' }}
                               >
                                 {label}
@@ -483,7 +483,7 @@ export default function ContainerViewPage() {
                           <td style={tdStyle}>
                             {entry.position ? <ValueCell value={entry.position} /> : '—'}
                           </td>
-                          <td style={{ ...tdStyle, ...monoStyle }}>{entry.contentId}</td>
+                          <td style={{ ...tdStyle, ...monoStyle }}>{entry.content_id}</td>
                         </tr>
                       );
                     })}

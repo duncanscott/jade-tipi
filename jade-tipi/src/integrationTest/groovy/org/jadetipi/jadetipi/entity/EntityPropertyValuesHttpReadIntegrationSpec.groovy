@@ -325,7 +325,7 @@ class EntityPropertyValuesHttpReadIntegrationSpec extends Specification {
                 .block(MONGO_BLOCK_TIMEOUT) == null
 
         when: 'the assigned entity is read through the HTTP route'
-        String valuePath = "\$.propertyValues['${propertyDefinitionId}']"
+        String valuePath = "\$.property_values['${propertyDefinitionId}']"
         WebTestClient.ResponseSpec assignedResponse = webTestClient.get()
                 .uri('/api/entities/{id}/property-values', entityId)
                 .header('Authorization', "Bearer ${token}")
@@ -335,19 +335,19 @@ class EntityPropertyValuesHttpReadIntegrationSpec extends Specification {
         assignedResponse.expectStatus().isOk()
                 .expectHeader().contentType('application/json')
                 .expectBody()
-                .jsonPath('$.objectId').isEqualTo(entityId)
+                .jsonPath('$.object_id').isEqualTo(entityId)
                 .jsonPath('$.collection').isEqualTo('ent')
-                .jsonPath('$.typeId').isEqualTo(entityTypeId)
+                .jsonPath('$.type_id').isEqualTo(entityTypeId)
                 .jsonPath('$.properties.label').isEqualTo('Plate A')
                 .jsonPath('$.provenance.txn_id').isEqualTo(txnId)
-                .jsonPath('$.propertyValues.length()').isEqualTo(1)
-                .jsonPath("${valuePath}.propertyId").isEqualTo(propertyDefinitionId)
-                .jsonPath("${valuePath}.propertyName").isEqualTo('barcode')
+                .jsonPath('$.property_values.length()').isEqualTo(1)
+                .jsonPath("${valuePath}.property_id").isEqualTo(propertyDefinitionId)
+                .jsonPath("${valuePath}.property_name").isEqualTo('barcode')
                 .jsonPath("${valuePath}.value.text").isEqualTo('barcode-1')
-                .jsonPath("${valuePath}.txnId").isEqualTo(txnId)
-                .jsonPath("${valuePath}.commitId").exists()
-                .jsonPath("${valuePath}.msgUuid").isEqualTo(assignmentMsg.uuid())
-                .jsonPath("${valuePath}.appliedAt").exists()
+                .jsonPath("${valuePath}.txn_id").isEqualTo(txnId)
+                .jsonPath("${valuePath}.commit_id").exists()
+                .jsonPath("${valuePath}.msg_uuid").isEqualTo(assignmentMsg.uuid())
+                .jsonPath("${valuePath}.applied_at").exists()
 
         when: 'an existing entity with no assignments is read through the same route'
         WebTestClient.ResponseSpec emptyResponse = webTestClient.get()
@@ -358,9 +358,9 @@ class EntityPropertyValuesHttpReadIntegrationSpec extends Specification {
         then: 'the route returns 200 with an empty propertyValues map'
         emptyResponse.expectStatus().isOk()
                 .expectBody()
-                .jsonPath('$.objectId').isEqualTo(emptyEntityId)
-                .jsonPath('$.propertyValues').exists()
-                .jsonPath('$.propertyValues.length()').isEqualTo(0)
+                .jsonPath('$.object_id').isEqualTo(emptyEntityId)
+                .jsonPath('$.property_values').exists()
+                .jsonPath('$.property_values.length()').isEqualTo(0)
 
         when: 'a never-materialized entity id is read'
         WebTestClient.ResponseSpec missingResponse = webTestClient.get()

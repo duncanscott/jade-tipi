@@ -2,6 +2,11 @@ spring:
   application:
     name: jadetipi
     version: ${version}
+  # HTTP JSON bodies are snake_case (TASK-055, director ruling): API
+  # responses carry the same field conventions as wire messages and
+  # stored root documents. Map payloads pass through verbatim.
+  jackson:
+    property-naming-strategy: SNAKE_CASE
   profiles:
     active: mongodb
   security:

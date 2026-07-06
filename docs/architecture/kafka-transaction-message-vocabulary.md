@@ -709,9 +709,9 @@ assignments for the same entity/property pair are preserved deterministically
 rather than overwritten. Each value entry carries the assignment root `_id`,
 `properties.property_id`, the verbatim object-shaped `properties.value`, and
 `_head.provenance`. The service optionally resolves human-readable
-`propertyName` by joining the referenced `ppy` definition roots where
+`property_name` by joining the referenced `ppy` definition roots where
 `_id in <property_ids>` and `properties.kind == "definition"`, but a dangling
-`property_id` is tolerated and leaves `propertyName == null`.
+`property_id` is tolerated and leaves `property_name == null`.
 Assignment rows with missing or blank `properties.property_id` cannot be keyed
 under `valuesByPropertyId` and are ignored by this reader; the current
 materializer already treats newly submitted assignments with missing or blank
@@ -760,7 +760,7 @@ set, so any present-but-unusable row collapses into `ROW_INVALID`. Placed
 entries carry `unplacedReason == null`.
 
 Each placed or unplaced entry carries the source link id, link type id, raw
-`right` endpoint id as `objectId`, verbatim position object, link provenance,
+`right` endpoint id as `object_id`, verbatim position object, link provenance,
 and optional resolved `entity` record. Missing entity roots are tolerated and
 leave `entity == null`; the link itself remains visible. The HTTP adapter is
 `GET /api/contents/plate/{id}` under the existing `/api/contents` read surface.
@@ -791,7 +791,7 @@ empty service result.
 The HTTP adapter is `GET /api/contents/by-content/{id}/locations` under the
 existing `/api/contents` read surface. The route keeps the same subject id as
 the flat reverse route (`by-content/{id}`) and exposes resolved locations as a
-sub-view. The response is an object with `objectId` and a `locations` list
+sub-view. The response is an object with `object_id` and a `locations` list
 preserving the flat reverse-link service order. Each list entry is a location
 answer, but the link role remains `container`: entries carry the source link
 id, link type id, the raw `left` endpoint id as `containerId`, the verbatim
@@ -826,7 +826,7 @@ location root to exist: a missing `loc` root returns HTTP 404. An existing
 location with no outgoing `contents` links returns HTTP 200 with the subject
 `location` record and `contents: []`.
 
-The response object carries `locationId`, the resolved subject `location`, and
+The response object carries `location_id`, the resolved subject `location`, and
 a `contents` list preserving `ContentsLinkReadService.findContents` order. Each
 entry carries the source link id, link type id, raw `left` endpoint as
 `containerId`, raw `right` endpoint as `contentId`, verbatim
@@ -849,10 +849,10 @@ projected onto this object root?" over the TASK-040 `property_values`
 contract (TASK-041, root-only — no overlay of committed-but-unapplied
 messages yet). It reads one object root by `_id` from a supported collection
 (`ent`, `loc`, `prc`, `tsk`, or `fil`), extracts the `property_values` entries sorted by property
-ID, and resolves human-readable `propertyName` values by joining the
+ID, and resolves human-readable `property_name` values by joining the
 referenced `ppy` definition roots; a dangling `property_id` leaves
-`propertyName == null`. The legacy first-pass inline `properties` bag is
-returned verbatim and deliberately separated from the typed `propertyValues`
+`property_name == null`. The legacy first-pass inline `properties` bag is
+returned verbatim and deliberately separated from the typed `property_values`
 map so both representations are reviewable during the transition. Stale
 tolerance mirrors the accepted readers: a non-map `property_values`
 sub-document or entry is ignored, and a non-map entry `value` surfaces as an
@@ -860,7 +860,7 @@ empty map.
 
 The HTTP adapter is `GET /api/locations/{id}/property-values`, a resource
 read: a missing `loc` root returns 404; an existing root with no projected
-values returns 200 with an empty `propertyValues` map. Since TASK-045 the
+values returns 200 with an empty `property_values` map. Since TASK-045 the
 entity route `GET /api/entities/{id}/property-values` delegates to this same
 generic reader with the fixed `ent` collection and returns the same response
 shape; the transitional entity-only reader over standalone assignment roots
@@ -876,17 +876,24 @@ cycle-safe) and unions `properties.property_refs` across the chain. The
 most-derived registration wins when a property is registered at multiple
 levels; each effective property carries `sourceTypeId` (the type that
 registered it), the verbatim reference metadata, and the resolved
-`propertyName` from the `ppy` definition when present.
+`property_name` from the `ppy` definition when present.
 
 Where the write gate fails closed on a broken chain, this read surfaces the
 partial result for inspection: the response carries the ordered `typeChain`
-(subject first) and `chainComplete: false` when the walk stopped early on a
+(subject first) and `chain_complete: false` when the walk stopped early on a
 missing ancestor, a cycle, or the depth bound.
 
 The HTTP adapter is `GET /api/types/{id}/effective-properties`, a resource
 read: a missing subject `typ` root returns 404.
 
 ## Contents Read Surface Map
+
+Route convention (director preference, recorded 2026-07-05): URL paths
+and query parameters are lowercase, kebab-case where a separator is
+needed (`/property-values`, `/by-container`, `?page=&size=`) — never
+camelCase. JSON *body* field names are a separate convention space
+(snake_case everywhere — wire messages, stored documents, and HTTP
+response bodies alike; TASK-055).
 
 The contents read surface intentionally mixes query-style routes under
 `/api/contents` with resource-style routes under `/api/locations` and
@@ -895,6 +902,7 @@ prove or query:
 
 | View | Route | Subject lookup | Missing or absent subject |
 | --- | --- | --- | --- |
+| Paged location browse | `GET /api/locations?page=&size=` | No subject; pages the `loc` collection by `_id` ASC (size clamped to 1..100) | HTTP 200 with an empty `items` page |
 | Flat forward links | `GET /api/contents/by-container/{id}` | No `loc` lookup; queries `lnk.left` only | HTTP 200 with `[]` |
 | Flat reverse links | `GET /api/contents/by-content/{id}` | No `ent`/`loc` lookup; queries `lnk.right` only | HTTP 200 with `[]` |
 | Resolved reverse locations | `GET /api/contents/by-content/{id}/locations` | No lookup of the content object's own root | HTTP 200 with `locations: []` |

@@ -10,19 +10,19 @@
  *
  * https://jade-tipi.org/license
  */
-package org.jadetipi.jadetipi.config
+package org.jadetipi.jadetipi.service
 
-import org.springframework.context.annotation.Configuration
-import org.springframework.web.reactive.config.EnableWebFlux
+import groovy.transform.Immutable
 
 /**
- * WebFlux configuration.
- *
- * Note: CORS configuration has been consolidated into SecurityConfig to avoid duplication.
- * See SecurityConfig.corsConfigurationSource() for all CORS settings.
+ * One row of the paged location browse (TASK-054): identity plus the
+ * inline {@code name}/{@code description} when present. Discovery only —
+ * the container detail reads own depth.
  */
-@Configuration
-@EnableWebFlux
-class WebConfig {
-    // CORS configuration removed - see SecurityConfig
+@Immutable
+class LocationSummaryRecord {
+    String locationId
+    String typeId
+    String name
+    String description
 }

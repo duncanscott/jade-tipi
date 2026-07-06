@@ -8,47 +8,47 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765';
 
 export interface PropertyValueEntry {
-  propertyId: string;
-  propertyName: string | null;
+  property_id: string;
+  property_name: string | null;
   value: Record<string, unknown>;
-  txnId: string | null;
-  commitId: string | null;
-  msgUuid: string | null;
-  appliedAt: string | null;
+  txn_id: string | null;
+  commit_id: string | null;
+  msg_uuid: string | null;
+  applied_at: string | null;
 }
 
 export interface ObjectPropertyValues {
-  objectId: string;
+  object_id: string;
   collection: string;
-  typeId: string | null;
+  type_id: string | null;
   properties: Record<string, unknown>;
   links: Record<string, unknown>;
   provenance: Record<string, unknown> | null;
-  propertyValues: Record<string, PropertyValueEntry>;
+  property_values: Record<string, PropertyValueEntry>;
 }
 
 export interface TypeEffectiveProperty {
-  propertyId: string;
-  propertyName: string | null;
-  sourceTypeId: string;
+  property_id: string;
+  property_name: string | null;
+  source_type_id: string;
   reference: Record<string, unknown>;
 }
 
 export interface TypeEffectiveProperties {
-  typeId: string;
-  typeName: string | null;
-  typeChain: string[];
-  chainComplete: boolean;
-  effectiveProperties: Record<string, TypeEffectiveProperty>;
+  type_id: string;
+  type_name: string | null;
+  type_chain: string[];
+  chain_complete: boolean;
+  effective_properties: Record<string, TypeEffectiveProperty>;
 }
 
 export interface PlateContentsEntry {
-  linkId: string;
-  typeId: string | null;
-  objectId: string;
+  link_id: string;
+  type_id: string | null;
+  object_id: string;
   position: Record<string, unknown> | null;
-  unplacedReason: string | null;
-  linkProvenance: Record<string, unknown> | null;
+  unplaced_reason: string | null;
+  link_provenance: Record<string, unknown> | null;
   entity: ObjectPropertyValues | null;
 }
 
@@ -60,38 +60,52 @@ export interface PlateContentsWell {
 }
 
 export interface PlateContents {
-  containerId: string;
-  rowCount: number | null;
-  columnCount: number | null;
-  rowLabels: string[];
-  columnLabels: number[];
+  container_id: string;
+  row_count: number | null;
+  column_count: number | null;
+  row_labels: string[];
+  column_labels: number[];
   wells: PlateContentsWell[];
-  unplacedContents: PlateContentsEntry[];
+  unplaced_contents: PlateContentsEntry[];
 }
 
 export interface LocationRoot {
-  locationId: string;
-  typeId: string | null;
+  location_id: string;
+  type_id: string | null;
   properties: Record<string, unknown>;
   links: Record<string, unknown>;
   provenance: Record<string, unknown> | null;
 }
 
 export interface LocationContentsEntry {
-  linkId: string;
-  typeId: string | null;
-  containerId: string;
-  contentId: string;
+  link_id: string;
+  type_id: string | null;
+  container_id: string;
+  content_id: string;
   position: Record<string, unknown> | null;
-  linkProvenance: Record<string, unknown> | null;
-  contentLocation: LocationRoot | null;
-  contentEntity: ObjectPropertyValues | null;
+  link_provenance: Record<string, unknown> | null;
+  content_location: LocationRoot | null;
+  content_entity: ObjectPropertyValues | null;
 }
 
 export interface LocationContents {
-  locationId: string;
+  location_id: string;
   location: LocationRoot | null;
   contents: LocationContentsEntry[];
+}
+
+export interface LocationSummary {
+  location_id: string;
+  type_id: string | null;
+  name: string | null;
+  description: string | null;
+}
+
+export interface LocationBrowsePage {
+  items: LocationSummary[];
+  page: number;
+  size: number;
+  total: number;
 }
 
 async function getOrNull<T>(path: string, accessToken: string): Promise<T | null> {
@@ -135,6 +149,17 @@ export function getPlateContents(id: string, accessToken: string) {
 export function getLocationContents(id: string, accessToken: string) {
   return getOrNull<LocationContents>(
     `/api/locations/${encodeURIComponent(id)}/contents`, accessToken);
+}
+
+/** Query read: always a page envelope, never 404 (empty collection = empty page). */
+export async function listLocations(page: number, size: number,
+                                    accessToken: string): Promise<LocationBrowsePage> {
+  const result = await getOrNull<LocationBrowsePage>(
+    `/api/locations?page=${page}&size=${size}`, accessToken);
+  if (!result) {
+    throw new Error('Location browse unexpectedly returned 404');
+  }
+  return result;
 }
 
 /** Human-facing label: the inline name when present, else the ID suffix. */

@@ -1,7 +1,15 @@
 # JDTP Specification
 
-**Version:** 0.4.1-draft · **Date:** 2026-07-05 · **Status:** Draft for
+**Version:** 0.4.3-draft · **Date:** 2026-07-05 · **Status:** Draft for
 director review
+
+*Changes in 0.4.3: HTTP JSON response bodies are snake_case (director
+ruling 2026-07-05) — the read surface carries the same field conventions
+as wire messages and stored root documents, applying the document-state
+principle end to end. URLs remain lowercase/kebab-case.*
+
+*Changes in 0.4.2: §3 query reads gain the paged location browse
+(discovery over materialized `loc` roots).*
 
 *Changes in 0.4.1: recorded the director-ratified document-state
 principle — the JSON document structures are normative protocol surface
@@ -223,7 +231,7 @@ assignable to an object when it is registered on the object's own type or
 on any ancestor reached through the `parent_type_id` chain. Resolution is
 bounded (depth 10) and cycle-safe; on the write path an unresolvable chain
 fails closed (the assignment is not applied), while the read path surfaces
-the partial chain with `chainComplete: false` so a broken hierarchy is
+the partial chain with `chain_complete: false` so a broken hierarchy is
 inspectable.
 
 **Link types** are `typ` records with `kind: "link_type"`, declaring
@@ -546,21 +554,22 @@ and add no hidden semantics. Two route styles are deliberate:
   missing: object property values (`ent`, `loc`, `prc`, `tsk`, and `fil`
   via one generic contract), effective type properties, resolved location
   contents.
-- **Query reads** over link rows answer 200 with empty results and cannot
-  prove the subject exists: flat contents by container/content, the
-  plate-shaped grid view.
+- **Query reads** answer 200 with empty results and cannot prove a
+  subject exists: flat contents by container/content, the plate-shaped
+  grid view, and the paged location browse (discovery over materialized
+  `loc` roots; summaries only — depth belongs to the resource reads).
 
 Contracts of note:
 
 - **Object property values:** the root's identity, `type_id`, the inline
-  `properties` bag (clearly separated), and `propertyValues` keyed by `ppy`
+  `properties` bag (clearly separated), and `property_values` keyed by `ppy`
   ID with value, provenance, and the resolved property name (null when the
   definition is missing). Stale or malformed stored entries are tolerated,
   never fatal.
 - **Effective type properties:** the union of property references across
   the subject type and its ancestors (most-derived registration wins),
   each attributed to the registering type, with the ordered type chain and
-  `chainComplete: false` on a broken chain.
+  `chain_complete: false` on a broken chain.
 - **Contents views** resolve the `contents` link type by its declared
   `kind`/`name`, not by ID, so independently minted `contents` declarations
   coexist.
