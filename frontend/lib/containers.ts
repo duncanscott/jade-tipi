@@ -108,6 +108,20 @@ export interface LocationBrowsePage {
   total: number;
 }
 
+export interface ObjectLocationEntry {
+  link_id: string;
+  type_id: string | null;
+  container_id: string;
+  position: Record<string, unknown> | null;
+  link_provenance: Record<string, unknown> | null;
+  container: LocationRoot | null;
+}
+
+export interface ObjectLocations {
+  object_id: string;
+  locations: ObjectLocationEntry[];
+}
+
 async function getOrNull<T>(path: string, accessToken: string): Promise<T | null> {
   if (!accessToken) {
     throw new Error('Request requires a Keycloak access token');
@@ -149,6 +163,17 @@ export function getPlateContents(id: string, accessToken: string) {
 export function getLocationContents(id: string, accessToken: string) {
   return getOrNull<LocationContents>(
     `/api/locations/${encodeURIComponent(id)}/contents`, accessToken);
+}
+
+/** Query read: always 200; an unknown object simply has no locations. */
+export async function getObjectLocations(id: string,
+                                         accessToken: string): Promise<ObjectLocations> {
+  const result = await getOrNull<ObjectLocations>(
+    `/api/contents/by-content/${encodeURIComponent(id)}/locations`, accessToken);
+  if (!result) {
+    throw new Error('Object locations unexpectedly returned 404');
+  }
+  return result;
 }
 
 /** Query read: always a page envelope, never 404 (empty collection = empty page). */

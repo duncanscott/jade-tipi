@@ -8,14 +8,11 @@ import AuthButton from '@/components/AuthButton';
 import {
   ObjectPropertyValues,
   TypeEffectiveProperties,
-  PlateContents,
-  PlateContentsEntry,
-  LocationContents,
+  ObjectLocations,
   displayName,
-  getLocationPropertyValues,
+  getEntityPropertyValues,
   getTypeEffectiveProperties,
-  getPlateContents,
-  getLocationContents,
+  getObjectLocations,
 } from '@/lib/containers';
 
 const panelStyle: React.CSSProperties = {
@@ -65,54 +62,23 @@ function ValueCell({ value }: { value: Record<string, unknown> }) {
   );
 }
 
-function WellEntryChip({ entry }: { entry: PlateContentsEntry }) {
-  const label = entry.entity
-    ? displayName(entry.entity.properties, entry.object_id)
-    : idSuffix(entry.object_id);
-  return (
-    <Link
-      href={`/objects/${encodeURIComponent(entry.object_id)}`}
-      title={entry.object_id}
-      style={{
-        display: 'inline-block',
-        padding: '0.1rem 0.35rem',
-        margin: '0.1rem',
-        background: 'rgba(59, 130, 246, 0.12)',
-        border: '1px solid rgba(59, 130, 246, 0.4)',
-        borderRadius: '0.35rem',
-        fontSize: '0.7rem',
-        color: 'var(--text)',
-        maxWidth: '9rem',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-        verticalAlign: 'middle',
-        textDecoration: 'none',
-      }}
-    >
-      {label}
-    </Link>
-  );
-}
-
-export default function ContainerViewPage() {
+export default function ObjectViewPage() {
   const params = useParams();
   const router = useRouter();
   const { data: session, status: authStatus } = useSession();
   const accessToken = session?.accessToken;
 
-  const containerId = decodeURIComponent(params.id as string);
+  const objectId = decodeURIComponent(params.id as string);
 
   const [root, setRoot] = useState<ObjectPropertyValues | null>(null);
   const [typeInfo, setTypeInfo] = useState<TypeEffectiveProperties | null>(null);
-  const [plate, setPlate] = useState<PlateContents | null>(null);
-  const [flatContents, setFlatContents] = useState<LocationContents | null>(null);
+  const [objectLocations, setObjectLocations] = useState<ObjectLocations | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!containerId || !accessToken) return;
+    if (!objectId || !accessToken) return;
 
     let cancelled = false;
     async function load() {
@@ -121,22 +87,19 @@ export default function ContainerViewPage() {
         setError(null);
         setNotFound(false);
         const token = accessToken as string;
-        const [rootResult, plateResult, contentsResult] = await Promise.all([
-          getLocationPropertyValues(containerId, token),
-          getPlateContents(containerId, token),
-          getLocationContents(containerId, token),
+        const [rootResult, locationsResult] = await Promise.all([
+          getEntityPropertyValues(objectId, token),
+          getObjectLocations(objectId, token),
         ]);
         if (cancelled) return;
         if (!rootResult) {
           setNotFound(true);
           setRoot(null);
-          setPlate(null);
-          setFlatContents(null);
+          setObjectLocations(null);
           return;
         }
         setRoot(rootResult);
-        setPlate(plateResult);
-        setFlatContents(contentsResult);
+        setObjectLocations(locationsResult);
         if (rootResult.type_id) {
           const typeResult = await getTypeEffectiveProperties(rootResult.type_id, token);
           if (!cancelled) setTypeInfo(typeResult);
@@ -145,7 +108,7 @@ export default function ContainerViewPage() {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load container');
+          setError(err instanceof Error ? err.message : 'Failed to load object');
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -153,7 +116,7 @@ export default function ContainerViewPage() {
     }
     load();
     return () => { cancelled = true; };
-  }, [containerId, accessToken]);
+  }, [objectId, accessToken]);
 
   if (authStatus === 'loading') {
     return (
@@ -167,10 +130,10 @@ export default function ContainerViewPage() {
     return (
       <div style={{ padding: '1rem', textAlign: 'center' }}>
         <h1 style={{ fontSize: '1.75rem', fontWeight: 600, marginBottom: '1rem' }}>
-          Sign in to view containers
+          Sign in to view objects
         </h1>
         <p style={{ color: 'var(--muted)', marginBottom: '1.5rem' }}>
-          Authenticate with Keycloak to inspect materialized containers and their contents.
+          Authenticate with Keycloak to inspect materialized objects.
         </p>
         <AuthButton />
       </div>
@@ -180,7 +143,7 @@ export default function ContainerViewPage() {
   if (loading) {
     return (
       <div style={{ padding: '1rem' }}>
-        <p style={{ color: 'var(--muted)' }}>Loading container...</p>
+        <p style={{ color: 'var(--muted)' }}>Loading object...</p>
       </div>
     );
   }
@@ -211,12 +174,12 @@ export default function ContainerViewPage() {
     return (
       <div style={{ padding: '1rem' }}>
         <h1 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.5rem' }}>
-          Container not materialized
+          Object not materialized
         </h1>
         <p style={{ color: 'var(--muted)' }}>
-          No <code>loc</code> root exists for
+          No <code>ent</code> root exists for
         </p>
-        <p style={monoStyle}>{containerId}</p>
+        <p style={monoStyle}>{objectId}</p>
         <button
           onClick={() => router.push('/containers')}
           style={{
@@ -237,8 +200,7 @@ export default function ContainerViewPage() {
 
   const values = Object.values(root.property_values || {});
   const effectiveProps = typeInfo ? Object.values(typeInfo.effective_properties || {}) : [];
-  const isPlate = !!(plate && plate.row_count && plate.column_count);
-  const flatEntries = flatContents?.contents || [];
+  const locations = objectLocations?.locations || [];
 
   return (
     <div style={{ padding: '1rem' }}>
@@ -371,127 +333,45 @@ export default function ContainerViewPage() {
         </section>
       )}
 
-      <section style={panelStyle} aria-label="Contents">
+      <section style={panelStyle} aria-label="Located in">
         <h2 style={{ margin: '0 0 0.75rem 0', fontSize: '1.05rem', fontWeight: 600 }}>
-          Contents
+          Located in
         </h2>
-
-        {isPlate && plate && (
-          <>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr>
-                    <th style={{ ...thStyle, borderBottom: 'none' }} />
-                    {plate.column_labels.map((column) => (
-                      <th key={column} style={{ ...thStyle, textAlign: 'center', borderBottom: 'none' }}>
-                        {column}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {plate.row_labels.map((row) => (
-                    <tr key={row}>
-                      <th style={{ ...thStyle, borderBottom: 'none' }}>{row}</th>
-                      {plate.column_labels.map((column) => {
-                        const well = plate.wells.find(
-                          (candidate) => candidate.row === row && candidate.column === column);
-                        const occupants = well?.contents || [];
-                        return (
-                          <td
-                            key={`${row}${column}`}
-                            style={{
-                              border: '1px solid var(--border)',
-                              minWidth: '4.5rem',
-                              height: '2.6rem',
-                              padding: '0.15rem',
-                              textAlign: 'center',
-                              background: occupants.length > 0
-                                ? 'rgba(59, 130, 246, 0.05)'
-                                : 'transparent',
-                            }}
-                          >
-                            {occupants.map((entry) => (
-                              <WellEntryChip key={entry.link_id} entry={entry} />
-                            ))}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {plate.unplaced_contents.length > 0 && (
-              <div style={{ marginTop: '0.75rem' }}>
-                <h3 style={{ margin: '0 0 0.4rem 0', fontSize: '0.875rem', color: 'var(--muted)' }}>
-                  Unplaced contents
-                </h3>
-                {plate.unplaced_contents.map((entry) => (
-                  <p key={entry.link_id} style={{ margin: '0.2rem 0', fontSize: '0.875rem' }}>
-                    <WellEntryChip entry={entry} />
-                    {entry.unplaced_reason && (
-                      <span style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>
-                        {' '}({entry.unplaced_reason})
-                      </span>
-                    )}
-                  </p>
-                ))}
-              </div>
-            )}
-          </>
+        {locations.length === 0 && (
+          <p style={{ color: 'var(--muted)', margin: 0 }}>No containment links.</p>
         )}
-
-        {!isPlate && (
-          <>
-            {flatEntries.length === 0 && (
-              <p style={{ color: 'var(--muted)', margin: 0 }}>No contents.</p>
-            )}
-            {flatEntries.length > 0 && (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr>
-                      <th style={thStyle}>Content</th>
-                      <th style={thStyle}>Kind</th>
-                      <th style={thStyle}>Position</th>
-                      <th style={thStyle}>ID</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {flatEntries.map((entry) => {
-                      const isLocation = !!entry.content_location;
-                      const label = isLocation
-                        ? displayName(entry.content_location?.properties, entry.content_id)
-                        : displayName(entry.content_entity?.properties, entry.content_id);
-                      return (
-                        <tr key={entry.link_id}>
-                          <td style={tdStyle}>
-                            <Link
-                              href={isLocation
-                                ? `/containers/${encodeURIComponent(entry.content_id)}`
-                                : `/objects/${encodeURIComponent(entry.content_id)}`}
-                              style={{ color: '#3b82f6' }}
-                            >
-                              {label}
-                            </Link>
-                          </td>
-                          <td style={tdStyle}>
-                            <code>{isLocation ? 'loc' : 'ent'}</code>
-                          </td>
-                          <td style={tdStyle}>
-                            {entry.position ? <ValueCell value={entry.position} /> : '—'}
-                          </td>
-                          <td style={{ ...tdStyle, ...monoStyle }}>{entry.content_id}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
+        {locations.length > 0 && (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Container</th>
+                  <th style={thStyle}>Position</th>
+                  <th style={thStyle}>ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {locations.map((entry) => (
+                  <tr key={entry.link_id}>
+                    <td style={tdStyle}>
+                      <Link
+                        href={`/containers/${encodeURIComponent(entry.container_id)}`}
+                        style={{ color: '#3b82f6' }}
+                      >
+                        {entry.container
+                          ? displayName(entry.container.properties, entry.container_id)
+                          : idSuffix(entry.container_id)}
+                      </Link>
+                    </td>
+                    <td style={tdStyle}>
+                      {entry.position ? <ValueCell value={entry.position} /> : '—'}
+                    </td>
+                    <td style={{ ...tdStyle, ...monoStyle }}>{entry.container_id}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </div>
