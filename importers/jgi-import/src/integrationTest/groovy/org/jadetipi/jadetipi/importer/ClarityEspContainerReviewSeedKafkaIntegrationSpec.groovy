@@ -10,7 +10,7 @@
  *
  * https://jade-tipi.org/license
  */
-package org.jadetipi.jadetipi.kafka
+package org.jadetipi.jadetipi.importer
 
 import groovy.util.logging.Slf4j
 import org.apache.kafka.clients.admin.AdminClient
@@ -29,6 +29,7 @@ import org.jadetipi.dto.message.Collection as JtpCollection
 import org.jadetipi.dto.message.Message
 import org.jadetipi.dto.util.JsonMapper
 import org.springframework.beans.factory.annotation.Autowired
+import org.jadetipi.jadetipi.JadetipiApplication
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
@@ -97,7 +98,7 @@ import java.util.regex.Pattern
  * start with {@code jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e501}.
  */
 @Slf4j
-@SpringBootTest
+@SpringBootTest(classes = JadetipiApplication)
 @ActiveProfiles('test')
 @IgnoreIf({ !ClarityEspContainerReviewSeedKafkaIntegrationSpec.reviewSeedGateOpen() })
 class ClarityEspContainerReviewSeedKafkaIntegrationSpec extends Specification {

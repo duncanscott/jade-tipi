@@ -29,6 +29,7 @@ import org.jadetipi.dto.message.Collection as JtpCollection
 import org.jadetipi.dto.message.Message
 import org.jadetipi.dto.util.JsonMapper
 import org.springframework.beans.factory.annotation.Autowired
+import org.jadetipi.jadetipi.JadetipiApplication
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
@@ -69,7 +70,7 @@ import java.util.function.Supplier
  * </pre>
  */
 @Slf4j
-@SpringBootTest
+@SpringBootTest(classes = JadetipiApplication)
 @ActiveProfiles('test')
 @IgnoreIf({ !ClarityAliquotImportKafkaIntegrationSpec.integrationGateOpen() })
 class ClarityAliquotImportKafkaIntegrationSpec extends Specification {

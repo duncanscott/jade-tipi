@@ -308,9 +308,11 @@ to submit property-value writes as transaction messages, validate them against
 ## Bulk Import
 
 Ratified 2026-07-05 (full design:
-`docs/architecture/bulk-import-design.md`). The Clarity and ESP CouchDB
-replicas import through two source-specific importers sharing one
-discipline: a **persistent dependency-ordered queue** (an entity's
+`importers/jgi-import/docs/bulk-import-design.md`). The importer code is
+JGI-internal and lives in the excisable `importers/jgi-import` module —
+it is not shared if the project is shared (see `docs/sharing.md`). The
+Clarity and ESP CouchDB replicas import through two source-specific
+importers sharing one discipline: a **persistent dependency-ordered queue** (an entity's
 dependencies — its producing process, that process's inputs, containers —
 are queued ahead of it, recursively; a MongoDB `import_queue` collection
 with a monotonic sequence). Clarity imports first (it is static and has

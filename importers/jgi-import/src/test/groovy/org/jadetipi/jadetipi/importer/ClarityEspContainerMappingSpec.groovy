@@ -10,8 +10,13 @@
  *
  * https://jade-tipi.org/license
  */
-package org.jadetipi.jadetipi.service
+package org.jadetipi.jadetipi.importer
 
+import org.jadetipi.jadetipi.service.CommittedTransactionMaterializer
+import org.jadetipi.jadetipi.service.CommittedTransactionReadService
+import org.jadetipi.jadetipi.service.CommittedTransactionSnapshot
+import org.jadetipi.jadetipi.service.CommittedTransactionMessage
+import org.jadetipi.jadetipi.service.MaterializeResult
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.data.mongodb.core.query.Query
 import org.springframework.data.mongodb.core.query.Update
