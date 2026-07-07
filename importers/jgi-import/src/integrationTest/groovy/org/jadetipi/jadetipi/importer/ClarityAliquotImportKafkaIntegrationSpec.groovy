@@ -157,6 +157,8 @@ class ClarityAliquotImportKafkaIntegrationSpec extends Specification {
     ClarityImportDriver driver
     @Autowired
     ImportMessagePublisher publisher
+    @Autowired
+    CouchDbDocumentReader reader
 
     Map<String, String> minted = [:]
     List<String> driveTxnIds = []
@@ -198,7 +200,9 @@ class ClarityAliquotImportKafkaIntegrationSpec extends Specification {
     /** Every queue key the fixture process's plan produces. */
     private static List<String> planKeys() {
         return ClarityAliquotImportMapper.BOOTSTRAP_KEYS +
+                [ClarityAliquotImportMapper.KEY_TYPE_PROCEDURE_AC] +
                 ['containers_27-8528', 'containers_27-8546'].collect { it } +
+                ['samples_DES439A6'] +
                 ['artifacts_DES439A6PA1', 'artifacts_2-79367',
                  'artifacts_92-79368', 'artifacts_92-79369'] +
                 [PROCESS_DOC_ID]
@@ -211,8 +215,8 @@ class ClarityAliquotImportKafkaIntegrationSpec extends Specification {
                 .collectList().block(Duration.ofSeconds(10))
 
         expect: 'the full plan is queued in dependency order'
-        inserted == 14L
-        pending.size() == 14
+        inserted == 17L
+        pending.size() == 17
         pending.first().kind == 'type'
         pending.last().key == PROCESS_DOC_ID
 
@@ -227,7 +231,7 @@ class ClarityAliquotImportKafkaIntegrationSpec extends Specification {
 
         then: 'one batch, every item done, nothing failed'
         report.batches == 1
-        report.itemsDone == 14
+        report.itemsDone == 17
         report.itemsFailed == 0
         report.txnIds.size() == 1
 
@@ -257,6 +261,18 @@ class ClarityAliquotImportKafkaIntegrationSpec extends Specification {
         outputInput.keySet() == ['2-79367', '92-79368', '92-79369']
                 .collect { minted[ClarityAliquotImportMapper.artifactKey(it)] } as Set
         (prcDoc.properties as Map).clarity_limsid == '24-35613'
+
+        and: 'the submitted sample materialized as ent with sample_of links from every artifact (TASK-067)'
+        String sampleId = minted[ClarityAliquotImportMapper.sampleKey('DES439A6')]
+        Map sampleDoc = awaitMongo(
+                { mongoTemplate.findById(sampleId, Map, 'ent') },
+                { Map d -> d != null }, 'imported sample ent root')
+        sampleDoc.type_id == minted[ClarityAliquotImportMapper.KEY_TYPE_SAMPLE]
+        (sampleDoc.properties as Map).source_kind == 'clarity_sample'
+        ['DES439A6PA1', '2-79367', '92-79368', '92-79369'].every { String limsid ->
+            findLink(minted[ClarityAliquotImportMapper.artifactKey(limsid)], sampleId)
+                    .block(MONGO_BLOCK_TIMEOUT) != null
+        }
 
         and: 'the analyte materialized as ent with a positioned contents link from its container'
         String analyteId = minted[ClarityAliquotImportMapper.artifactKey('2-79367')]
@@ -291,6 +307,23 @@ class ClarityAliquotImportKafkaIntegrationSpec extends Specification {
         after.every { Map row ->
             row.state == 'done' && row.txn_id == txnId && row.jdtp_id == minted[row.key as String]
         }
+    }
+
+    def 'process-type discovery streams document ids and the histogram from the live view (TASK-067)'() {
+        when: 'five AC process documents are discovered through the replica view'
+        List<String> ids = reader.processDocIdsByType('clarity', 'AC Sample Aliquot Creation', 5)
+                .collectList().block(Duration.ofSeconds(30))
+
+        then:
+        ids.size() == 5
+        ids.every { it.startsWith('processes_') }
+        ids.toSet().size() == 5
+
+        and: 'the histogram lists all 51 clarity process types'
+        Map<String, Long> counts = reader.processTypeCounts('clarity')
+                .block(Duration.ofSeconds(30))
+        counts.size() == 51
+        counts['AC Sample Aliquot Creation'] > 0
     }
 
     private Mono<Map> findLink(String left, String right) {

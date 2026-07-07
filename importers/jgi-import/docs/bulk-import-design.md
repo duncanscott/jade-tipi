@@ -66,8 +66,19 @@ conflict handling is the backstop, never the mechanism.
    `procedure_input` (prc → input) / `produced_by` (output → prc) /
    `contents` (container → artifact, positioned) links. Proves queue,
    planner, mapper, and driver on real data at small scale.
-2. **Clarity full**: all 51 process types plus remaining containers,
-   samples, artifact groups, and files; scale-out of the same machinery.
+2. **Clarity phase 2 (TASK-067, core delivered)**: discovery through the
+   replica's own `_design/processes` views (`--jgi-import.mode=types`
+   for the histogram; `--jgi-import.process-type='<name>'` with an
+   optional `--jgi-import.limit` to plan by type), procedure types
+   minted dynamically per clarity process type (all 51 import with no
+   per-type code), and submitted samples as typed `ent` roots with a
+   `sample_of` link from every artifact (container → sample → artifact
+   dependency order).
+   **Phase 2b (pending)**: `files_<limsid>` documents (they carry
+   `content-location` — the fil retrieval-URL candidate — and
+   `attached-to` artifact refs; needs its own pass since no by-artifact
+   view exists) and `artifactgroups_` (needs a membership-link
+   vocabulary ruling).
 3. **ESP entities**: containers, samples, and the `begat` edges as
    generic provenance links, with the overlap rule (below).
 4. **ESP workflow reconstruction** (separate, later): esp has no process

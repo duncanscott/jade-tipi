@@ -327,7 +327,14 @@ the importer module (`:importers:jgi-import:run`) plans named process
 documents into the queue and drives pending rows to the transaction
 topic in batched transactions — resumable via recorded row ids, with
 failed items isolated and surfaced in the exit code; the live aliquot
-integration test drives through this same production path.
+integration test drives through this same production path. Clarity
+phase 2's core is implemented (TASK-067): process documents are
+discovered by type through the replica's own views, procedure types
+mint dynamically so all 51 clarity process types import with no
+per-type code, and submitted samples join the graph as typed ents with
+`sample_of` links from every artifact. Phase 2b (clarity files with
+their `content-location` retrieval URLs, and artifact groups) remains,
+then the esp phases.
 `value_schema` validation is not required before bulk import: schemas are
 easier to establish once real data exists. ESP workflow → procedure
 reconstruction is deferred as its own phase (esp has no process

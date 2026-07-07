@@ -169,6 +169,8 @@ class ClarityImportDriver {
                 return [mapper.mapBootstrapType(item.key, idFor)]
             case ClarityAliquotImportPlanner.KIND_CONTAINER:
                 return mapper.mapContainer(fetchDoc(item.key), idFor)
+            case ClarityAliquotImportPlanner.KIND_SAMPLE:
+                return mapper.mapSample(fetchDoc(item.key), idFor)
             case ClarityAliquotImportPlanner.KIND_ARTIFACT:
                 return mapper.mapArtifact(fetchDoc(item.key), idFor)
             case ClarityAliquotImportPlanner.KIND_PROCESS:

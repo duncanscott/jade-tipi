@@ -66,12 +66,12 @@ class ClarityAliquotImportMapperSpec extends Specification {
         snakeCaseKeys(loc.data)
     }
 
-    def 'an Analyte artifact maps to a typed ent root with a positioned contents link'() {
+    def 'an Analyte artifact maps to a typed ent root with contents and sample_of links'() {
         when:
         List<MappedImportMessage> messages = mapper.mapArtifact(fixture('artifact_2-79367'), idFor)
 
         then:
-        messages.size() == 2
+        messages.size() == 3
         MappedImportMessage ent = messages[0]
         ent.collection == 'ent'
         ent.data.type_id == minted[ClarityAliquotImportMapper.KEY_TYPE_ANALYTE]
@@ -86,6 +86,59 @@ class ClarityAliquotImportMapperSpec extends Specification {
         lnk.data.right == ent.data.id
         ((lnk.data.properties as Map).position as Map).label == '1:1'
         snakeCaseKeys(ent.data)
+
+        and: 'the sample_of link joins the artifact to its submitted sample (TASK-067)'
+        MappedImportMessage sampleLnk = messages[2]
+        sampleLnk.collection == 'lnk'
+        sampleLnk.data.type_id == minted[ClarityAliquotImportMapper.KEY_TYPE_LINK_SAMPLE_OF]
+        sampleLnk.data.left == ent.data.id
+        sampleLnk.data.right == minted[ClarityAliquotImportMapper.sampleKey('DES439A6')]
+    }
+
+    def 'a sample maps to a typed ent root with source-traceability properties (TASK-067)'() {
+        given: 'a sample document shaped like the live samples_ docs'
+        Map<String, Object> doc = [
+                _id   : 'samples_DES439A6',
+                limsid: 'DES439A6',
+                json  : [
+                        limsid         : 'DES439A6',
+                        name           : 'DES439A6 sample',
+                        'date-received': '2016-07-01',
+                        submitter      : ['first-name': 'Clarity', 'last-name': 'Migration']
+                ]
+        ] as Map<String, Object>
+
+        when:
+        List<MappedImportMessage> messages = mapper.mapSample(doc, idFor)
+
+        then:
+        messages.size() == 1
+        MappedImportMessage ent = messages[0]
+        ent.collection == 'ent'
+        ent.data.id == minted[ClarityAliquotImportMapper.sampleKey('DES439A6')]
+        ent.data.type_id == minted[ClarityAliquotImportMapper.KEY_TYPE_SAMPLE]
+        Map properties = ent.data.properties as Map
+        properties.source_kind == 'clarity_sample'
+        properties.clarity_limsid == 'DES439A6'
+        properties.date_received == '2016-07-01'
+        properties.submitter == 'Clarity Migration'
+        snakeCaseKeys(ent.data)
+    }
+
+    def 'procedure types are dynamic: any clarity process type maps to its own typ declaration (TASK-067)'() {
+        when:
+        String key = ClarityAliquotImportMapper.processTypeKey('LP Pool Creation')
+        MappedImportMessage msg = mapper.mapBootstrapType(key, idFor)
+
+        then:
+        msg.collection == 'typ'
+        msg.data.kind == 'procedure_type'
+        msg.data.id == minted[key]
+        msg.data.name == 'lp_pool_creation'
+        (msg.data.description as String).contains('LP Pool Creation')
+
+        and: 'the id suffix sanitizes the raw display name'
+        (msg.data.id as String).split('~')[4].matches('[a-z0-9_-]+')
     }
 
     def 'a ResultFile artifact maps to a typed fil root'() {

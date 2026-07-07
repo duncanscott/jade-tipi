@@ -12,6 +12,7 @@
  */
 package org.jadetipi.jadetipi.importer
 
+import groovy.json.JsonOutput
 import groovy.util.logging.Slf4j
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
@@ -20,6 +21,7 @@ import org.springframework.util.Assert
 import org.springframework.web.reactive.function.client.ClientResponse
 import org.springframework.web.reactive.function.client.ExchangeFilterFunctions
 import org.springframework.web.reactive.function.client.WebClient
+import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 
 /**
@@ -48,6 +50,91 @@ class CouchDbDocumentReader {
                 .baseUrl(url)
                 .filter(ExchangeFilterFunctions.basicAuthentication(username, password))
                 .build()
+    }
+
+    /**
+     * The clarity process-type histogram from the replica's own
+     * {@code _design/processes/_view/process-type-count} view (TASK-067):
+     * display name → process count.
+     */
+    Mono<Map<String, Long>> processTypeCounts(String database) {
+        Assert.hasText(database, 'database must not be blank')
+        return webClient.get()
+                .uri('/{db}/_design/processes/_view/process-type-count?group=true', database)
+                .retrieve()
+                .bodyToMono(Map)
+                .map { Map body ->
+                    Map<String, Long> counts = new LinkedHashMap<>()
+                    (body.get('rows') as List ?: []).each { Object row ->
+                        Map r = row as Map
+                        counts.put(r.get('key') as String, ((Number) r.get('value')).longValue())
+                    }
+                    return counts
+                } as Mono<Map<String, Long>>
+    }
+
+    /**
+     * Process document ids for one clarity process type, via the replica's
+     * {@code _design/processes/_view/process-type} view (keys are
+     * {@code [type name, index]}; each row's id is the process document
+     * id). Paged with startkey/startkey_docid so any type size streams in
+     * constant memory; {@code limit} (when positive) caps the total.
+     */
+    Flux<String> processDocIdsByType(String database, String processTypeName, Integer limit) {
+        Assert.hasText(database, 'database must not be blank')
+        Assert.hasText(processTypeName, 'processTypeName must not be blank')
+        int remaining = (limit == null || limit <= 0) ? Integer.MAX_VALUE : limit
+        return pageProcessDocIds(database, processTypeName, null, null, remaining)
+    }
+
+    private static final int VIEW_PAGE_SIZE = 1000
+
+    private Flux<String> pageProcessDocIds(String database, String processTypeName,
+                                           Object startkey, String startkeyDocid, int remaining) {
+        int pageSize = Math.min(remaining, VIEW_PAGE_SIZE)
+        // resuming from the last row of the previous page: fetch one extra
+        // and drop the duplicate first row
+        int requestLimit = startkeyDocid == null ? pageSize : pageSize + 1
+        String startkeyJson = startkey != null
+                ? JsonOutput.toJson(startkey)
+                : JsonOutput.toJson([processTypeName])
+        String endkeyJson = JsonOutput.toJson([processTypeName, [:]])
+
+        return webClient.get()
+                .uri({ uriBuilder ->
+                    def builder = uriBuilder.path('/{db}/_design/processes/_view/process-type')
+                            .queryParam('startkey', '{startkey}')
+                            .queryParam('endkey', '{endkey}')
+                            .queryParam('limit', requestLimit)
+                    if (startkeyDocid != null) {
+                        builder = builder.queryParam('startkey_docid', '{startkeyDocid}')
+                        return builder.build(database, startkeyJson, endkeyJson, startkeyDocid)
+                    }
+                    return builder.build(database, startkeyJson, endkeyJson)
+                })
+                .retrieve()
+                .bodyToMono(Map)
+                .flatMapMany { Map body ->
+                    List rows = (body.get('rows') as List) ?: []
+                    if (startkeyDocid != null && !rows.isEmpty()) {
+                        rows = rows.drop(1)
+                    }
+                    List<String> ids = rows.collect { Object row -> (row as Map).get('id') as String }
+                    if (ids.size() > remaining) {
+                        ids = ids.take(remaining)
+                    }
+                    boolean lastPage = rows.size() < pageSize || ids.size() >= remaining
+                    Flux<String> page = Flux.fromIterable(ids)
+                    if (lastPage || rows.isEmpty()) {
+                        return page
+                    }
+                    Map lastRow = rows.last() as Map
+                    int stillWanted = remaining - ids.size()
+                    return page.concatWith(Flux.defer {
+                        pageProcessDocIds(database, processTypeName,
+                                lastRow.get('key'), lastRow.get('id') as String, stillWanted)
+                    })
+                }
     }
 
     /**

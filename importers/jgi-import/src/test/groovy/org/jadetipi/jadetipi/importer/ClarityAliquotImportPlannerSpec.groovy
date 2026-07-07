@@ -48,29 +48,44 @@ class ClarityAliquotImportPlannerSpec extends Specification {
         }
     }
 
-    def 'planProcess enqueues bootstrap types, containers before artifacts, inputs first, process last'() {
+    def 'planProcess enqueues bootstrap and procedure types, containers and samples before artifacts, inputs first, process last'() {
         when:
         Long inserted = planner.planProcess('processes_24-35613').block()
 
-        then: '7 types + input container + input + 3 outputs (one shares the input container path, two have none) + process'
-        inserted == enqueued.size()
+        then: '8 bootstrap types + the procedure type + 2 containers + 1 shared sample + 4 artifacts + process'
+        inserted == (enqueued as Set).size()
+        inserted == 17L
 
-        and: 'bootstrap types lead'
-        enqueued.take(7) == ClarityAliquotImportMapper.BOOTSTRAP_KEYS
+        and: 'bootstrap types lead, then the process type discovered from the document (TASK-067)'
+        enqueued.take(8) == ClarityAliquotImportMapper.BOOTSTRAP_KEYS
+        enqueued[8] == ClarityAliquotImportMapper.processTypeKey('AC Sample Aliquot Creation')
 
-        and: 'the input artifact is preceded by its container and precedes every output'
+        and: 'the input artifact is preceded by its container and sample, and precedes every output'
         int inputIdx = enqueued.indexOf('artifacts_DES439A6PA1')
-        int inputContainerIdx = enqueued.indexOf('containers_27-8528')
-        inputContainerIdx >= 0 && inputContainerIdx == inputIdx - 1
+        enqueued.indexOf('containers_27-8528') == inputIdx - 2
+        enqueued.indexOf('samples_DES439A6') == inputIdx - 1
         ['artifacts_2-79367', 'artifacts_92-79368', 'artifacts_92-79369'].every {
             enqueued.indexOf(it) > inputIdx
         }
 
-        and: 'the located output is preceded by its container'
-        enqueued.indexOf('containers_27-8546') == enqueued.indexOf('artifacts_2-79367') - 1
+        and: 'the located output is preceded by its container (the shared sample re-enqueue is a dedup no-op)'
+        enqueued.indexOf('containers_27-8546') == enqueued.indexOf('artifacts_2-79367') - 2
 
         and: 'the process is last'
         enqueued.last() == 'processes_24-35613'
+    }
+
+    def 'planProcessesByType discovers process documents through the reader and plans each (TASK-067)'() {
+        given: 'the view returns the fixture process twice — the replan dedups to zero'
+        reader.processDocIdsByType('clarity', 'AC Sample Aliquot Creation', 5) >>
+                reactor.core.publisher.Flux.just('processes_24-35613', 'processes_24-35613')
+
+        when:
+        Long inserted = planner.planProcessesByType('AC Sample Aliquot Creation', 5).block()
+
+        then: 'the first plan inserts the full row set; the second inserts nothing new'
+        inserted == 17L
+        enqueued.count { it == 'processes_24-35613' } == 2
     }
 
     def 'replanning the same process inserts nothing new'() {

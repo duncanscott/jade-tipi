@@ -18,12 +18,16 @@ import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 
 /**
- * Plans one clarity process into the dependency-ordered import queue
- * (TASK-059; docs/architecture/bulk-import-design.md): bootstrap type rows
- * first, then each artifact's container before the artifact (inputs before
- * outputs), then the process last. Enqueueing an already-queued row is a
- * no-op that preserves its original — lower — seq, so shared dependencies
- * across processes keep the ordering invariant.
+ * Plans clarity processes into the dependency-ordered import queue
+ * (TASK-059 slice, TASK-067 generalization;
+ * docs/architecture/bulk-import-design.md): bootstrap type rows and the
+ * process's own procedure-type row first, then each artifact's container
+ * and submitted sample before the artifact (inputs before outputs), then
+ * the process last. Enqueueing an already-queued row is a no-op that
+ * preserves its original — lower — seq, so shared dependencies across
+ * processes keep the ordering invariant. {@link #planProcessesByType}
+ * discovers process documents through the replica's own process-type
+ * view, so any of the 51 clarity process types plans the same way.
  */
 @Slf4j
 @Service
@@ -32,6 +36,7 @@ class ClarityAliquotImportPlanner {
     static final String DATABASE = 'clarity'
     static final String KIND_TYPE = 'type'
     static final String KIND_CONTAINER = 'container'
+    static final String KIND_SAMPLE = 'sample'
     static final String KIND_ARTIFACT = 'artifact'
     static final String KIND_PROCESS = 'process'
 
@@ -71,13 +76,36 @@ class ClarityAliquotImportPlanner {
                     List<String> artifactLimsids = inputLimsids + outputLimsids.findAll {
                         !inputLimsids.contains(it)
                     }
+                    // element text lands under the '' key of its JSON object
+                    String typeName = (((process.get('json') ?: [:]) as Map)
+                            .get('type') as Map)?.get('') ?: 'unknown'
                     return enqueueBootstrap()
+                            .concatWith(enqueueRow(
+                                    ClarityAliquotImportMapper.processTypeKey(typeName), KIND_TYPE))
                             .concatWith(Flux.fromIterable(artifactLimsids)
-                                    .concatMap { String limsid -> enqueueArtifactWithContainer(limsid) })
+                                    .concatMap { String limsid -> enqueueArtifactWithDependencies(limsid) })
                             .concatWith(enqueueRow(ClarityAliquotImportMapper.processKey(
                                     processDocId.replaceFirst('^processes_', '')), KIND_PROCESS))
                             .reduce(0L, { Long acc, Boolean inserted -> inserted ? acc + 1 : acc })
                 } as Mono<Long>
+    }
+
+    /**
+     * Discover and plan every process of one clarity process type (raw
+     * display name, e.g. 'LP Pool Creation') via the replica's
+     * process-type view; {@code limit} (when positive) caps how many
+     * process documents are planned. Returns the number of newly enqueued
+     * rows across all planned processes.
+     */
+    Mono<Long> planProcessesByType(String processTypeName, Integer limit) {
+        return reader.processDocIdsByType(DATABASE, processTypeName, limit)
+                .concatMap { String processDocId ->
+                    planProcess(processDocId)
+                            .doOnNext { Long rows ->
+                                log.info('Planned {}: {} newly enqueued row(s)', processDocId, rows)
+                            }
+                }
+                .reduce(0L, { Long acc, Long rows -> acc + rows }) as Mono<Long>
     }
 
     private Flux<Boolean> enqueueBootstrap() {
@@ -85,7 +113,7 @@ class ClarityAliquotImportPlanner {
                 .concatMap { String key -> enqueueRow(key, KIND_TYPE) }
     }
 
-    private Flux<Boolean> enqueueArtifactWithContainer(String artifactLimsid) {
+    private Flux<Boolean> enqueueArtifactWithDependencies(String artifactLimsid) {
         String artifactKey = ClarityAliquotImportMapper.artifactKey(artifactLimsid)
         return reader.findDocument(DATABASE, artifactKey)
                 .flatMapMany { Map<String, Object> artifact ->
@@ -96,7 +124,13 @@ class ClarityAliquotImportPlanner {
                             ? enqueueRow(ClarityAliquotImportMapper.containerKey(containerLimsid),
                                     KIND_CONTAINER)
                             : Flux.<Boolean>empty()
-                    return containerFirst.concatWith(enqueueRow(artifactKey, KIND_ARTIFACT))
+                    String sampleLimsid = (json.get('sample') as Map)?.get('limsid')
+                    Flux<Boolean> sampleNext = sampleLimsid
+                            ? enqueueRow(ClarityAliquotImportMapper.sampleKey(sampleLimsid),
+                                    KIND_SAMPLE)
+                            : Flux.<Boolean>empty()
+                    return containerFirst.concatWith(sampleNext)
+                            .concatWith(enqueueRow(artifactKey, KIND_ARTIFACT))
                 }
                 .switchIfEmpty(Flux.defer {
                     log.warn('Clarity artifact document not found, enqueueing anyway for visibility: {}',

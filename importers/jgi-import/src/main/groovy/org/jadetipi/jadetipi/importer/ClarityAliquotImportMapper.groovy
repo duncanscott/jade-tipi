@@ -49,18 +49,27 @@ class ClarityAliquotImportMapper {
 
     static final String SOURCE = 'clarity'
 
-    static final String KEY_TYPE_PROCEDURE_AC = 'type:procedure:ac_sample_aliquot_creation'
+    static final String PROCEDURE_TYPE_KEY_PREFIX = 'type:procedure:'
     static final String KEY_TYPE_ANALYTE = 'type:entity:clarity_analyte'
+    static final String KEY_TYPE_SAMPLE = 'type:entity:clarity_sample'
     static final String KEY_TYPE_RESULT_FILE = 'type:file:clarity_result_file'
     static final String KEY_TYPE_CONTAINER = 'type:location:clarity_container'
     static final String KEY_TYPE_LINK_CONTENTS = 'type:link:contents'
     static final String KEY_TYPE_LINK_PROCEDURE_INPUT = 'type:link:procedure_input'
     static final String KEY_TYPE_LINK_PRODUCED_BY = 'type:link:produced_by'
+    static final String KEY_TYPE_LINK_SAMPLE_OF = 'type:link:sample_of'
 
+    /**
+     * The static bootstrap types. Procedure types are NOT here: phase 2
+     * generalizes them — one per clarity process type, enqueued
+     * dynamically from each planned process document's
+     * {@code json.type['']} name via {@link #processTypeKey}.
+     */
     static final List<String> BOOTSTRAP_KEYS = List.of(
-            KEY_TYPE_PROCEDURE_AC, KEY_TYPE_ANALYTE, KEY_TYPE_RESULT_FILE,
+            KEY_TYPE_ANALYTE, KEY_TYPE_SAMPLE, KEY_TYPE_RESULT_FILE,
             KEY_TYPE_CONTAINER, KEY_TYPE_LINK_CONTENTS,
-            KEY_TYPE_LINK_PROCEDURE_INPUT, KEY_TYPE_LINK_PRODUCED_BY)
+            KEY_TYPE_LINK_PROCEDURE_INPUT, KEY_TYPE_LINK_PRODUCED_BY,
+            KEY_TYPE_LINK_SAMPLE_OF)
 
     static final String OUTPUT_TYPE_ANALYTE = 'Analyte'
     static final String OUTPUT_TYPE_RESULT_FILE = 'ResultFile'
@@ -70,10 +79,28 @@ class ClarityAliquotImportMapper {
     static String artifactKey(String limsid) { return 'artifacts_' + limsid }
     static String containerKey(String limsid) { return 'containers_' + limsid }
     static String processKey(String limsid) { return 'processes_' + limsid }
+    static String sampleKey(String limsid) { return 'samples_' + limsid }
+
+    /**
+     * The import key for one clarity process type's procedure-type
+     * declaration. Carries the RAW display name (dedup identity and
+     * display fidelity); {@link #suffixFor} sanitizes it for the id.
+     */
+    static String processTypeKey(String processTypeName) {
+        return PROCEDURE_TYPE_KEY_PREFIX + processTypeName
+    }
+
+    /** Kept for the original slice's fixture (now just one of the 51). */
+    static final String KEY_TYPE_PROCEDURE_AC = processTypeKey('AC Sample Aliquot Creation')
 
     /** Convention-conformant id suffix for any import key. */
     static String suffixFor(String key) {
         return 'clarity_' + key.toLowerCase().replaceAll('[^a-z0-9_-]', '_')
+    }
+
+    /** Lowercase snake name for a clarity process type display name. */
+    static String processTypeName(String displayName) {
+        return displayName.toLowerCase().replaceAll('[^a-z0-9_-]', '_')
     }
 
     /** The ent-or-fil collection an artifact document maps to. */
@@ -82,17 +109,22 @@ class ClarityAliquotImportMapper {
         return OUTPUT_TYPE_RESULT_FILE == json.get('output-type') ? 'fil' : 'ent'
     }
 
-    /** One typ/link-type declaration per bootstrap key. */
+    /**
+     * One typ/link-type declaration per type key — the static bootstrap
+     * vocabulary plus the dynamic per-process-type procedure types.
+     */
     MappedImportMessage mapBootstrapType(String key, BiFunction<String, String, String> idFor) {
         String id = idFor.apply(key, 'typ')
+        if (key.startsWith(PROCEDURE_TYPE_KEY_PREFIX)) {
+            String displayName = key.substring(PROCEDURE_TYPE_KEY_PREFIX.length())
+            return message('typ', [
+                    kind       : 'procedure_type',
+                    id         : id,
+                    name       : processTypeName(displayName),
+                    description: 'Clarity process type: ' + displayName
+            ])
+        }
         switch (key) {
-            case KEY_TYPE_PROCEDURE_AC:
-                return message('typ', [
-                        kind       : 'procedure_type',
-                        id         : id,
-                        name       : 'ac_sample_aliquot_creation',
-                        description: 'Clarity process type: AC Sample Aliquot Creation'
-                ])
             case KEY_TYPE_ANALYTE:
                 return message('typ', [
                         id         : id,
@@ -150,9 +182,56 @@ class ClarityAliquotImportMapper {
                         allowed_left_collections : ['ent', 'fil'],
                         allowed_right_collections: ['prc']
                 ])
+            case KEY_TYPE_SAMPLE:
+                return message('typ', [
+                        id         : id,
+                        name       : 'clarity_sample',
+                        description: 'Clarity submitted sample'
+                ])
+            case KEY_TYPE_LINK_SAMPLE_OF:
+                return message('typ', [
+                        kind                     : 'link_type',
+                        id                       : id,
+                        name                     : 'sample_of',
+                        description              : 'an artifact and the submitted sample it derives from',
+                        left_role                : 'artifact',
+                        right_role               : 'sample',
+                        left_to_right_label      : 'sample_of',
+                        right_to_left_label      : 'has_artifact',
+                        allowed_left_collections : ['ent', 'fil'],
+                        allowed_right_collections: ['ent']
+                ])
             default:
                 throw new IllegalArgumentException("Unknown bootstrap key: ${key}")
         }
+    }
+
+    /** Submitted sample → ent root. */
+    List<MappedImportMessage> mapSample(Map<String, Object> doc,
+                                        BiFunction<String, String, String> idFor) {
+        String limsid = doc.get('limsid') as String
+        Map json = (doc.get('json') ?: [:]) as Map
+        Map<String, Object> properties = [
+                source_kind   : 'clarity_sample',
+                clarity_limsid: limsid
+        ] as Map<String, Object>
+        putIfPresent(properties, 'name', json.get('name'))
+        putIfPresent(properties, 'date_received', json.get('date-received'))
+        Object controlType = json.get('control-type')
+        putIfPresent(properties, 'control_type',
+                controlType instanceof Map ? ((Map) controlType).get('name') : controlType)
+        Map submitter = json.get('submitter') as Map
+        if (submitter) {
+            String name = [submitter.get('first-name'), submitter.get('last-name')]
+                    .findAll { it }.join(' ')
+            putIfPresent(properties, 'submitter', name ?: null)
+        }
+        return [message('ent', [
+                id        : idFor.apply(sampleKey(limsid), 'ent'),
+                type_id   : idFor.apply(KEY_TYPE_SAMPLE, 'typ'),
+                properties: properties,
+                links     : [:]
+        ])]
     }
 
     List<MappedImportMessage> mapContainer(Map<String, Object> doc,
@@ -219,6 +298,16 @@ class ClarityAliquotImportMapper {
             }
             messages.add(message('lnk', linkData))
         }
+
+        String sampleLimsid = (json.get('sample') as Map)?.get('limsid')
+        if (sampleLimsid) {
+            messages.add(message('lnk', [
+                    id     : idFor.apply("link:sample_of:${limsid}".toString(), 'lnk'),
+                    type_id: idFor.apply(KEY_TYPE_LINK_SAMPLE_OF, 'typ'),
+                    left   : artifactId,
+                    right  : idFor.apply(sampleKey(sampleLimsid), 'ent')
+            ]))
+        }
         return messages
     }
 
@@ -249,11 +338,16 @@ class ClarityAliquotImportMapper {
             outputLimsids.add(outLimsid)
         }
 
+        // clarity element text lands under the '' key of its JSON object
+        String processTypeDisplayName = (json.get('type') as Map)?.get('') as String
+        if (!processTypeDisplayName) {
+            log.warn('Clarity process without a type name, imported under "unknown": limsid={}', limsid)
+            processTypeDisplayName = 'unknown'
+        }
         Map<String, Object> properties = [
                 source_kind   : 'clarity_process',
                 clarity_limsid: limsid,
-                // clarity element text lands under the '' key of its JSON object
-                process_type  : ((json.get('type') as Map)?.get('') ?: 'AC Sample Aliquot Creation')
+                process_type  : processTypeDisplayName
         ] as Map<String, Object>
         putIfPresent(properties, 'date_run', json.get('date-run'))
         Map technician = json.get('technician') as Map
@@ -265,7 +359,7 @@ class ClarityAliquotImportMapper {
 
         List<MappedImportMessage> messages = [message('prc', [
                 id          : processId,
-                type_id     : idFor.apply(KEY_TYPE_PROCEDURE_AC, 'typ'),
+                type_id     : idFor.apply(processTypeKey(processTypeDisplayName), 'typ'),
                 properties  : properties,
                 links       : [:],
                 output_input: outputInput

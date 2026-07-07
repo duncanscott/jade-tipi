@@ -86,25 +86,46 @@ class JgiImportCliApplication {
     @ConditionalOnProperty(name = 'jgi-import.mode')
     ApplicationRunner jgiImportRunner(ClarityAliquotImportPlanner planner,
                                       ClarityImportDriver driver,
+                                      CouchDbDocumentReader reader,
                                       org.springframework.beans.factory.ObjectProvider<ImportMessagePublisher> publisherProvider,
                                       JgiImportExitCode exitCode,
                                       @Value('${jgi-import.mode}') String mode,
                                       @Value('${jgi-import.process:}') String processDocIds,
+                                      @Value('${jgi-import.process-type:}') String processType,
+                                      @Value('${jgi-import.limit:0}') int limit,
                                       @Value('${jgi-import.org:}') String org,
                                       @Value('${jgi-import.grp:}') String grp,
                                       @Value('${jgi-import.user:jgi-import}') String user,
                                       @Value('${jgi-import.batch-size:200}') int batchSize) {
         return { ApplicationArguments args ->
-            Assert.isTrue(mode in ['plan', 'drive', 'import'],
-                    "jgi-import.mode must be plan, drive, or import (got '${mode}')")
+            Assert.isTrue(mode in ['types', 'plan', 'drive', 'import'],
+                    "jgi-import.mode must be types, plan, drive, or import (got '${mode}')")
+
+            if (mode == 'types') {
+                Map<String, Long> counts = reader
+                        .processTypeCounts(ClarityAliquotImportPlanner.DATABASE)
+                        .block(Duration.ofMinutes(1))
+                counts.sort { -it.value }.each { String name, Long count ->
+                    log.info('{}  {}', String.format('%7d', count), name)
+                }
+                log.info('{} process type(s), {} process(es) total',
+                        counts.size(), counts.values().sum() ?: 0)
+                return
+            }
 
             if (mode in ['plan', 'import']) {
                 List<String> docIds = processDocIds.tokenize(',')*.trim().findAll { it }
-                Assert.notEmpty(docIds,
-                        'jgi-import.process must name at least one clarity process document id')
+                Assert.isTrue(!docIds.isEmpty() || processType.trim(),
+                        'jgi-import.process (document ids) or jgi-import.process-type is required to plan')
                 docIds.each { String docId ->
                     Long inserted = planner.planProcess(docId).block(Duration.ofMinutes(5))
                     log.info('Planned {}: {} newly enqueued row(s)', docId, inserted)
+                }
+                if (processType.trim()) {
+                    Long inserted = planner.planProcessesByType(processType.trim(),
+                            limit > 0 ? limit : null).block(Duration.ofHours(4))
+                    log.info('Planned process type "{}"{}: {} newly enqueued row(s)',
+                            processType.trim(), limit > 0 ? " (limit ${limit})" : '', inserted)
                 }
             }
 
