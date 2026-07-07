@@ -775,8 +775,12 @@ materialized object-root values keyed by `ppy` ID, with an overlay of
 committed-but-unapplied `msg` records. This entity-only reader documents the
 current transitional storage shape, not the final property-value contract.
 
-`EntityPropertyValuesReadController` exposes the read as
-`GET /api/entities/{id}/property-values`. This is a thin WebFlux adapter over
+`ObjectPropertyValuesReadController` exposes the read as
+`GET /api/objects/{id}/property-values` (TASK-064): one generic route for
+every property-value-bearing collection, dereferencing the Mongo collection
+from the ID's collection segment — the ID is the complete address; a
+malformed ID or an unserved collection is 404, never a guess. This is a thin
+WebFlux adapter over
 the service only; it does not add HTTP data submission, does not write Mongo,
 does not update entity roots, does not validate assignment values against
 `value_schema`, and does not add permission enforcement or pagination in this
@@ -908,13 +912,30 @@ tolerance mirrors the accepted readers: a non-map `property_values`
 sub-document or entry is ignored, and a non-map entry `value` surfaces as an
 empty map.
 
-The HTTP adapter is `GET /api/locations/{id}/property-values`, a resource
-read: a missing `loc` root returns 404; an existing root with no projected
-values returns 200 with an empty `property_values` map. Since TASK-045 the
-entity route `GET /api/entities/{id}/property-values` delegates to this same
-generic reader with the fixed `ent` collection and returns the same response
-shape; the transitional entity-only reader over standalone assignment roots
-is deleted.
+The HTTP adapter is the generic `GET /api/objects/{id}/property-values`
+(TASK-064), a resource read: a missing root returns 404; an existing root
+with no projected values returns 200 with an empty `property_values` map.
+The route dereferences the collection from the ID's collection segment and
+serves every value-bearing collection (ent, loc, prc, tsk, fil) with one
+response shape; the per-collection `/api/entities/{id}/property-values` and
+`/api/locations/{id}/property-values` routes are retired (the transitional
+entity-only reader over standalone assignment roots was deleted earlier,
+TASK-045).
+
+## Reading Object Assignment History
+
+`GET /api/objects/{id}/history` (TASK-065) reads the `hst` history
+collection — every applied assignment for the object (TASK-061 preserves
+them all unless the type opts out with `history: false`) in message-UUID
+(chronological) order. `?property_id=` narrows to one property;
+`?page=&size=` page the result (page floors at 0, size clamps to 1..100,
+defaults 0/25, echoed in the envelope with the filtered total). Entries
+carry `msg_uuid`, `property_id` with the resolved `property_name` (null
+when the definition is missing), the `value` verbatim, `txn_id`,
+`commit_id`, and `applied_at`. The same ID dereference and 404 rules as
+the property-values route apply; an existing root with no history is an
+empty page. Startup ensures a second `hst` index `(object_id, msg_uuid)`
+for the object-wide pages.
 
 ## Reading Effective Type Properties
 
@@ -947,7 +968,7 @@ response bodies alike; TASK-055).
 
 The contents read surface intentionally mixes query-style routes under
 `/api/contents` with resource-style routes under `/api/locations` and
-`/api/entities`. Clients should choose the route by the subject they need to
+`/api/objects`. Clients should choose the route by the subject they need to
 prove or query:
 
 | View | Route | Subject lookup | Missing or absent subject |
@@ -958,8 +979,8 @@ prove or query:
 | Resolved reverse locations | `GET /api/contents/by-content/{id}/locations` | No lookup of the content object's own root | HTTP 200 with `locations: []` |
 | Plate-shaped forward contents | `GET /api/contents/plate/{id}` | No `loc` lookup; treats the id as a plate-shaped query key | HTTP 200 with an empty fixed grid |
 | Generic resolved forward contents | `GET /api/locations/{id}/contents` | Requires the subject `loc` root | HTTP 404 when the `loc` root is missing |
-| Entity property values | `GET /api/entities/{id}/property-values` | Requires the subject `ent` root | HTTP 404 when the `ent` root is missing |
-| Location property values | `GET /api/locations/{id}/property-values` | Requires the subject `loc` root | HTTP 404 when the `loc` root is missing |
+| Object property values (ent/loc/prc/tsk/fil) | `GET /api/objects/{id}/property-values` | Requires the subject root; collection dereferenced from the ID's collection segment | HTTP 404 when the root is missing, the ID is malformed, or the collection is unserved |
+| Object assignment history (ent/loc/prc/tsk/fil) | `GET /api/objects/{id}/history?property_id=&page=&size=` | Requires the subject root; same ID dereference; reads `hst` in msg-UUID order | HTTP 404 when the root is missing, the ID is malformed, or the collection is unserved; empty page when the object has no history |
 | Effective type properties | `GET /api/types/{id}/effective-properties` | Requires the subject `typ` root | HTTP 404 when the `typ` root is missing |
 
 The asymmetry is deliberate. Flat contents routes and the plate-shaped view are

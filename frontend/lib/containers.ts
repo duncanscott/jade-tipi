@@ -140,14 +140,11 @@ async function getOrNull<T>(path: string, accessToken: string): Promise<T | null
   return response.json() as Promise<T>;
 }
 
-export function getLocationPropertyValues(id: string, accessToken: string) {
+// The object id is the complete address: the backend dereferences the
+// collection from the id's collection segment (TASK-064).
+export function getObjectPropertyValues(id: string, accessToken: string) {
   return getOrNull<ObjectPropertyValues>(
-    `/api/locations/${encodeURIComponent(id)}/property-values`, accessToken);
-}
-
-export function getEntityPropertyValues(id: string, accessToken: string) {
-  return getOrNull<ObjectPropertyValues>(
-    `/api/entities/${encodeURIComponent(id)}/property-values`, accessToken);
+    `/api/objects/${encodeURIComponent(id)}/property-values`, accessToken);
 }
 
 export function getTypeEffectiveProperties(typeId: string, accessToken: string) {

@@ -25,30 +25,44 @@ import org.springframework.web.bind.annotation.RestController
 import reactor.core.publisher.Mono
 
 /**
- * Thin WebFlux read adapter over {@link ObjectPropertyValuesReadService} for
- * {@code loc} roots. Resource-read convention: a missing subject root is 404.
- * The legacy {@code GET /api/entities/{id}/property-values} route keeps its
- * transitional reader until the planned cleanup.
+ * The generic object read route (TASK-064, director-ratified 2026-07-07):
+ * one route for every property-value-bearing collection, dereferencing the
+ * collection from the object ID itself — the ID is the complete address.
+ *
+ * <p>Dereference rule: an object ID is exactly five tilde-separated segments
+ * (spec section 1.2, schema-enforced) and the fourth is the collection
+ * abbreviation. A malformed ID or a collection outside
+ * {@link ObjectPropertyValuesReadService#SUPPORTED_COLLECTIONS} is 404 —
+ * never a guess. This is the sanctioned READ-path counterpart of the
+ * write-path rule that assignment messages carry {@code object_collection}
+ * explicitly (spec section 2.3.1).
+ *
+ * <p>Resource-read convention: a missing subject root is 404.
  */
 @Slf4j
 @RestController
-@RequestMapping('/api/locations')
-class LocationPropertyValuesReadController {
-
-    private static final String COLLECTION_LOC = 'loc'
+@RequestMapping('/api/objects')
+class ObjectPropertyValuesReadController {
 
     private final ObjectPropertyValuesReadService readService
 
-    LocationPropertyValuesReadController(ObjectPropertyValuesReadService readService) {
+    ObjectPropertyValuesReadController(ObjectPropertyValuesReadService readService) {
         this.readService = readService
     }
 
     @GetMapping('/{id}/property-values')
-    Mono<ResponseEntity<ObjectPropertyValuesRecord>> getLocationPropertyValues(
+    Mono<ResponseEntity<ObjectPropertyValuesRecord>> getObjectPropertyValues(
             @PathVariable('id') String id, @AuthenticationPrincipal Jwt jwt) {
 
-        log.debug('Retrieving location property values: id={}', id)
-        return readService.findPropertyValues(COLLECTION_LOC, id)
+        String collection = ObjectIdDereference.collectionOf(
+                id, ObjectPropertyValuesReadService.SUPPORTED_COLLECTIONS)
+        if (collection == null) {
+            log.debug('Object id does not dereference to a readable collection: id={}', id)
+            return Mono.just(ResponseEntity.notFound().build())
+        }
+
+        log.debug('Retrieving object property values: collection={}, id={}', collection, id)
+        return readService.findPropertyValues(collection, id)
                 .map { ObjectPropertyValuesRecord record -> ResponseEntity.ok(record) }
                 .defaultIfEmpty(ResponseEntity.notFound().build())
     }

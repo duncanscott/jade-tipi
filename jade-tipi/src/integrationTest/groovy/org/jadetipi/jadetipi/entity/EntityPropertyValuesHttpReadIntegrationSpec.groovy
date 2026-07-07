@@ -57,7 +57,7 @@ import java.util.function.Supplier
  * topic, waits for the transaction header plus the projected
  * {@code property_values} entry on the entity root (TASK-045: assignments
  * project onto object roots; standalone assignment roots are retired), then
- * asserts that {@code GET /api/entities/{id}/property-values} returns the
+ * asserts that {@code GET /api/objects/{id}/property-values} returns the
  * generic object property-values shape. The same feature also covers an
  * existing entity with no assignments and a missing entity id.
  *
@@ -327,7 +327,7 @@ class EntityPropertyValuesHttpReadIntegrationSpec extends Specification {
         when: 'the assigned entity is read through the HTTP route'
         String valuePath = "\$.property_values['${propertyDefinitionId}']"
         WebTestClient.ResponseSpec assignedResponse = webTestClient.get()
-                .uri('/api/entities/{id}/property-values', entityId)
+                .uri('/api/objects/{id}/property-values', entityId)
                 .header('Authorization', "Bearer ${token}")
                 .exchange()
 
@@ -351,7 +351,7 @@ class EntityPropertyValuesHttpReadIntegrationSpec extends Specification {
 
         when: 'an existing entity with no assignments is read through the same route'
         WebTestClient.ResponseSpec emptyResponse = webTestClient.get()
-                .uri('/api/entities/{id}/property-values', emptyEntityId)
+                .uri('/api/objects/{id}/property-values', emptyEntityId)
                 .header('Authorization', "Bearer ${token}")
                 .exchange()
 
@@ -364,7 +364,7 @@ class EntityPropertyValuesHttpReadIntegrationSpec extends Specification {
 
         when: 'a never-materialized entity id is read'
         WebTestClient.ResponseSpec missingResponse = webTestClient.get()
-                .uri('/api/entities/{id}/property-values',
+                .uri('/api/objects/{id}/property-values',
                         "jade-itest-org~kafka~${txn.uuid()}~ent~missing")
                 .header('Authorization', "Bearer ${token}")
                 .exchange()

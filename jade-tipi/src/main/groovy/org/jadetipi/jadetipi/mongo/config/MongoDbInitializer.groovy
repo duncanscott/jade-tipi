@@ -58,9 +58,9 @@ class MongoDbInitializer implements CommandLineRunner {
     }
 
     /**
-     * Chronological history retrieval for one object (optionally one
-     * property): msg_uuid is UUIDv7, so this index orders assignments by
-     * time (TASK-061).
+     * Chronological history retrieval (TASK-061/065): msg_uuid is UUIDv7,
+     * so these indexes order assignments by time — the first serves the
+     * property-filtered read, the second the object-wide pages.
      */
     private void ensureHistoryIndex() {
         mongoTemplate.indexOps('hst')
@@ -69,6 +69,12 @@ class MongoDbInitializer implements CommandLineRunner {
                         .on('property_id', Sort.Direction.ASC)
                         .on('msg_uuid', Sort.Direction.ASC))
                 .doOnSuccess { String name -> log.info "Ensured hst history index '{}'", name }
+                .block()
+        mongoTemplate.indexOps('hst')
+                .ensureIndex(new Index()
+                        .on('object_id', Sort.Direction.ASC)
+                        .on('msg_uuid', Sort.Direction.ASC))
+                .doOnSuccess { String name -> log.info "Ensured hst object-time index '{}'", name }
                 .block()
     }
 

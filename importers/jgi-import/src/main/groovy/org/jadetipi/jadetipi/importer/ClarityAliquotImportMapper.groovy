@@ -13,6 +13,7 @@
 package org.jadetipi.jadetipi.importer
 
 import groovy.util.logging.Slf4j
+import org.springframework.stereotype.Service
 
 import java.util.function.BiFunction
 
@@ -39,8 +40,11 @@ import java.util.function.BiFunction
  * one {@code procedure_input} link per distinct input, and one
  * {@code produced_by} link per output — ent and fil outputs alike
  * (endpoint collections are unconstrained by protocol).
+ *
+ * <p>Stateless; a bean so the drive path (TASK-066) can inject it.
  */
 @Slf4j
+@Service
 class ClarityAliquotImportMapper {
 
     static final String SOURCE = 'clarity'

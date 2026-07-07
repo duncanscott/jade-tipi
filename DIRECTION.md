@@ -322,7 +322,12 @@ same entity appears in both sources, **esp-entity properties take
 precedence** — the required value-update semantics are implemented
 (TASK-061: newest assignment message wins; every applied assignment is
 preserved in `hst`), so this prerequisite for a real production import
-is cleared.
+is cleared. The production trigger is implemented (TASK-066): a CLI in
+the importer module (`:importers:jgi-import:run`) plans named process
+documents into the queue and drives pending rows to the transaction
+topic in batched transactions — resumable via recorded row ids, with
+failed items isolated and surfaced in the exit code; the live aliquot
+integration test drives through this same production path.
 `value_schema` validation is not required before bulk import: schemas are
 easier to establish once real data exists. ESP workflow → procedure
 reconstruction is deferred as its own phase (esp has no process
@@ -444,6 +449,25 @@ Implementation was split and both slices are implemented: TASK-062
 (commit IDs as UUIDv7 + prose repair) and TASK-063 (snapshot_id, the
 watermark gate, and leases; spec 0.7.0-draft makes snapshot isolation
 Normative).
+
+## Object Read Routes
+
+Ratified 2026-07-07. Object resource reads take **only the object ID**:
+`GET /api/objects/{id}/property-values` serves every
+property-value-bearing collection (ent, loc, prc, tsk, fil), and the
+implementation dereferences the collection from the ID's collection
+segment — the ID is the complete, world-unique address (spec §1.2 makes
+the segment normative; every ID charset is URL-path-safe). Stating the
+collection in the path would say it twice and invent a mismatch error
+case. A malformed ID or an unserved collection is 404, never a guess.
+This is the READ-path counterpart — not a contradiction — of the
+write-path rule that assignment messages carry `object_collection`
+explicitly (spec §2.3.1 and §3 record the distinction). The
+per-collection entity/location routes are retired. The history read API
+landed as the sibling route (TASK-065):
+`GET /api/objects/{id}/history?property_id=&page=&size=` reads `hst` in
+message-UUID (chronological) order under the same dereference rule.
+Remaining follow-on: prc/tsk/fil object views in the UI.
 
 ## Transaction Materialization
 

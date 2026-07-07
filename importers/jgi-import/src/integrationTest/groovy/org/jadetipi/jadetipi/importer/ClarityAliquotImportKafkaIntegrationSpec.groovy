@@ -12,24 +12,13 @@
  */
 package org.jadetipi.jadetipi.importer
 
-import com.github.f4b6a3.uuid.UuidCreator
 import groovy.util.logging.Slf4j
 import org.apache.kafka.clients.admin.AdminClient
 import org.apache.kafka.clients.admin.AdminClientConfig
 import org.apache.kafka.clients.admin.NewTopic
-import org.apache.kafka.clients.producer.KafkaProducer
-import org.apache.kafka.clients.producer.ProducerConfig
-import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.errors.TopicExistsException
-import org.apache.kafka.common.serialization.ByteArraySerializer
-import org.apache.kafka.common.serialization.StringSerializer
-import org.jadetipi.dto.collections.Transaction
-import org.jadetipi.dto.message.Action
-import org.jadetipi.dto.message.Collection as JtpCollection
-import org.jadetipi.dto.message.Message
-import org.jadetipi.dto.util.JsonMapper
-import org.springframework.beans.factory.annotation.Autowired
 import org.jadetipi.jadetipi.JadetipiApplication
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
@@ -39,24 +28,24 @@ import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import reactor.core.publisher.Mono
 import spock.lang.IgnoreIf
-import spock.lang.Shared
 import spock.lang.Specification
 
 import java.time.Duration
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
-import java.util.function.BiFunction
 import java.util.function.Predicate
 import java.util.function.Supplier
 
 /**
- * End-to-end TASK-059 proof of the clarity aliquot import slice against
- * the LIVE clarity CouchDB: plan process {@code processes_24-35613} into
- * the persistent dependency-ordered queue, drive the queue into one JDTP
- * transaction over Kafka (message-UUID-form ids minted at emit and
- * recorded on the rows), and assert the materialized graph — typed
- * containers, Analyte ent with a positioned contents link, ResultFile
- * fil roots, and the prc whose output_input carries the three resolved
+ * End-to-end proof of the clarity aliquot import against the LIVE clarity
+ * CouchDB, driven through the PRODUCTION path (TASK-059 slice, TASK-066
+ * trigger): plan process {@code processes_24-35613} into the persistent
+ * dependency-ordered queue, then let {@link ClarityImportDriver} drain it —
+ * one JDTP transaction over Kafka via the module's own
+ * {@link ImportMessagePublisher}, message-UUID-form ids minted at emit and
+ * recorded on the rows — and assert the materialized graph: typed
+ * containers, Analyte ent with a positioned contents link, ResultFile fil
+ * roots, and the prc whose output_input carries the three resolved
  * outputs, with procedure_input and produced_by links. Dependency order
  * satisfies declare-before-use by construction, so the TASK-058 link
  * warnings stay silent.
@@ -65,7 +54,7 @@ import java.util.function.Supplier
  * flag) plus Kafka and the clarity CouchDB being reachable. Run locally:
  * <pre>
  * docker compose -f docker/docker-compose.yml up -d
- * JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest \
+ * JADETIPI_IT_KAFKA=1 ./gradlew :importers:jgi-import:integrationTest \
  *     --tests '*ClarityAliquotImportKafkaIntegrationSpec*'
  * </pre>
  */
@@ -85,6 +74,8 @@ class ClarityAliquotImportKafkaIntegrationSpec extends Specification {
     private static final String CONSUMER_GROUP = "jadetipi-itest-claimport-${SHORT_UUID}"
     private static final String PROCESS_DOC_ID = 'processes_24-35613'
     private static final String TXN_COLLECTION = 'txn'
+    private static final String LNK_COLLECTION = 'lnk'
+    private static final List<String> ROOT_COLLECTIONS = ['typ', 'loc', 'ent', 'fil', 'prc', 'lnk']
     private static final Duration AWAIT_TIMEOUT = Duration.ofSeconds(30)
     private static final Duration POLL_INTERVAL = Duration.ofMillis(250)
     private static final Duration MONGO_BLOCK_TIMEOUT = Duration.ofSeconds(5)
@@ -134,6 +125,10 @@ class ClarityAliquotImportKafkaIntegrationSpec extends Specification {
         registry.add('spring.kafka.bootstrap-servers', { BOOTSTRAP_SERVERS })
         registry.add('spring.kafka.consumer.group-id', { CONSUMER_GROUP })
         registry.add('spring.kafka.consumer.properties.metadata.max.age.ms', { '2000' })
+        // Activate the module's own publisher bean (TASK-066): the driver
+        // publishes through the production path, not a test producer.
+        registry.add('jgi-import.kafka.bootstrap-servers', { BOOTSTRAP_SERVERS })
+        registry.add('jgi-import.kafka.topic', { TEST_TOPIC })
         ensureTestTopic()
     }
 
@@ -159,27 +154,14 @@ class ClarityAliquotImportKafkaIntegrationSpec extends Specification {
     @Autowired
     ImportQueueService queueService
     @Autowired
-    CouchDbDocumentReader reader
+    ClarityImportDriver driver
+    @Autowired
+    ImportMessagePublisher publisher
 
-    @Shared
-    KafkaProducer<String, byte[]> producer
-
-    ClarityAliquotImportMapper mapper = new ClarityAliquotImportMapper()
-    Transaction txn
-    String txnId
     Map<String, String> minted = [:]
-
-    def setupSpec() {
-        Properties props = new Properties()
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVERS)
-        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.name)
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.name)
-        props.put(ProducerConfig.ACKS_CONFIG, 'all')
-        producer = new KafkaProducer<>(props)
-    }
+    List<String> driveTxnIds = []
 
     def cleanupSpec() {
-        producer?.close(Duration.ofSeconds(5))
         Properties props = new Properties()
         props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVERS)
         try (AdminClient admin = AdminClient.create(props)) {
@@ -191,30 +173,26 @@ class ClarityAliquotImportKafkaIntegrationSpec extends Specification {
     }
 
     def setup() {
-        txn = Transaction.newInstance('jade-itest-org', 'import', 'jade-itest-cli', 'itest-user')
-        txnId = txn.id
-        removeQueueRows()
+        // The driver drains EVERYTHING pending, so start from a clean queue
+        // (test database; the seq counter re-upserts on first enqueue).
+        mongoTemplate.remove(new Query(), ImportQueueService.COLLECTION_NAME)
+                .block(Duration.ofSeconds(10))
+        minted = [:]
+        driveTxnIds = []
     }
 
     def cleanup() {
-        if (txnId != null) {
+        driveTxnIds.each { String txnId ->
             mongoTemplate.remove(Query.query(Criteria.where('txn_id').is(txnId)),
                     TXN_COLLECTION).block(Duration.ofSeconds(10))
+            ROOT_COLLECTIONS.each { String collection ->
+                mongoTemplate.remove(
+                        Query.query(Criteria.where('_head.provenance.txn_id').is(txnId)),
+                        collection).block(Duration.ofSeconds(10))
+            }
         }
-        minted.each { String key, String id ->
-            String collection = id.split('~')[3]
-            mongoTemplate.remove(Query.query(Criteria.where('_id').is(id)), collection)
-                    .block(Duration.ofSeconds(10))
-        }
-        removeQueueRows()
-    }
-
-    private void removeQueueRows() {
-        planKeys().each { String key ->
-            mongoTemplate.remove(Query.query(Criteria.where('_id')
-                    .is(ImportQueueService.rowId('clarity', key))),
-                    ImportQueueService.COLLECTION_NAME).block(Duration.ofSeconds(10))
-        }
+        mongoTemplate.remove(new Query(), ImportQueueService.COLLECTION_NAME)
+                .block(Duration.ofSeconds(10))
     }
 
     /** Every queue key the fixture process's plan produces. */
@@ -230,7 +208,6 @@ class ClarityAliquotImportKafkaIntegrationSpec extends Specification {
         given: 'the dependency-ordered plan for the live process document'
         Long inserted = planner.planProcess(PROCESS_DOC_ID).block(Duration.ofSeconds(30))
         List<ImportQueueItem> pending = queueService.pendingInOrder(100)
-                .filter { ImportQueueItem item -> planKeys().contains(item.key) }
                 .collectList().block(Duration.ofSeconds(10))
 
         expect: 'the full plan is queued in dependency order'
@@ -239,62 +216,37 @@ class ClarityAliquotImportKafkaIntegrationSpec extends Specification {
         pending.first().kind == 'type'
         pending.last().key == PROCESS_DOC_ID
 
-        when: 'the drive loop emits the queue as one transaction (message-UUID-form ids, recorded on rows)'
-        BiFunction<String, String, String> idFor = { String key, String collection ->
-            minted.computeIfAbsent(key, {
-                String uuid = UuidCreator.timeOrderedEpoch.toString()
-                // plain String: a GString here would serialize as a JSON object
-                'jade-itest-org~import~' + uuid + '~' + collection + '~' +
-                        ClarityAliquotImportMapper.suffixFor(key)
-            })
-        } as BiFunction<String, String, String>
+        when: 'the production driver drains the queue through the module publisher (TASK-066)'
+        ImportDriveReport report = driver.drive(publisher, 'jade-itest-org', 'import',
+                'itest-user', 100)
+        driveTxnIds = report.txnIds
+        minted = planKeys().collectEntries { String key ->
+            [key, queueService.jdtpIdOf(ImportQueueService.rowId('clarity', key))
+                    .block(MONGO_BLOCK_TIMEOUT)]
+        } as Map<String, String>
 
-        List<Message> messages = []
-        pending.each { ImportQueueItem item ->
-            List<MappedImportMessage> mapped
-            switch (item.kind) {
-                case 'type':
-                    mapped = [mapper.mapBootstrapType(item.key, idFor)]
-                    break
-                case 'container':
-                    mapped = mapper.mapContainer(fetchDoc(item.key), idFor)
-                    break
-                case 'artifact':
-                    mapped = mapper.mapArtifact(fetchDoc(item.key), idFor)
-                    break
-                case 'process':
-                    mapped = mapper.mapProcess(fetchDoc(item.key), idFor)
-                    break
-                default:
-                    throw new IllegalStateException("Unknown queue kind: ${item.kind}")
-            }
-            queueService.recordJdtpId(item.id, minted[item.key]).block(MONGO_BLOCK_TIMEOUT)
-            mapped.each { MappedImportMessage m ->
-                // msg-UUID form: the message uuid IS the id's uuid segment
-                String uuid = (m.data.id as String).split('~')[2]
-                messages.add(new Message(txn, uuid,
-                        JtpCollection.fromJson(m.collection), Action.CREATE, m.data))
-            }
-        }
-        send(Message.newInstance(txn, JtpCollection.TRANSACTION, Action.OPEN,
-                [description: 'clarity aliquot import slice'] as Map<String, Object>))
-        messages.each { send(it) }
-        send(Message.newInstance(txn, JtpCollection.TRANSACTION, Action.COMMIT,
-                [summary: 'clarity ' + PROCESS_DOC_ID + ' import'] as Map<String, Object>))
-        pending.each { ImportQueueItem item ->
-            queueService.markDone(item.id, txnId).block(MONGO_BLOCK_TIMEOUT)
+        then: 'one batch, every item done, nothing failed'
+        report.batches == 1
+        report.itemsDone == 14
+        report.itemsFailed == 0
+        report.txnIds.size() == 1
+
+        and: 'every row minted a conformant message-UUID-form id under the drive org/grp'
+        minted.values().every { String id ->
+            id != null && id.startsWith('jade-itest-org~import~') && id.split('~').length == 5
         }
 
-        then: 'the transaction commits with the full committed set recorded'
+        and: 'the transaction commits with the full committed set recorded'
+        String txnId = report.txnIds.first()
         Map header = awaitMongo(
                 { mongoTemplate.findById(txnId, Map, TXN_COLLECTION) },
                 { Map h -> h?.state == 'committed' && h?.commit_id != null },
                 'committed import transaction header'
         )
-        header.message_count == messages.size()
+        header.message_count == report.messagesPublished - 2
 
         and: 'the prc root carries the three resolved outputs in output_input'
-        String processId = minted[ClarityAliquotImportMapper.processKey('24-35613')]
+        String processId = minted[PROCESS_DOC_ID]
         Map prcDoc = awaitMongo(
                 { mongoTemplate.findById(processId, Map, 'prc') },
                 { Map d -> d != null },
@@ -308,61 +260,43 @@ class ClarityAliquotImportKafkaIntegrationSpec extends Specification {
 
         and: 'the analyte materialized as ent with a positioned contents link from its container'
         String analyteId = minted[ClarityAliquotImportMapper.artifactKey('2-79367')]
+        String containerId = minted[ClarityAliquotImportMapper.containerKey('27-8546')]
         Map analyteDoc = awaitMongo(
                 { mongoTemplate.findById(analyteId, Map, 'ent') },
                 { Map d -> d != null }, 'imported analyte ent root')
         analyteDoc.type_id == minted[ClarityAliquotImportMapper.KEY_TYPE_ANALYTE]
         Map contentsLink = awaitMongo(
-                { mongoTemplate.findById(minted['link:contents:2-79367'], Map, 'lnk') },
+                { findLink(containerId, analyteId) },
                 { Map d -> d != null }, 'contents link for the analyte')
-        contentsLink.left == minted[ClarityAliquotImportMapper.containerKey('27-8546')]
-        contentsLink.right == analyteId
         (((contentsLink.properties as Map).position) as Map).label == '1:1'
 
         and: 'the ResultFiles materialized as fil roots with produced_by links to the prc'
         ['92-79368', '92-79369'].every { String limsid ->
-            Map filDoc = mongoTemplate.findById(
-                    minted[ClarityAliquotImportMapper.artifactKey(limsid)], Map, 'fil')
-                    .block(MONGO_BLOCK_TIMEOUT)
-            Map producedBy = mongoTemplate.findById(
-                    minted["link:produced_by:${limsid}".toString()], Map, 'lnk')
-                    .block(MONGO_BLOCK_TIMEOUT)
-            filDoc != null && producedBy.right == processId
+            String filId = minted[ClarityAliquotImportMapper.artifactKey(limsid)]
+            Map filDoc = mongoTemplate.findById(filId, Map, 'fil').block(MONGO_BLOCK_TIMEOUT)
+            Map producedBy = findLink(filId, processId).block(MONGO_BLOCK_TIMEOUT)
+            filDoc != null && producedBy != null
         }
 
         and: 'the procedure_input link consumes the input analyte'
-        Map inputLink = mongoTemplate.findById(
-                minted['link:procedure_input:24-35613:DES439A6PA1'], Map, 'lnk')
-                .block(MONGO_BLOCK_TIMEOUT)
-        inputLink.left == processId
-        inputLink.right == minted[ClarityAliquotImportMapper.artifactKey('DES439A6PA1')]
+        String inputAnalyteId = minted[ClarityAliquotImportMapper.artifactKey('DES439A6PA1')]
+        Map inputLink = findLink(processId, inputAnalyteId).block(MONGO_BLOCK_TIMEOUT)
+        inputLink != null
 
-        and: 'every queue row is done with the transaction and its recorded id'
-        List<ImportQueueItem> after = planKeys().collect { String key ->
+        and: 'every queue row is done with the drive transaction and its recorded id'
+        List<Map> after = planKeys().collect { String key ->
             mongoTemplate.findById(ImportQueueService.rowId('clarity', key), Map,
                     ImportQueueService.COLLECTION_NAME).block(MONGO_BLOCK_TIMEOUT)
-        }.collect { Map row ->
-            new ImportQueueItem(id: row._id as String, source: row.source as String,
-                    key: row.key as String, kind: row.kind as String,
-                    state: row.state as String, seq: ((Number) row.seq).longValue(),
-                    jdtpId: row.jdtp_id as String, txnId: row.txn_id as String,
-                    error: row.error as String)
         }
-        after.every { it.state == 'done' && it.txnId == txnId && it.jdtpId == minted[it.key] }
+        after.every { Map row ->
+            row.state == 'done' && row.txn_id == txnId && row.jdtp_id == minted[row.key as String]
+        }
     }
 
-    private Map<String, Object> fetchDoc(String key) {
-        Map<String, Object> doc = reader.findDocument('clarity', key)
-                .block(Duration.ofSeconds(15))
-        assert doc != null: "clarity document vanished mid-import: ${key}"
-        return doc
-    }
-
-    private void send(Message message) {
-        byte[] bytes = JsonMapper.toBytes(message)
-        producer.send(new ProducerRecord<String, byte[]>(TEST_TOPIC, txnId, bytes))
-                .get(10, TimeUnit.SECONDS)
-        producer.flush()
+    private Mono<Map> findLink(String left, String right) {
+        return mongoTemplate.find(
+                Query.query(Criteria.where('left').is(left).and('right').is(right)),
+                Map, LNK_COLLECTION).next() as Mono<Map>
     }
 
     private static <T> T awaitMongo(Supplier<Mono<T>> source,

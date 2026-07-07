@@ -1,7 +1,22 @@
 # JDTP Specification
 
-**Version:** 0.7.0-draft · **Date:** 2026-07-06 · **Status:** Draft for
+**Version:** 0.7.2-draft · **Date:** 2026-07-07 · **Status:** Draft for
 director review
+
+*Changes in 0.7.2: the object assignment history (TASK-061's `hst`
+collection) becomes readable (TASK-065) — a resource read beside the
+generic property-values route, same object-ID dereference rule,
+returning applied assignments in message-UUID (chronological) order,
+optionally narrowed to one property, paged (§3).*
+
+*Changes in 0.7.1: object resource reads take only the object ID
+(director-ratified 2026-07-07; TASK-064) — one generic route serves
+property values for `ent`/`loc`/`prc`/`tsk`/`fil`, dereferencing the
+collection from the ID's collection segment (the ID is the complete
+address; malformed or unserved IDs are 404, never a guess). §3 records
+the dereference rule and its relationship to §2.3.1's write-path
+non-inference rule; the per-collection entity/location routes are
+retired.*
 
 *Changes in 0.7.0: **snapshot isolation** becomes Normative
 (director-ratified 2026-07-06; TASK-063) — a transaction reads nothing
@@ -106,7 +121,7 @@ Procedures and tasks added as Planned.*
 
 JDTP (JSON Data Transparency Protocol) is a technology-agnostic protocol for
 world-mergeable, provenance-preserving scientific metadata. This document is
-the authoritative statement of the protocol as ratified through TASK-063 of
+the authoritative statement of the protocol as ratified through TASK-065 of
 the reference implementation. It stands apart from any one database, queue,
 or search product: the reference implementation currently uses Kafka and
 MongoDB, but those are adapters, not the definition. What is **not** an
@@ -522,7 +537,9 @@ record but skipped as unsupported at materialization, without error):
 
 - `object_collection` (currently `ent`, `loc`, `prc`, `tsk`, or `fil`)
   is explicit; the implementation MUST NOT infer a collection by parsing
-  `object_id`.
+  `object_id`. (A write-path rule: the message is self-describing and
+  inference must not sneak in as a fallback. Resource READS, whose only
+  input is the ID, dereference by the ID's collection segment — §3.)
 - `data.id` is not required and is ignored.
 - **Deprecated alias:** a payload carrying only `entity_id` resolves as
   (`ent`, `entity_id`) with a deprecation warning; any legacy composite
@@ -693,12 +710,27 @@ and add no hidden semantics. Two route styles are deliberate:
 
 - **Resource reads** require the subject root and answer 404 when it is
   missing: object property values (`ent`, `loc`, `prc`, `tsk`, and `fil`
-  via one generic contract), effective type properties, resolved location
-  contents.
+  via ONE generic route and contract), object assignment history (the
+  same collections, over `hst`), effective type properties, resolved
+  location contents.
 - **Query reads** answer 200 with empty results and cannot prove a
   subject exists: flat contents by container/content, the plate-shaped
   grid view, and the paged location browse (discovery over materialized
   `loc` roots; summaries only — depth belongs to the resource reads).
+
+**Object-ID dereference [Normative]** (director-ratified 2026-07-07;
+TASK-064). An object ID is the complete address: object resource reads
+take only the ID, and the implementation dereferences the collection
+from the ID's fourth segment (§1.2 makes that segment normative and the
+wire schema enforces the five-segment shape). The segment is validated
+against the collection vocabulary; a malformed ID or an unserved
+collection is 404, never a guess. Stating the collection in the route as
+well would say it twice and create a mismatch case to adjudicate. This
+is deliberately the READ-path counterpart of §2.3.1's write-path rule:
+assignment *messages* carry `object_collection` explicitly and the
+materializer MUST NOT fall back to parsing — on the wire the payload is
+self-describing; at the read surface the ID is the whole input, and
+segment dereference is the sanctioned mechanism.
 
 Contracts of note:
 
@@ -707,6 +739,14 @@ Contracts of note:
   ID with value, provenance, and the resolved property name (null when the
   definition is missing). Stale or malformed stored entries are tolerated,
   never fatal.
+- **Object assignment history:** every applied assignment for the
+  subject (optionally narrowed to one property) from `hst`, in
+  message-UUID (chronological) order, paged with the effective paging
+  echoed and the filtered total. Each entry carries `msg_uuid` (its
+  identity and ordering key), the property with its resolved name (null
+  when the definition is missing), the `value` verbatim, and full
+  transaction provenance. A root with no history — including a
+  `history: false` opt-out — is an empty page, never an error.
 - **Effective type properties:** the union of property references across
   the subject type and its ancestors (most-derived registration wins),
   each attributed to the registering type, with the ordered type chain and

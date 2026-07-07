@@ -54,7 +54,7 @@ import java.util.function.Supplier
  * sequence to a per-spec Kafka topic, waits for materialization, then
  * asserts the two new HTTP read routes with a real JWT:
  * <ul>
- *   <li>{@code GET /api/locations/{id}/property-values} — the typed loc root
+ *   <li>{@code GET /api/objects/{id}/property-values} — the typed loc root
  *       with its projected, name-resolved {@code propertyValues};</li>
  *   <li>{@code GET /api/types/{id}/effective-properties} — the subtype's
  *       inherited property union with source attribution.</li>
@@ -244,8 +244,8 @@ class PlatePropertyValuesHttpReadIntegrationSpec extends Specification {
                 'loc root with projected property_values entry'
         )
 
-        expect: 'the loc property-values route returns the typed root with the resolved entry'
-        webTestClient.get().uri('/api/locations/{id}/property-values', plateLocId)
+        expect: 'the generic object route dereferences loc from the id and returns the typed root'
+        webTestClient.get().uri('/api/objects/{id}/property-values', plateLocId)
                 .header('Authorization', "Bearer ${accessToken}")
                 .exchange()
                 .expectStatus().isOk()
@@ -275,8 +275,13 @@ class PlatePropertyValuesHttpReadIntegrationSpec extends Specification {
                 .jsonPath("\$.effective_properties['${barcodePropertyId}'].source_type_id").isEqualTo(containerTypeId)
                 .jsonPath("\$.effective_properties['${barcodePropertyId}'].property_name").isEqualTo('barcode')
 
-        and: 'both routes 404 for unknown subjects'
-        webTestClient.get().uri('/api/locations/{id}/property-values', 'no-such-loc')
+        and: 'both routes 404 for unknown subjects — a well-formed id with no root, and a malformed id'
+        webTestClient.get().uri('/api/objects/{id}/property-values',
+                "jade-itest-org~kli~${txn.uuid()}~loc~no_such_loc")
+                .header('Authorization', "Bearer ${accessToken}")
+                .exchange()
+                .expectStatus().isNotFound()
+        webTestClient.get().uri('/api/objects/{id}/property-values', 'no-such-loc')
                 .header('Authorization', "Bearer ${accessToken}")
                 .exchange()
                 .expectStatus().isNotFound()

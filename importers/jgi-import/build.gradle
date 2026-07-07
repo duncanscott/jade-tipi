@@ -7,6 +7,13 @@
 plugins {
     id 'java'
     id 'groovy'
+    id 'application'
+}
+
+// The production import trigger (TASK-066):
+//   ./gradlew :importers:jgi-import:run --args='--jgi-import.mode=import ...'
+application {
+    mainClass = 'org.jadetipi.jadetipi.importer.JgiImportCliApplication'
 }
 
 apply from: "${rootProject.projectDir}/gradle/scripts/repository.gradle"
@@ -31,6 +38,15 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-mongodb-reactive'
     implementation 'io.projectreactor:reactor-core'
     implementation 'org.slf4j:slf4j-api'
+    // The production import trigger (TASK-066): the drive loop publishes dto
+    // Messages to the transaction topic. Library dependencies only — the
+    // application still never depends on this module.
+    implementation project(':libraries:jade-tipi-dto')
+    implementation 'org.apache.kafka:kafka-clients'
+    implementation libs.uuid.creator
+    // WebClient connector for the standalone CLI context (the app supplies
+    // its own when this module rides the integration-test classpath)
+    runtimeOnly 'io.projectreactor.netty:reactor-netty-http'
 
     testImplementation platform('org.springframework.boot:spring-boot-dependencies:3.5.6')
     testImplementation 'com.fasterxml.jackson.core:jackson-databind'

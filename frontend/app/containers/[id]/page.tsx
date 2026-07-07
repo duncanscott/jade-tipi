@@ -12,7 +12,7 @@ import {
   PlateContentsEntry,
   LocationContents,
   displayName,
-  getLocationPropertyValues,
+  getObjectPropertyValues,
   getTypeEffectiveProperties,
   getPlateContents,
   getLocationContents,
@@ -122,7 +122,7 @@ export default function ContainerViewPage() {
         setNotFound(false);
         const token = accessToken as string;
         const [rootResult, plateResult, contentsResult] = await Promise.all([
-          getLocationPropertyValues(containerId, token),
+          getObjectPropertyValues(containerId, token),
           getPlateContents(containerId, token),
           getLocationContents(containerId, token),
         ]);

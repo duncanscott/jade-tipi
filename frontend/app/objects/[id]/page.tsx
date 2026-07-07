@@ -10,7 +10,7 @@ import {
   TypeEffectiveProperties,
   ObjectLocations,
   displayName,
-  getEntityPropertyValues,
+  getObjectPropertyValues,
   getTypeEffectiveProperties,
   getObjectLocations,
 } from '@/lib/containers';
@@ -88,7 +88,7 @@ export default function ObjectViewPage() {
         setNotFound(false);
         const token = accessToken as string;
         const [rootResult, locationsResult] = await Promise.all([
-          getEntityPropertyValues(objectId, token),
+          getObjectPropertyValues(objectId, token),
           getObjectLocations(objectId, token),
         ]);
         if (cancelled) return;

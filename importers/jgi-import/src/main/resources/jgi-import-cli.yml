@@ -1,0 +1,23 @@
+# Configuration for the jgi-import CLI (TASK-066). Loaded only when the CLI
+# boots (spring.config.name=jgi-import-cli), so this file is inert on the
+# shared integration-test classpath. Every value here can be overridden on
+# the command line (--key=value).
+spring:
+  main:
+    web-application-type: none
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/jadetipi
+
+jadetipi:
+  import:
+    couchdb:
+      url: http://localhost:5984
+      username: admin
+      password: admin
+
+# jgi-import.mode, jgi-import.process, jgi-import.org, jgi-import.grp, and
+# jgi-import.kafka.* are deliberately unset: the run must state them.
+jgi-import:
+  batch-size: 200
+  user: jgi-import
