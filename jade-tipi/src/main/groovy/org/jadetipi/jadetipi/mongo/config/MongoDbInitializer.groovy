@@ -15,7 +15,9 @@ package org.jadetipi.jadetipi.mongo.config
 import groovy.util.logging.Slf4j
 import org.jadetipi.dto.message.Collection
 import org.springframework.boot.CommandLineRunner
+import org.springframework.data.domain.Sort
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
+import org.springframework.data.mongodb.core.index.Index
 import org.springframework.stereotype.Component
 
 @Slf4j
@@ -28,11 +30,12 @@ class MongoDbInitializer implements CommandLineRunner {
      * Backend-internal collections that are not part of the wire
      * {@link Collection} vocabulary. {@code usr} holds local user/identity
      * records (spec section 1.8); creating it here keeps the collection
-     * visible even when {@code jadetipi.genesis.enabled} is off. The
-     * planned {@code msg} staging collection is deliberately absent until
-     * the txn/msg split is implemented.
+     * visible even when {@code jadetipi.genesis.enabled} is off. {@code hst}
+     * holds the derived property-assignment history (TASK-061). The planned
+     * {@code msg} staging collection is deliberately absent until the
+     * txn/msg split is implemented.
      */
-    private static final List<String> BACKEND_COLLECTIONS = ['usr']
+    private static final List<String> BACKEND_COLLECTIONS = ['usr', 'hst']
 
     MongoDbInitializer(ReactiveMongoTemplate mongoTemplate) {
         this.mongoTemplate = mongoTemplate
@@ -48,8 +51,24 @@ class MongoDbInitializer implements CommandLineRunner {
         BACKEND_COLLECTIONS.each { collectionName ->
             ensureCollection(collectionName)
         }
+        ensureHistoryIndex()
 
         log.info "MongoDB initialization completed"
+    }
+
+    /**
+     * Chronological history retrieval for one object (optionally one
+     * property): msg_uuid is UUIDv7, so this index orders assignments by
+     * time (TASK-061).
+     */
+    private void ensureHistoryIndex() {
+        mongoTemplate.indexOps('hst')
+                .ensureIndex(new Index()
+                        .on('object_id', Sort.Direction.ASC)
+                        .on('property_id', Sort.Direction.ASC)
+                        .on('msg_uuid', Sort.Direction.ASC))
+                .doOnSuccess { String name -> log.info "Ensured hst history index '{}'", name }
+                .block()
     }
 
     private void ensureCollection(String collectionName) {

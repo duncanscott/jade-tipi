@@ -45,6 +45,12 @@ class MaterializeResult {
     int skippedUnregisteredProperty = 0
 
     /**
+     * Assignments older than the target's current value (TASK-061): applied
+     * into the {@code hst} history collection only, current untouched.
+     */
+    int appliedHistorical = 0
+
+    /**
      * Warn-only link-reference issues observed on {@code lnk + create}
      * messages (UT-9/TASK-058): one count per issue. Deliberately excluded
      * from {@link #counters()} — a warned link still applies, so warnings
@@ -56,11 +62,12 @@ class MaterializeResult {
      * Counter values in a fixed order, index-aligned with
      * {@code CommittedTransactionMaterializer.APPLY_STATES} — the projection
      * loop diffs consecutive snapshots of this list to name each message's
-     * terminal {@code apply_state} (TASK-056).
+     * terminal {@code apply_state} (TASK-056). New counters append so
+     * existing indices stay stable.
      */
     List<Integer> counters() {
         return [materialized, duplicateMatching, conflictingDuplicate,
                 skippedUnsupported, skippedInvalid, skippedMissingTarget,
-                skippedUnregisteredProperty]
+                skippedUnregisteredProperty, appliedHistorical]
     }
 }

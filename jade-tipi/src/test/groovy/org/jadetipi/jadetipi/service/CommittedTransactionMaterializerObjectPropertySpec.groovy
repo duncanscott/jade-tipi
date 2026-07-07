@@ -153,7 +153,7 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
         entry.applied_at instanceof Instant
 
         and: 'no standalone assignment root is inserted'
-        0 * mongoTemplate.insert(_, _)
+        0 * mongoTemplate.insert(_, !'hst')
     }
 
     def 'registration walks parent_type_id to an ancestor that lists the property'() {
@@ -202,7 +202,7 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
         then:
         result.materialized == 1
         capturedCollection == 'ent'
-        0 * mongoTemplate.insert(_, _)
+        0 * mongoTemplate.insert(_, !'hst')
     }
 
     def 'skips as unregistered when the parent chain is exhausted without the property'() {
@@ -319,7 +319,7 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
         result.skippedInvalid == 4
         result.materialized == 0
         0 * mongoTemplate.updateFirst(_, _, !'txn')
-        0 * mongoTemplate.insert(_, _)
+        0 * mongoTemplate.insert(_, !'hst')
     }
 
     def 'a payload with object_id but no object_collection routes to the object path and is invalid'() {
@@ -333,7 +333,7 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
         then:
         result.skippedInvalid == 1
         result.materialized == 0
-        0 * mongoTemplate.insert(_, _)
+        0 * mongoTemplate.insert(_, !'hst')
     }
 
     def 'an existing equal entry ignoring applied_at is duplicate-matching and is not re-written'() {
@@ -361,13 +361,13 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
         0 * mongoTemplate.updateFirst(_, _, !'txn')
     }
 
-    def 'an existing differing entry is conflicting-duplicate and never overwritten'() {
-        given: 'a different transaction already wrote a different barcode'
+    def 'a same-message assignment with a differing payload is conflicting and never overwritten'() {
+        given: 'the same message id already applied with a different value (WAL-corruption guard)'
         Map existingEntry = [
                 value     : [text: 'BC-9999'],
                 txn_id    : 'other-txn',
                 commit_id : 'other-commit',
-                msg_uuid  : 'other-msg',
+                msg_uuid  : MSG_UUID,
                 applied_at: Instant.parse('2025-12-31T00:00:01Z')
         ]
         mongoTemplate.findById(LOC_PLATE, Map.class, 'loc') >>
@@ -423,6 +423,6 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
         capturedCollection == 'ent'
         (capturedUpdate.updateObject.get('$set') as Map)
                 .containsKey("property_values.${PPY_BARCODE}" as String)
-        0 * mongoTemplate.insert(_, _)
+        0 * mongoTemplate.insert(_, !'hst')
     }
 }

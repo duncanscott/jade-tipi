@@ -196,7 +196,14 @@ class CommittedTransactionMaterializer {
     /** Terminal apply_state names, index-aligned with {@link MaterializeResult#counters()}. */
     static final List<String> APPLY_STATES = List.of(
             'applied', 'duplicate', 'conflict', 'skipped_unsupported',
-            'skipped_invalid', 'skipped_missing_target', 'skipped_unregistered_property')
+            'skipped_invalid', 'skipped_missing_target', 'skipped_unregistered_property',
+            'applied_historical')
+
+    static final String COLLECTION_HST = 'hst'
+    static final String FIELD_HISTORY = 'history'
+    static final String HST_FIELD_OBJECT_ID = 'object_id'
+    static final String HST_FIELD_OBJECT_COLLECTION = 'object_collection'
+    static final String HST_FIELD_PROPERTY_ID = 'property_id'
 
     static final String OPERATION_ADD_PROPERTY = 'add_property'
     static final String KIND_DEFINITION = 'definition'
@@ -504,9 +511,9 @@ class CommittedTransactionMaterializer {
                         result.skippedUnregisteredProperty++
                         return Mono.empty()
                     }
-                    return isPropertyRegisteredInHierarchy(typeId, propertyId)
-                            .flatMap({ Boolean registered ->
-                                if (!registered) {
+                    return resolvePropertyRegistration(typeId, propertyId)
+                            .flatMap({ PropertyRegistrationResolution resolution ->
+                                if (!resolution.registered) {
                                     log.warn('Materializer skipping object assignment whose property is not ' +
                                             'registered on the target type or any ancestor: typeId={}, ' +
                                             'objectCollection={}, objectId={}, propertyId={}, txnId={}',
@@ -515,7 +522,8 @@ class CommittedTransactionMaterializer {
                                     return Mono.empty()
                                 }
                                 return projectPropertyValue(root, objectCollection, objectId,
-                                        propertyId, data, snapshot, message, result)
+                                        propertyId, data, snapshot, message, result,
+                                        resolution.historyEnabled)
                             })
                 })
                 .then() as Mono<Void>
@@ -526,25 +534,34 @@ class CommittedTransactionMaterializer {
      * {@code properties.parent_type_id} chain until a {@code typ} root lists
      * {@code propertyId} under {@code properties.property_refs}. A missing
      * ancestor root, an exhausted chain, a cycle, or exceeding
-     * {@link #MAX_TYPE_INHERITANCE_DEPTH} resolves to {@code false}.
+     * {@link #MAX_TYPE_INHERITANCE_DEPTH} resolves as unregistered.
+     *
+     * <p>The walk also resolves the {@code history} opt-out convention
+     * (TASK-061): the registering {@code property_refs} entry's
+     * {@code history} flag is most specific, then the nearest type root
+     * declaring {@code properties.history} along the walked chain, then the
+     * default {@code true}. Declarations above the registering type are not
+     * consulted — the walk stops where registration is found.
      */
-    private Mono<Boolean> isPropertyRegisteredInHierarchy(String typeId, String propertyId) {
-        return checkTypeChain(typeId, propertyId, new HashSet<String>(), 0)
+    private Mono<PropertyRegistrationResolution> resolvePropertyRegistration(String typeId,
+                                                                             String propertyId) {
+        return checkTypeChain(typeId, propertyId, new HashSet<String>(), 0, null)
     }
 
-    private Mono<Boolean> checkTypeChain(String typeId, String propertyId,
-                                         Set<String> visited, int depth) {
+    private Mono<PropertyRegistrationResolution> checkTypeChain(String typeId, String propertyId,
+                                                                Set<String> visited, int depth,
+                                                                Boolean nearestObjectHistory) {
         if (typeId == null) {
-            return Mono.just(Boolean.FALSE)
+            return Mono.just(PropertyRegistrationResolution.unregistered())
         }
         if (depth >= MAX_TYPE_INHERITANCE_DEPTH) {
             log.warn('Type inheritance walk exceeded depth {} at typeId={}; treating property as unregistered',
                     MAX_TYPE_INHERITANCE_DEPTH, typeId)
-            return Mono.just(Boolean.FALSE)
+            return Mono.just(PropertyRegistrationResolution.unregistered())
         }
         if (!visited.add(typeId)) {
             log.warn('Type inheritance cycle detected at typeId={}; treating property as unregistered', typeId)
-            return Mono.just(Boolean.FALSE)
+            return Mono.just(PropertyRegistrationResolution.unregistered())
         }
         return mongoTemplate.findById(typeId, Map.class, COLLECTION_TYP)
                 .map({ Map existing -> Optional.of(existing) })
@@ -553,14 +570,34 @@ class CommittedTransactionMaterializer {
                     if (!typProbe.isPresent()) {
                         log.warn('Type inheritance walk found no typ root for typeId={}; treating property as unregistered',
                                 typeId)
-                        return Mono.just(Boolean.FALSE)
+                        return Mono.just(PropertyRegistrationResolution.unregistered())
                     }
                     Map typRoot = typProbe.get()
-                    if (readExistingPropertyRef(typRoot, propertyId) != null) {
-                        return Mono.just(Boolean.TRUE)
+                    Boolean objectHistory = nearestObjectHistory != null
+                            ? nearestObjectHistory
+                            : declaredHistoryFlag(typRoot)
+                    Map<String, Object> ref = readExistingPropertyRef(typRoot, propertyId)
+                    if (ref != null) {
+                        Boolean propertyHistory = ref.get(FIELD_HISTORY) instanceof Boolean
+                                ? (Boolean) ref.get(FIELD_HISTORY)
+                                : null
+                        boolean enabled = propertyHistory != null ? propertyHistory
+                                : (objectHistory != null ? objectHistory : true)
+                        return Mono.just(PropertyRegistrationResolution.registered(enabled))
                     }
-                    return checkTypeChain(extractParentTypeId(typRoot), propertyId, visited, depth + 1)
-                }) as Mono<Boolean>
+                    return checkTypeChain(extractParentTypeId(typRoot), propertyId,
+                            visited, depth + 1, objectHistory)
+                }) as Mono<PropertyRegistrationResolution>
+    }
+
+    /** The type root's own {@code properties.history} declaration, or null. */
+    private static Boolean declaredHistoryFlag(Map typRoot) {
+        Object propertiesValue = typRoot?.get(FIELD_PROPERTIES)
+        if (!(propertiesValue instanceof Map)) {
+            return null
+        }
+        Object declared = ((Map) propertiesValue).get(FIELD_HISTORY)
+        return declared instanceof Boolean ? (Boolean) declared : null
     }
 
     private static String extractParentTypeId(Map typRoot) {
@@ -580,10 +617,17 @@ class CommittedTransactionMaterializer {
     }
 
     /**
-     * Write the property-value entry onto the already-fetched target root via
-     * a dotted-path {@code $set}, honoring the shared duplicate rules. The
-     * entry equality check ignores {@code applied_at}, mirroring the
-     * {@code materialized_at} exemption on root duplicates.
+     * Apply the assignment under the value-update model (TASK-061): the root
+     * carries exactly one CURRENT entry per property, replaced only when the
+     * incoming assignment is newer — ordered by message UUIDv7, which is
+     * time-ordered by construction (commit_id is not lexicographically
+     * orderable). Every applied assignment is preserved in {@code hst}
+     * unless the type system opts the object or property out
+     * ({@code history: false}); an assignment older than current lands in
+     * history without displacing current ({@code applied_historical}).
+     * Same-message redeliveries stay idempotent duplicates (with a tolerant
+     * hst re-insert as self-heal); a same-message payload mismatch remains a
+     * conflict and changes nothing.
      */
     private Mono<Void> projectPropertyValue(Map<String, Object> root,
                                             String objectCollection,
@@ -592,7 +636,8 @@ class CommittedTransactionMaterializer {
                                             Map<String, Object> data,
                                             CommittedTransactionSnapshot snapshot,
                                             CommittedTransactionMessage message,
-                                            MaterializeResult result) {
+                                            MaterializeResult result,
+                                            boolean historyEnabled) {
         Map<String, Object> entry = new LinkedHashMap<>()
         entry.put(FIELD_VALUE, new LinkedHashMap<>((Map<String, Object>) data.get(FIELD_VALUE)))
         entry.put(PROV_TXN_ID, snapshot.txnId)
@@ -600,27 +645,45 @@ class CommittedTransactionMaterializer {
         entry.put(PROV_MSG_UUID, message.msgUuid)
         entry.put(ENTRY_APPLIED_AT, Instant.now())
 
+        Mono<Void> history = historyEnabled
+                ? insertHistory(objectCollection, objectId, propertyId, entry)
+                : Mono.<Void>empty()
+
         Map<String, Object> existingEntry = readExistingPropertyValue(root, propertyId)
         if (existingEntry != null) {
-            if (samePropertyValueEntry(existingEntry, entry)) {
-                log.info('Materialize duplicate matching object property value: ' +
-                        'objectCollection={}, objectId={}, propertyId={}, txnId={}',
-                        objectCollection, objectId, propertyId, snapshot.txnId)
-                result.duplicateMatching++
-            } else {
-                log.error('Materialize conflicting object property value (not overwriting): ' +
-                        'objectCollection={}, objectId={}, propertyId={}, txnId={}, commitId={}, msgUuid={}',
+            String existingMsgUuid = existingEntry.get(PROV_MSG_UUID) as String
+            if (message.msgUuid == existingMsgUuid) {
+                if (samePropertyValueEntry(existingEntry, entry)) {
+                    log.info('Materialize duplicate matching object property value: ' +
+                            'objectCollection={}, objectId={}, propertyId={}, txnId={}',
+                            objectCollection, objectId, propertyId, snapshot.txnId)
+                    result.duplicateMatching++
+                    // tolerant re-insert self-heals a missing history row
+                    return history
+                }
+                log.error('Materialize conflicting object property value (same message, ' +
+                        'different payload; not overwriting): objectCollection={}, objectId={}, ' +
+                        'propertyId={}, txnId={}, commitId={}, msgUuid={}',
                         objectCollection, objectId, propertyId,
                         snapshot.txnId, snapshot.commitId, message.msgUuid)
                 result.conflictingDuplicate++
+                return Mono.empty()
             }
-            return Mono.empty()
+            if (existingMsgUuid != null && message.msgUuid <= existingMsgUuid) {
+                log.info('Materialize historical object property value (older than current, ' +
+                        'preserved in hst only): objectCollection={}, objectId={}, propertyId={}, ' +
+                        'txnId={}, msgUuid={}, currentMsgUuid={}',
+                        objectCollection, objectId, propertyId,
+                        snapshot.txnId, message.msgUuid, existingMsgUuid)
+                result.appliedHistorical++
+                return history
+            }
         }
 
         String dottedKey = FIELD_PROPERTY_VALUES + '.' + propertyId
         Query query = Query.query(Criteria.where(FIELD_ID).is(objectId))
         Update update = new Update().set(dottedKey, entry)
-        return mongoTemplate.updateFirst(query, update, objectCollection)
+        return history.then(mongoTemplate.updateFirst(query, update, objectCollection))
                 .doOnSuccess({ Object updateResult ->
                     log.info('Materialized object property value: objectCollection={}, objectId={}, ' +
                             'propertyId={}, txnId={}, commitId={}',
@@ -628,6 +691,45 @@ class CommittedTransactionMaterializer {
                     result.materialized++
                 })
                 .then() as Mono<Void>
+    }
+
+    /**
+     * Append one assignment to the {@code hst} history collection.
+     * {@code _id} is the assignment's message UUID — an assignment event IS
+     * its message — so redeliveries are duplicate-key no-ops.
+     */
+    private Mono<Void> insertHistory(String objectCollection, String objectId,
+                                     String propertyId, Map<String, Object> entry) {
+        Map<String, Object> doc = new LinkedHashMap<>()
+        doc.put(FIELD_ID, entry.get(PROV_MSG_UUID))
+        doc.put(HST_FIELD_OBJECT_ID, objectId)
+        doc.put(HST_FIELD_OBJECT_COLLECTION, objectCollection)
+        doc.put(HST_FIELD_PROPERTY_ID, propertyId)
+        doc.put(FIELD_VALUE, entry.get(FIELD_VALUE))
+        doc.put(PROV_TXN_ID, entry.get(PROV_TXN_ID))
+        doc.put(PROV_COMMIT_ID, entry.get(PROV_COMMIT_ID))
+        doc.put(PROV_MSG_UUID, entry.get(PROV_MSG_UUID))
+        doc.put(ENTRY_APPLIED_AT, entry.get(ENTRY_APPLIED_AT))
+        Mono<Map<String, Object>> insert = mongoTemplate.insert(doc, COLLECTION_HST)
+        if (insert == null) {
+            // tolerate partially stubbed test doubles; production never returns null
+            return Mono.empty()
+        }
+        return insert.then()
+                .onErrorResume({ Throwable ex ->
+                    isDuplicateKeyError(ex) ? Mono.<Void>empty() : Mono.error(ex)
+                }) as Mono<Void>
+    }
+
+    private static boolean isDuplicateKeyError(Throwable ex) {
+        Throwable current = ex
+        while (current != null) {
+            if (current instanceof SpringDuplicateKeyException || current instanceof DuplicateKeyException) {
+                return true
+            }
+            current = current.cause === current ? null : current.cause
+        }
+        return false
     }
 
     private static Map<String, Object> readExistingPropertyValue(Map root, String propertyId) {

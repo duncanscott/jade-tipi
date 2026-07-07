@@ -319,14 +319,130 @@ with a monotonic sequence). Clarity imports first (it is static and has
 first-class process entities that map directly to `prc`); the
 continuously-replicating esp-entity database imports second. Where the
 same entity appears in both sources, **esp-entity properties take
-precedence** — which requires value-update semantics before a real
-production import (create-only ingestion is first-value-wins today).
+precedence** — the required value-update semantics are implemented
+(TASK-061: newest assignment message wins; every applied assignment is
+preserved in `hst`), so this prerequisite for a real production import
+is cleared.
 `value_schema` validation is not required before bulk import: schemas are
 easier to establish once real data exists. ESP workflow → procedure
 reconstruction is deferred as its own phase (esp has no process
 entities; inputs/outputs must be inferred from `begat` edges and sample
 sheets). Staged message payloads are deleted after application — no
 archive; an optional output feed can be added later if wanted.
+
+## Property Value Updates And History
+
+Ratified 2026-07-05. Object-targeted property assignments are
+**updatable**: a later committed assignment for the same property becomes
+the current value on the object root, and every applied assignment is
+preserved in the **`hst`** history collection — a special, derived
+collection (like `txn`, not a wire target) holding one document per
+applied assignment, indexed by object ID, property ID, and message UUID,
+so the full assignment history of any object is retrievable in time
+order.
+
+The root document stays bounded: exactly one current entry per property
+under `property_values`, replaced only when the incoming assignment is
+newer. "Newer" is defined by the assignment's **message UUIDv7** —
+time-ordered and lexicographically sortable by construction — which is
+already each assignment's identity. (The `commit_id` emitted by the
+legacy `IdGenerator` turned out not to be lexicographically orderable —
+its random prefix dominates string comparison. Director ruling
+2026-07-06: commit IDs become UUIDv7, minted the same way as transaction
+UUIDs — see Snapshot Isolation And Orderable Commit IDs, TASK-062.) A
+late-arriving assignment older than the current value lands
+in `hst` without displacing current — deterministic under redelivery,
+sweeps, and out-of-order import. Nothing is ever overwritten
+destructively: what was current, when, and per which transaction is
+always answerable.
+
+History is **on by default**; opting out is the deliberate act. The
+opt-out convention lives in the type system, spelled `history: false` —
+either on a type root (the whole object opts out) or on a
+`property_refs` entry (one property opts out), inherited through the
+type chain with the nearest declaration winning. An opted-out assignment
+still updates the current value; it just writes no history document.
+This is the pressure valve for objects whose state cycles frequently.
+
+Root document creation remains create-only; identity conflicts remain
+conflicts. This model is what the bulk-import precedence rule rides on:
+clarity assigns first, esp-entity assigns later with a newer commit and
+becomes current, and clarity's value remains retrievable history.
+
+## Snapshot Isolation And Orderable Commit IDs
+
+Ratified 2026-07-06. Commit IDs must be **orderable and comparable with
+transaction IDs**: they are generated the same way as transaction UUIDs —
+a fresh **UUIDv7**, minted by the backend when the commit is processed —
+so a transaction ID and a commit ID compare directly as points on one
+timeline. This retires the legacy `IdGenerator` output from the Kafka
+path (that generator, and the HTTP `TransactionController` /
+`TransactionService` pair it serves, were already declared legacy in
+TASK-003) and makes the spec's long-standing "orderable `commit_id`"
+prose true.
+
+On that primitive rides the **visibility rule** (snapshot isolation): a
+transaction cannot read any effect of a commit whose ID is newer than
+the transaction's snapshot point — it sees the world as of its birth.
+Any transaction newer than a commit may read the entities created and
+the property values set by that commit. One refinement for exactness:
+the transaction's UUID is minted by the *client* (it is baked into the
+object IDs the client composes), while commit IDs are minted by the
+*backend* — comparing them directly would compare two clocks. So the
+backend assigns each transaction a **`snapshot_id`** — a UUIDv7 from the
+same generator as commit IDs, minted when the open message is processed.
+Because the single Kafka partition serializes opens and commits through
+one consumer, an open processed after a commit always receives a larger
+ID: the order is total and correct by construction, no clock trust
+required. The client-minted transaction UUID remains the transaction's
+identity; `snapshot_id` is its comparison point.
+
+The visibility rule creates a retention obligation: an old value must
+remain readable as long as any open transaction is entitled to see it.
+The implementation is a **materialization watermark** (the classic
+oldest-open-transaction horizon): the background worker materializes a
+committed transaction only when **no open transaction has a
+`snapshot_id` older than that transaction's `commit_id`**. Equivalently:
+watermark = the minimum `snapshot_id` over open headers (unbounded when
+none are open); the worker projects exactly the committed,
+unwatermarked headers with `commit_id` below the watermark. Roots
+therefore always hold the *floor state* — nothing newer than what every
+open transaction may see — so the existing read surface serves a
+consistent snapshot to every open transaction by construction, with no
+per-query filtering. (The director's original formulation — each queued
+materialization job carries the set of open transactions it waits on,
+shrinking as they close — is the same invariant tracked incrementally;
+the watermark is the chosen implementation, with per-job sets available
+later if the min-query ever bottlenecks.)
+
+Liveness riders, ratified with the design:
+
+- **Every terminal outcome releases waiters**: commit, rollback, and
+  lease expiry all advance the watermark, and rollback nudges the worker
+  just as commit does.
+- **Transactions carry a lease.** An abandoned open transaction would
+  otherwise halt materialization globally, forever. Open headers get a
+  configurable time-to-live; the sweep auto-rolls-back expired opens
+  through the normal durable rollback path (auditable, guarded on
+  `state: "open"`; a late commit then meets the existing
+  COMMIT_REFUSED_ROLLED_BACK semantics).
+- **Freshness is bounded staleness, not a violation.** While an old
+  transaction holds the watermark, transactions newer than a blocked
+  commit do not yet see its effects in roots; they see a consistent
+  older snapshot. The already-ratified overlay reads (plan task F) are
+  what close this gap per reader — overlaying committed-but-unapplied
+  transactions with `commit_id` older than the reader's `snapshot_id` —
+  composing with the watermark into full MVCC: roots = floor state,
+  overlay = per-reader committed delta, `hst` = permanent record
+  (which, with orderable commit IDs, also becomes capable of true
+  point-in-time reads later).
+
+Value-update ordering within materialization is untouched: assignments
+still apply newest-message-wins by message UUIDv7 (finer-grained than
+commit order and correct under any materialization order).
+Implementation is split: TASK-062 (commit IDs as UUIDv7 + prose repair,
+standalone and immediately useful), then TASK-063 (snapshot_id, the
+watermark gate, and leases).
 
 ## Transaction Materialization
 

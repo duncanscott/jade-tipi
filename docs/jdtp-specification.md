@@ -1,7 +1,18 @@
 # JDTP Specification
 
-**Version:** 0.5.2-draft · **Date:** 2026-07-05 · **Status:** Draft for
+**Version:** 0.6.0-draft · **Date:** 2026-07-06 · **Status:** Draft for
 director review
+
+*Changes in 0.6.0: property values become updatable (director-ratified
+2026-07-05) — the root keeps one current entry per property, newest
+message wins (ordered by the assignment's message UUIDv7), and every
+applied assignment is preserved in the new derived `hst` history
+collection, with a `history: false` opt-out on type roots or
+`property_refs` entries (§1.1, §2.3.1, §2.5; UT-10 narrowed
+accordingly). Note for director review: ordering deliberately uses the
+message UUIDv7, not `commit_id` — the current commit-ID generator's
+output is **not** lexicographically orderable, contradicting earlier
+prose; §2.4's "orderable commit_id" language should be revisited.*
 
 *Changes in 0.5.2: the staged-payload question is decided (director
 ruling 2026-07-05) — cleanly-applied staged payloads are deleted, not
@@ -79,7 +90,7 @@ Procedures and tasks added as Planned.*
 
 JDTP (JSON Data Transparency Protocol) is a technology-agnostic protocol for
 world-mergeable, provenance-preserving scientific metadata. This document is
-the authoritative statement of the protocol as ratified through TASK-058 of
+the authoritative statement of the protocol as ratified through TASK-061 of
 the reference implementation. It stands apart from any one database, queue,
 or search product: the reference implementation currently uses Kafka and
 MongoDB, but those are adapters, not the definition. What is **not** an
@@ -133,9 +144,13 @@ exactly one collection. The peer domain collections are:
 | validation | `vdn` | Validation rules *(wire-accepted; not yet materialized)* |
 | user | `usr` | Local identity/audit records *(backend-internal today; not in the wire vocabulary)* |
 
-Two collections are special:
+Three collections are special:
 
 - `txn` is the durable transaction record store, not a domain collection.
+- `hst` is the derived property-assignment history (§2.3.1): one document
+  per applied assignment, keyed by the assignment's message UUID. It is
+  written only by materialization, never by wire messages, and never
+  appears in the wire vocabulary.
 - `msg` **[Planned]** is transient transaction-message staging; it never
   becomes a domain collection and never appears in the wire vocabulary.
 
@@ -275,11 +290,11 @@ transaction provenance to answer *who wrote this value* through the durable
 transaction record: `txn_id`, `commit_id` (required), `msg_uuid` (the
 idempotency key and pointer into message history), and `applied_at`.
 
-Value semantics are currently **create-only**: an absent entry is set; an
-existing entry equal to the incoming one (ignoring `applied_at`) is an
-idempotent duplicate; a differing entry is a conflict and is never
-overwritten. **[Planned]** Value updates with last-committed-wins ordering;
-the orderable `commit_id` is the primitive that enables them.
+Value semantics are **updatable, newest message wins**: the root keeps
+exactly one current entry per property, replaced when a newer assignment
+arrives, and every applied assignment is preserved in the `hst` history
+collection — see §2.3.1 for the full rules (ordering, history opt-out,
+duplicates and conflicts).
 
 The first-pass inline `properties` bag on root documents remains as a
 transitional representation; by convention since the typed container work
@@ -503,6 +518,26 @@ record but skipped as unsupported at materialization, without error):
   ancestor — registers the property (`skippedUnregisteredProperty`);
   malformed payloads are `skippedInvalid`. Gate outcomes are counted, never
   errors.
+- **Values are updatable, and nothing is destroyed** (director-ratified
+  2026-07-05). The root carries exactly one CURRENT entry per property;
+  an assignment newer than the current entry replaces it, ordered by the
+  assignment's **message UUIDv7** (time-ordered and lexicographically
+  sortable by construction). Every applied assignment is preserved in the
+  **`hst`** history collection — `_id` is the assignment's message UUID
+  (idempotent by construction), with `object_id`, `object_collection`,
+  `property_id`, `value`, and full provenance, indexed by
+  `(object_id, property_id, msg_uuid)` for chronological retrieval. An
+  assignment older than current lands in `hst` without displacing
+  current (`applied_historical`). A same-message redelivery is an
+  idempotent duplicate; a same-message payload mismatch remains a
+  conflict and changes nothing.
+- **History opt-out** (`history: false`): declared on a type root (the
+  whole object) or on a `property_refs` entry (one property), resolved
+  along the §1.4 registration walk — the property-level declaration is
+  most specific, then the nearest object-level declaration at or below
+  the registering type, then the default (enabled). Opted-out
+  assignments still update the current value; they write no history
+  document.
 
 ### 2.4 Transaction lifecycle
 
@@ -531,7 +566,9 @@ does not trigger projection.
 Commit also fixes the committed set's size on the header as
 `message_count` — the transaction's non-late message rows at commit time —
 and the projection stamps each row's terminal `apply_state` (`applied`,
-`duplicate`, `conflict`, or a `skipped_*` reason) with `apply_state_at`,
+`duplicate`, `conflict`, a `skipped_*` reason, or `applied_historical` —
+an assignment preserved in history without displacing a newer current
+value, §2.3.1) with `apply_state_at`,
 guarded so the **first** terminal outcome wins: an idempotent re-run,
 whose repeats naturally resolve `duplicate`, cannot overwrite the original
 truth. A mismatch between `message_count` and the committed snapshot's
@@ -566,13 +603,22 @@ deferred.
   payload (ignoring `_head.provenance.materialized_at`) is an idempotent
   duplicate; a differing payload — including differing provenance — is a
   conflict and is **never overwritten**.
-- **Property registration and property values:** the same
-  matching-vs-conflicting rule, ignoring `applied_at` on value entries.
+- **Property registration:** the same matching-vs-conflicting rule.
+- **Property values:** duplicate/conflict identity is the assignment
+  *message* — a redelivery of the same message is an idempotent duplicate
+  (its history write is idempotent by `_id`); a differing payload under
+  the same message identity is a conflict. A *different* message
+  assigning the same property is never a conflict: newer-than-current
+  replaces the current entry, older-than-current is preserved in `hst`
+  without touching current (§2.3.1).
 - Consequence (re-import boundary): replaying the *same* transaction is
-  idempotent end to end; a *new* transaction re-submitting the same IDs
-  surfaces as conflicts (provenance differs) and changes nothing. JDTP
-  ingestion is therefore create-only today; synchronization of upstream
-  changes awaits the planned lifecycle and value-update semantics.
+  idempotent end to end; a *new* transaction re-submitting the same root
+  IDs surfaces as conflicts (provenance differs) and changes nothing —
+  root creation stays create-only. Property assignments in a new
+  transaction, however, DO propagate: re-importing an upstream record
+  updates its property values (newest message wins) while `hst` retains
+  the full assignment trail. Synchronization of upstream *structural*
+  changes (new roots aside) remains future work.
 
 ---
 

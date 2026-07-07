@@ -210,21 +210,28 @@ Explicit residual: enforcement (refusing or skipping invalid links) is a
 future director decision — the final rung of the ladder, to be revisited
 with bulk-import experience.
 
-## UT-10 — Ingestion is create-only; source changes never propagate
+## UT-10 — Structural ingestion is create-only; only property values propagate
 
-**Status: DELIBERATE** · **Priority: revisit with synchronization
-requirements**
+**Status: DELIBERATE, NARROWED by TASK-061** · **Priority: revisit with
+synchronization requirements**
 
-Updates do not materialize (except `typ add_property`), property values
-are set-once (conflicts are counted, never overwritten), and re-importing
-changed upstream records surfaces as conflicts rather than updates. The
-CouchDB import loop documents this boundary honestly.
+Property values now update (director-ratified 2026-07-05): a newer
+assignment message replaces the current entry and every applied
+assignment is preserved in `hst`, so re-importing changed upstream
+*values* propagates. The structural boundary remains: root documents are
+insert-only (re-submitting the same ID from a new transaction is a
+counted conflict), updates other than `typ add_property` do not
+materialize, and links are append-only.
 
-- Why deliberate: value updates need the last-committed-wins semantics
-  the orderable `commit_id` enables, and true synchronization needs the
-  staged lifecycle; both are ratified planned work.
-- Revisit trigger: the first requirement to reflect upstream changes
-  rather than snapshot them.
+- Why deliberate: true structural synchronization needs the staged
+  lifecycle (and a diff/retraction model that does not exist yet);
+  ratified planned work.
+- What TASK-061 resolved: value updates order by the assignment's
+  **message UUIDv7** — not `commit_id`, whose current generator output is
+  not lexicographically orderable (spec 0.6.0 change note flags the
+  stale "orderable commit_id" prose for director review).
+- Revisit trigger: the first requirement to reflect upstream *structural*
+  changes rather than snapshot them.
 
 ## UT-11 — `required` property references are recorded but unenforced
 

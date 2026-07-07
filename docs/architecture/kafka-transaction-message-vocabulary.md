@@ -133,8 +133,9 @@ the `txn` MongoDB collection:
   TASK-056).
 - Message rows additionally carry a terminal `apply_state` once a
   projection pass has processed them (`applied`, `duplicate`,
-  `conflict`, or a `skipped_*` reason, plus `apply_state_at`;
-  TASK-056). The stamp is guarded on the field being absent — the first
+  `conflict`, a `skipped_*` reason, or `applied_historical` for an
+  assignment preserved in history without displacing a newer current
+  value, plus `apply_state_at`; TASK-056/TASK-061). The stamp is guarded on the field being absent — the first
   terminal outcome wins, so idempotent re-runs (whose repeats naturally
   resolve `duplicate`) cannot overwrite the original truth. Late-append
   rows are excluded from the snapshot and are therefore never stamped. A
@@ -434,11 +435,33 @@ property must be listed under `properties.property_refs` on the target's
 shared decision table: unknown `object_collection`, blank `object_id` or
 `property_id`, or a non-object `value` are `skippedInvalid`; a missing target
 root is `skippedMissingTarget`; a blank target `type_id`, missing `typ`
-root, or unregistered property is `skippedUnregisteredProperty`. An existing
-entry equal to the incoming one ignoring `applied_at` is `duplicateMatching`;
-a differing entry is `conflictingDuplicate` and never overwritten. Value
-updates (last-committed-wins) are deferred; the orderable `commit_id` is the
-primitive that will enable them.
+root, or unregistered property is `skippedUnregisteredProperty`.
+
+Values are updatable (TASK-061, director-ratified 2026-07-05). The root
+keeps exactly one current entry per property; duplicate/conflict identity
+is the assignment *message*:
+
+- same `msg_uuid` as the current entry: payload match (ignoring
+  `applied_at`) is `duplicateMatching`; a differing payload is
+  `conflictingDuplicate` and never overwritten (WAL-corruption guard);
+- different `msg_uuid`, incoming newer: the assignment is appended to
+  `hst`, then the current entry is replaced (`materialized`). "Newer"
+  compares message UUIDv7s, which are time-ordered and lexicographically
+  sortable — NOT `commit_id`, whose generated form is not orderable;
+- different `msg_uuid`, incoming older than current: appended to `hst`
+  only, current untouched — terminal outcome `applied_historical`.
+
+Every applied assignment is preserved in the derived **`hst`** collection
+(`_id = msg_uuid`, so re-inserts are idempotent by construction; fields
+`object_id`, `object_collection`, `property_id`, `value`, `txn_id`,
+`commit_id`, `msg_uuid`, `applied_at`; compound index
+`(object_id, property_id, msg_uuid)` for chronological retrieval). No
+wire message targets `hst`; it is written only by materialization.
+History can be opted out with `history: false` on the type root's
+`properties` or on a `property_refs` entry — resolved along the
+registration walk (property-level most specific, then the nearest
+object-level declaration, then enabled). Opted-out assignments still
+update the current value; they write no `hst` row.
 
 Remaining target direction: property-value messages should eventually stage
 in transient `msg` rather than `txn`, and the drift-note lifecycle (per-message
