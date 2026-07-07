@@ -165,6 +165,15 @@ all. Proven by `MaterializationSweepIntegrationSpec`, which plants the
 crash-between-commit-and-projection state directly in MongoDB and shows
 the sweep alone heals it.
 
+Refinement (TASK-063, director-ratified 2026-07-06): "eventually
+projected" now means "once the snapshot watermark passes" — a committed
+transaction waits while any open transaction holds an older
+`snapshot_id` (snapshot isolation: old values stay readable for old
+snapshots), and the transaction lease bounds that wait — an abandoned
+open is durably auto-rolled-back by the sweep, so the guarantee still
+terminates. Proven by `SnapshotWatermarkIntegrationSpec` and
+`SnapshotWatermarkKafkaIntegrationSpec`.
+
 Explicit residuals, by design: the watermark is header-coarse — the
 per-message `apply_state` / `applied` watermark, staging, and cleanup
 remain the ratified lifecycle work (plan task F); persistently failing
@@ -227,9 +236,11 @@ materialize, and links are append-only.
   lifecycle (and a diff/retraction model that does not exist yet);
   ratified planned work.
 - What TASK-061 resolved: value updates order by the assignment's
-  **message UUIDv7** — not `commit_id`, whose current generator output is
-  not lexicographically orderable (spec 0.6.0 change note flags the
-  stale "orderable commit_id" prose for director review).
+  **message UUIDv7** (finer-grained than commit order and correct under
+  any materialization order). The commit-ID discovery it surfaced — the
+  legacy generator's output was not lexicographically orderable — was
+  ruled on 2026-07-06 and fixed by TASK-062: `commit_id` is now a
+  backend-minted UUIDv7, orderable and comparable with transaction IDs.
 - Revisit trigger: the first requirement to reflect upstream *structural*
   changes rather than snapshot them.
 

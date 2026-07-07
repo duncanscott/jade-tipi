@@ -112,9 +112,14 @@ The early materializer may also tolerate older examples that put `name` and
 Current implementation note: the first materializer stores two record kinds in
 the `txn` MongoDB collection:
 
-- Transaction header: `_id = txn_id`, `record_type = "transaction"`. The
-  header state is `open`, then terminally `committed` (with the orderable
-  backend `commit_id`, `committed_at`, `commit_data`) **or** `rolled_back`
+- Transaction header: `_id = txn_id`, `record_type = "transaction"`. Open
+  processing mints a backend `snapshot_id` — a UUIDv7 from the same
+  generator as commit ids, the transaction's snapshot point for the
+  visibility rule (TASK-063). The header state is `open`, then terminally
+  `committed` (with the backend
+  `commit_id` — a UUIDv7 minted the same way as transaction UUIDs, so
+  commit IDs are orderable and comparable with transaction IDs
+  (TASK-062) — plus `committed_at`, `commit_data`) **or** `rolled_back`
   (with `rolled_back_at` and the rollback message's `data` kept as
   `rollback_data` — the audit fact; UT-2/TASK-050). The terminal states
   are mutually exclusive: a commit arriving after a rollback is refused
@@ -122,11 +127,21 @@ the `txn` MongoDB collection:
   commit is refused, rollback re-delivery is an idempotent duplicate, and
   both transitions carry a `state: "open"` guard on the update query as
   write-time defense in depth. A committed header additionally gains a
-  `materialized_at` watermark once the background materialization worker
+  `materialized_at` stamp once the background materialization worker
   completes a projection pass (UT-7/TASK-052); commit handling itself
-  never projects — it marks the header and nudges the worker, whose
-  periodic sweep over committed-but-unwatermarked headers guarantees
-  projection with no dependence on transport redelivery. Commit
+  never projects — every terminal outcome (commit or rollback) marks the
+  header and nudges the worker, and a nudge triggers a full sweep pass,
+  since any terminal outcome can release transactions other than its
+  own. The sweep enforces the **snapshot watermark** (TASK-063): a
+  committed transaction materializes only when no open transaction has a
+  `snapshot_id` older than its `commit_id`, so roots always hold the
+  floor state every open transaction may see; the sweep also durably
+  rolls back opens past the `jadetipi.transaction.lease` (default PT1H,
+  `rollback_data.reason: "lease_expired"`) so an abandoned open cannot
+  hold the watermark back forever. The periodic sweep over
+  committed-but-unstamped headers guarantees
+  projection once eligible, with no dependence on transport redelivery.
+  Commit
   re-delivery does not trigger projection. The commit also fixes the
   committed set's size as `message_count` — the transaction's non-late
   message rows at commit time (UT-6 guard makes that set immutable;
@@ -446,8 +461,9 @@ is the assignment *message*:
   `conflictingDuplicate` and never overwritten (WAL-corruption guard);
 - different `msg_uuid`, incoming newer: the assignment is appended to
   `hst`, then the current entry is replaced (`materialized`). "Newer"
-  compares message UUIDv7s, which are time-ordered and lexicographically
-  sortable — NOT `commit_id`, whose generated form is not orderable;
+  compares message UUIDv7s — finer-grained than commit order (it also
+  orders assignments within one transaction) and correct under any
+  materialization order;
 - different `msg_uuid`, incoming older than current: appended to `hst`
   only, current untouched — terminal outcome `applied_historical`.
 

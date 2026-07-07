@@ -440,9 +440,10 @@ Liveness riders, ratified with the design:
 Value-update ordering within materialization is untouched: assignments
 still apply newest-message-wins by message UUIDv7 (finer-grained than
 commit order and correct under any materialization order).
-Implementation is split: TASK-062 (commit IDs as UUIDv7 + prose repair,
-standalone and immediately useful), then TASK-063 (snapshot_id, the
-watermark gate, and leases).
+Implementation was split and both slices are implemented: TASK-062
+(commit IDs as UUIDv7 + prose repair) and TASK-063 (snapshot_id, the
+watermark gate, and leases; spec 0.7.0-draft makes snapshot isolation
+Normative).
 
 ## Transaction Materialization
 

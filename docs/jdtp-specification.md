@@ -1,7 +1,23 @@
 # JDTP Specification
 
-**Version:** 0.6.0-draft · **Date:** 2026-07-06 · **Status:** Draft for
+**Version:** 0.7.0-draft · **Date:** 2026-07-06 · **Status:** Draft for
 director review
+
+*Changes in 0.7.0: **snapshot isolation** becomes Normative
+(director-ratified 2026-07-06; TASK-063) — a transaction reads nothing
+newer than its snapshot point. The backend mints a `snapshot_id`
+(UUIDv7) at open-processing and materializes a committed transaction
+only when no open transaction has an older snapshot (the
+oldest-open-transaction watermark), so roots always hold the floor
+state; open transactions carry a lease (durable auto-rollback on
+expiry) so an abandoned open cannot stall materialization forever; every
+terminal outcome nudges the worker, and a nudge now triggers a full
+sweep pass. Per-reader overlay reads remain Planned (§2.4).*
+
+*Changes in 0.6.1: the 0.6.0 orderability flag is answered by director
+ruling (2026-07-06) — `commit_id` is a backend-minted **UUIDv7**,
+generated the same way as transaction UUIDs, so commit IDs are orderable
+and directly comparable with transaction IDs (§2.4; TASK-062).*
 
 *Changes in 0.6.0: property values become updatable (director-ratified
 2026-07-05) — the root keeps one current entry per property, newest
@@ -90,7 +106,7 @@ Procedures and tasks added as Planned.*
 
 JDTP (JSON Data Transparency Protocol) is a technology-agnostic protocol for
 world-mergeable, provenance-preserving scientific metadata. This document is
-the authoritative statement of the protocol as ratified through TASK-061 of
+the authoritative statement of the protocol as ratified through TASK-063 of
 the reference implementation. It stands apart from any one database, queue,
 or search product: the reference implementation currently uses Kafka and
 MongoDB, but those are adapters, not the definition. What is **not** an
@@ -478,7 +494,7 @@ record but skipped as unsupported at materialization, without error):
 | Message | Effect |
 |---|---|
 | `txn + open` | Opens the transaction (idempotent re-delivery confirmed). |
-| `txn + commit` | Commits: the backend assigns an opaque, **orderable** `commit_id` and triggers materialization. |
+| `txn + commit` | Commits: the backend mints a **UUIDv7** `commit_id` — orderable, and comparable with transaction UUIDs as points on one timeline — and marks the header for materialization. |
 | `txn + rollback` | Durably marks the header `rolled_back` (terminal), keeping the message's `data` as `rollback_data` — the audit fact. Re-delivery is idempotent; rollback-after-commit is refused; rollback before open is an error. |
 | `loc/ent/grp/tsk/fil + create` | Root document per §1.3; `data.type_id` surfaces as the root `type_id` (unresolved references are not checked). |
 | `prc + create` | Root document per §1.3 whose optional top-level `output_input` map is hoisted onto the root (§1.9), parallel to `lnk` endpoints. |
@@ -550,17 +566,65 @@ are never discarded — but flagged `late_append: true` and excluded from
 the committed snapshot, so it can never materialize on any commit
 re-delivery. Appends before open (no header yet) remain allowed and
 unflagged; they materialize at the explicit commit like any other row.
-Commit durably marks the header with the orderable `commit_id` **before**
-any materialization. Projection is owned by a **background worker**, not
-the commit path: commit handling nudges the worker (a best-effort
-in-process signal) and returns, so ingest is never blocked by projection
-cost; the worker materializes committed transactions whose header lacks
-the `materialized_at` watermark, projecting supported messages in
-message-UUID order and stamping the watermark when a pass completes. A
+Commit durably marks the header with the `commit_id` **before** any
+materialization. The `commit_id` is a backend-minted **UUIDv7** — the
+same construction as transaction UUIDs (§1.2) — so commit IDs are
+orderable among themselves and comparable with transaction UUIDs: the
+canonical comparison is between UUIDv7 values (a transaction ID's
+leading UUID segment against a commit ID), placing every open and every
+commit on one timeline. This is the primitive **snapshot isolation**
+builds on.
+
+**Snapshot isolation [Normative]** (director-ratified 2026-07-06;
+TASK-063). A transaction sees the world as of its birth: it cannot read
+any entity created or property value set by a commit whose `commit_id`
+is newer than the transaction's **snapshot point**; any transaction
+newer than a commit may read that commit's effects. The snapshot point
+is the header's `snapshot_id` — a UUIDv7 minted by the *backend* when
+the open message is processed, from the same generator as commit IDs.
+(The transaction's own UUID remains its identity, but it is minted by
+the client; because the single ingest partition serializes opens and
+commits through one consumer, backend-minted `snapshot_id` and
+`commit_id` values order totally and correctly with no trust in client
+clocks — an open processed after a commit always receives a larger ID.
+Headers predating `snapshot_id` fall back to the transaction UUID.)
+
+The rule is enforced structurally by the **materialization watermark**:
+old values must stay readable while an open transaction is entitled to
+them, so the worker materializes a committed transaction only when no
+open transaction has a `snapshot_id` older than its `commit_id` —
+equivalently, only commits below the minimum open `snapshot_id` (no
+bound when nothing is open; a legacy non-UUID `commit_id` predates
+every live open and is always eligible). Root documents therefore hold
+the *floor state* — nothing any open transaction may not see — and the
+read surface serves every open transaction a consistent snapshot with
+no per-query filtering. Transactions newer than a blocked commit see
+bounded staleness until the watermark advances; the per-reader overlay
+(committed-but-unmaterialized transactions with `commit_id` older than
+the reader's `snapshot_id`) remains **[Planned]**.
+
+Liveness: every terminal outcome — commit, rollback, or lease expiry —
+advances the watermark and nudges the worker. Open transactions carry a
+**lease** (`jadetipi.transaction.lease`, default PT1H): the sweep
+durably rolls back opens older than the lease through the normal
+guarded rollback path, recording the expiry as `rollback_data` (audit),
+so an abandoned open cannot hold the watermark back forever; a late
+commit then meets the ordinary refused-after-rollback semantics.
+
+Projection is owned by a **background
+worker**, not
+the commit path: terminal handling nudges the worker (a best-effort
+in-process signal — a nudge triggers a full sweep pass, since any
+terminal outcome can release transactions other than its own) and
+returns, so ingest is never blocked by projection cost; the worker
+materializes watermark-eligible committed transactions whose header
+lacks the `materialized_at` stamp, projecting supported messages in
+message-UUID order and stamping the header when a pass completes. A
 periodic sweep over committed-but-unwatermarked headers — plus one sweep
 at startup — guarantees every committed transaction is eventually
-projected, with no dependence on transport redelivery. A projection
-failure never un-commits: the header stays unwatermarked and the next
+projected once eligible, with no dependence on transport redelivery. A
+projection
+failure never un-commits: the header stays unstamped and the next
 sweep retries; all projections are idempotent (§2.5). Commit re-delivery
 does not trigger projection.
 Commit also fixes the committed set's size on the header as

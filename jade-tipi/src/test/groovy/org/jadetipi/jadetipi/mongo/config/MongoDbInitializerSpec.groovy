@@ -22,8 +22,8 @@ class MongoDbInitializerSpec extends Specification {
     def "run() creates the loc collection when it does not yet exist"() {
         given:
         ReactiveMongoTemplate mongoTemplate = Mock(ReactiveMongoTemplate)
-        mongoTemplate.indexOps('hst') >> Mock(org.springframework.data.mongodb.core.index.ReactiveIndexOperations) {
-            ensureIndex(_) >> Mono.just('hst_history_idx')
+        mongoTemplate.indexOps(_ as String) >> Mock(org.springframework.data.mongodb.core.index.ReactiveIndexOperations) {
+            ensureIndex(_) >> Mono.just('ensured_idx')
         }
         MongoDbInitializer initializer = new MongoDbInitializer(mongoTemplate)
 
@@ -41,8 +41,8 @@ class MongoDbInitializerSpec extends Specification {
     def "run() does not recreate the loc collection when it already exists"() {
         given:
         ReactiveMongoTemplate mongoTemplate = Mock(ReactiveMongoTemplate)
-        mongoTemplate.indexOps('hst') >> Mock(org.springframework.data.mongodb.core.index.ReactiveIndexOperations) {
-            ensureIndex(_) >> Mono.just('hst_history_idx')
+        mongoTemplate.indexOps(_ as String) >> Mock(org.springframework.data.mongodb.core.index.ReactiveIndexOperations) {
+            ensureIndex(_) >> Mono.just('ensured_idx')
         }
         MongoDbInitializer initializer = new MongoDbInitializer(mongoTemplate)
 
@@ -58,8 +58,8 @@ class MongoDbInitializerSpec extends Specification {
     def "run() creates the backend-internal usr collection alongside the wire vocabulary"() {
         given:
         ReactiveMongoTemplate mongoTemplate = Mock(ReactiveMongoTemplate)
-        mongoTemplate.indexOps('hst') >> Mock(org.springframework.data.mongodb.core.index.ReactiveIndexOperations) {
-            ensureIndex(_) >> Mono.just('hst_history_idx')
+        mongoTemplate.indexOps(_ as String) >> Mock(org.springframework.data.mongodb.core.index.ReactiveIndexOperations) {
+            ensureIndex(_) >> Mono.just('ensured_idx')
         }
         MongoDbInitializer initializer = new MongoDbInitializer(mongoTemplate)
 
@@ -76,8 +76,8 @@ class MongoDbInitializerSpec extends Specification {
     def "run() touches exactly the wire collections plus usr and hst — no tipi, no msg"() {
         given:
         ReactiveMongoTemplate mongoTemplate = Mock(ReactiveMongoTemplate)
-        mongoTemplate.indexOps('hst') >> Mock(org.springframework.data.mongodb.core.index.ReactiveIndexOperations) {
-            ensureIndex(_) >> Mono.just('hst_history_idx')
+        mongoTemplate.indexOps(_ as String) >> Mock(org.springframework.data.mongodb.core.index.ReactiveIndexOperations) {
+            ensureIndex(_) >> Mono.just('ensured_idx')
         }
         MongoDbInitializer initializer = new MongoDbInitializer(mongoTemplate)
         Set<String> checked = [] as Set

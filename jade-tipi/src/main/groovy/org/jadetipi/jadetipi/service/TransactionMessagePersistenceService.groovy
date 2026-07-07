@@ -12,12 +12,12 @@
  */
 package org.jadetipi.jadetipi.service
 
+import com.github.f4b6a3.uuid.UuidCreator
 import com.mongodb.DuplicateKeyException
 import groovy.util.logging.Slf4j
 import org.jadetipi.dto.message.Action
 import org.jadetipi.dto.message.Collection
 import org.jadetipi.dto.message.Message
-import org.jadetipi.id.IdGenerator
 import org.jadetipi.jadetipi.exception.ConflictingDuplicateException
 import org.jadetipi.jadetipi.kafka.KafkaSourceMetadata
 import org.springframework.dao.DuplicateKeyException as SpringDuplicateKeyException
@@ -41,7 +41,8 @@ import static org.jadetipi.jadetipi.util.Constants.TRANSACTION_ID_SEPARATOR
  * <ul>
  *   <li>Header (record_type=transaction): {@code _id = txn_id}, holds the
  *       lifecycle state — {@code open}, then terminally {@code committed}
- *       (with an orderable backend-generated {@code commit_id}) or
+ *       (with a backend-minted UUIDv7 {@code commit_id} — orderable and
+ *       comparable with transaction UUIDs; TASK-062) or
  *       {@code rolled_back} (with {@code rolled_back_at} and the rollback
  *       message's {@code rollback_data} as the audit fact; UT-2/TASK-050).
  *       The two terminal states are mutually exclusive: commit-after-rollback
@@ -75,6 +76,7 @@ class TransactionMessagePersistenceService {
     static final String FIELD_TXN_ID = 'txn_id'
     static final String FIELD_STATE = 'state'
     static final String FIELD_COMMIT_ID = 'commit_id'
+    static final String FIELD_SNAPSHOT_ID = 'snapshot_id'
     static final String FIELD_OPENED_AT = 'opened_at'
     static final String FIELD_COMMITTED_AT = 'committed_at'
     static final String FIELD_ROLLED_BACK_AT = 'rolled_back_at'
@@ -100,14 +102,11 @@ class TransactionMessagePersistenceService {
     private static final String COLLECTION_NAME = COLLECTION_TRANSACTIONS
 
     private final ReactiveMongoTemplate mongoTemplate
-    private final IdGenerator idGenerator
     private final CommittedTransactionMaterializationWorker materializationWorker
 
     TransactionMessagePersistenceService(ReactiveMongoTemplate mongoTemplate,
-                                         IdGenerator idGenerator,
                                          CommittedTransactionMaterializationWorker materializationWorker) {
         this.mongoTemplate = mongoTemplate
-        this.idGenerator = idGenerator
         this.materializationWorker = materializationWorker
     }
 
@@ -182,6 +181,11 @@ class TransactionMessagePersistenceService {
                             .setOnInsert(FIELD_STATE, STATE_OPEN)
                             .setOnInsert(FIELD_OPENED_AT, Instant.now())
                             .setOnInsert(FIELD_OPEN_DATA, message.data())
+                            // The transaction's snapshot point (TASK-063): minted
+                            // backend-side in Kafka processing order, so it is
+                            // totally ordered against commit ids with no trust in
+                            // the client clock behind the txn uuid.
+                            .setOnInsert(FIELD_SNAPSHOT_ID, UuidCreator.timeOrderedEpoch.toString())
 
                     return mongoTemplate.upsert(query, update, COLLECTION_NAME)
                             .doOnSuccess { log.info('Transaction header opened: txnId={}', txnId) }
@@ -208,7 +212,10 @@ class TransactionMessagePersistenceService {
                         return Mono.just(PersistResult.COMMIT_REFUSED_ROLLED_BACK)
                     }
 
-                    String commitId = idGenerator.nextId()
+                    // UUIDv7, minted the same way as transaction UUIDs so a
+                    // commit id and a transaction id compare as points on one
+                    // timeline (director ruling 2026-07-06; TASK-062).
+                    String commitId = UuidCreator.timeOrderedEpoch.toString()
                     Instant now = Instant.now()
                     // The committed set is fixed at commit time: strict partition
                     // ordering means every pre-commit row is already appended, and
@@ -275,7 +282,13 @@ class TransactionMessagePersistenceService {
                             .set(FIELD_ROLLBACK_DATA, message.data())
 
                     return mongoTemplate.updateFirst(query, update, COLLECTION_NAME)
-                            .doOnSuccess { log.info('Transaction rolled back: txnId={}', txnId) }
+                            .doOnSuccess {
+                                log.info('Transaction rolled back: txnId={}', txnId)
+                                // A terminal outcome advances the materialization
+                                // watermark: transactions blocked behind this open
+                                // may now be eligible (TASK-063).
+                                materializationWorker.nudge(txnId)
+                            }
                             .doOnError { ex -> log.error('Failed to roll back transaction: txnId={}', txnId, ex) }
                             .thenReturn(PersistResult.ROLLED_BACK)
                 } as Mono<PersistResult>

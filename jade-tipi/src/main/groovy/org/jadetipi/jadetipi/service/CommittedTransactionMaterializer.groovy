@@ -619,9 +619,9 @@ class CommittedTransactionMaterializer {
     /**
      * Apply the assignment under the value-update model (TASK-061): the root
      * carries exactly one CURRENT entry per property, replaced only when the
-     * incoming assignment is newer — ordered by message UUIDv7, which is
-     * time-ordered by construction (commit_id is not lexicographically
-     * orderable). Every applied assignment is preserved in {@code hst}
+     * incoming assignment is newer — ordered by message UUIDv7 (finer-grained
+     * than commit order and correct under any materialization order). Every
+     * applied assignment is preserved in {@code hst}
      * unless the type system opts the object or property out
      * ({@code history: false}); an assignment older than current lands in
      * history without displacing current ({@code applied_historical}).

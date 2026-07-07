@@ -52,6 +52,7 @@ class MongoDbInitializer implements CommandLineRunner {
             ensureCollection(collectionName)
         }
         ensureHistoryIndex()
+        ensureWatermarkIndex()
 
         log.info "MongoDB initialization completed"
     }
@@ -68,6 +69,21 @@ class MongoDbInitializer implements CommandLineRunner {
                         .on('property_id', Sort.Direction.ASC)
                         .on('msg_uuid', Sort.Direction.ASC))
                 .doOnSuccess { String name -> log.info "Ensured hst history index '{}'", name }
+                .block()
+    }
+
+    /**
+     * The snapshot-watermark queries (TASK-063): open headers selected by
+     * record_type/state for their snapshot_id (watermark minimum) and
+     * opened_at (lease expiry).
+     */
+    private void ensureWatermarkIndex() {
+        mongoTemplate.indexOps('txn')
+                .ensureIndex(new Index()
+                        .on('record_type', Sort.Direction.ASC)
+                        .on('state', Sort.Direction.ASC)
+                        .on('snapshot_id', Sort.Direction.ASC))
+                .doOnSuccess { String name -> log.info "Ensured txn watermark index '{}'", name }
                 .block()
     }
 

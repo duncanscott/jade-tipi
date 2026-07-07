@@ -26,14 +26,21 @@ import java.time.Instant
  * TASK-052 (UT-7) coverage for the background materialization worker:
  * materialize-then-stamp with the watermark guard, the skip for
  * already-watermarked headers, no stamp on projection failure, and the
- * sweep's committed-but-unwatermarked selection. The nudge/sweep pipelines
- * themselves are proven by the integration specs; these features pin the
- * per-transaction unit of work.
+ * sweep's committed-but-unwatermarked selection — plus the TASK-063
+ * snapshot-isolation duties: the oldest-open-snapshot watermark gate, the
+ * legacy fallbacks on both sides of the comparison, and the lease pass that
+ * durably rolls back expired opens. The nudge/sweep pipelines themselves are
+ * proven by the integration specs; these features pin the per-pass units of
+ * work.
  */
 class CommittedTransactionMaterializationWorkerSpec extends Specification {
 
     static final String TXN_ID = 'aaaaaaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee~test-org~test-grp~jade-cli'
     static final String COLLECTION = 'txn'
+    // v7 uuids: SNAPSHOT_OLD < COMMIT_MID < SNAPSHOT_NEW lexicographically and temporally
+    static final String SNAPSHOT_OLD = '018fd849-9b01-7111-8a01-a1a1a1a1a1a1'
+    static final String COMMIT_MID = '018fd849-9b02-7222-8a02-a2a2a2a2a2a2'
+    static final String SNAPSHOT_NEW = '018fd849-9b03-7333-8a03-a3a3a3a3a3a3'
 
     ReactiveMongoTemplate mongoTemplate
     CommittedTransactionMaterializer materializer
@@ -43,7 +50,7 @@ class CommittedTransactionMaterializationWorkerSpec extends Specification {
         mongoTemplate = Mock(ReactiveMongoTemplate)
         materializer = Mock(CommittedTransactionMaterializer)
         worker = new CommittedTransactionMaterializationWorker(
-                mongoTemplate, materializer, true, Duration.ofSeconds(30))
+                mongoTemplate, materializer, true, Duration.ofSeconds(30), Duration.ofHours(1))
     }
 
     private static Map committedHeader(Map overrides = [:]) {
@@ -56,6 +63,36 @@ class CommittedTransactionMaterializationWorkerSpec extends Specification {
         ]
         base.putAll(overrides)
         return base
+    }
+
+    private static Map openHeader(Map overrides = [:]) {
+        Map base = [
+                _id        : 'bbbbbbbb-0000-7000-8000-000000000000~test-org~test-grp~jade-cli',
+                record_type: 'transaction',
+                state      : 'open',
+                opened_at  : Instant.parse('2026-01-01T00:00:00Z'),
+                snapshot_id: SNAPSHOT_OLD
+        ]
+        base.putAll(overrides)
+        return base
+    }
+
+    /**
+     * The sweep issues three find shapes against txn: the lease-expiry query
+     * (state open + opened_at bound), the watermark query (state open), and
+     * the committed-unwatermarked selection. Discriminate on the query.
+     */
+    private void stubSweepFinds(List<Map> expiredOpens, List<Map> opens, List<Map> committed,
+                                List<Query> committedQueryCapture = null) {
+        mongoTemplate.find(_ as Query, Map.class, COLLECTION) >> { Query q, Class _t, String _c ->
+            Map queryObject = q.getQueryObject()
+            if (queryObject.get('state') == 'open') {
+                return queryObject.containsKey('opened_at') ?
+                        Flux.fromIterable(expiredOpens) : Flux.fromIterable(opens)
+            }
+            committedQueryCapture?.add(q)
+            return Flux.fromIterable(committed)
+        }
     }
 
     def 'materializeAndStamp materializes and stamps the watermark with a guarded update'() {
@@ -129,11 +166,8 @@ class CommittedTransactionMaterializationWorkerSpec extends Specification {
 
     def 'sweepOnce selects committed, commit_id-bearing, unwatermarked headers and processes each'() {
         given:
-        Query capturedQuery = null
-        mongoTemplate.find(_ as Query, Map.class, COLLECTION) >> { Query q, Class _t, String _c ->
-            capturedQuery = q
-            return Flux.just(committedHeader())
-        }
+        List<Query> committedQueries = []
+        stubSweepFinds([], [], [committedHeader()], committedQueries)
         mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just(committedHeader())
         materializer.materialize(TXN_ID) >> Mono.just(new MaterializeResult())
         mongoTemplate.updateFirst(_ as Query, _ as Update, COLLECTION) >> Mono.empty()
@@ -145,7 +179,7 @@ class CommittedTransactionMaterializationWorkerSpec extends Specification {
         processed == 1L
 
         and: 'the sweep query mirrors the committed-visibility gate plus the missing watermark'
-        Map queryObject = capturedQuery.getQueryObject()
+        Map queryObject = committedQueries.first().getQueryObject()
         queryObject.get('record_type') == 'transaction'
         queryObject.get('state') == 'committed'
         (queryObject.get('commit_id') as Map).get('$exists') == true
@@ -155,8 +189,7 @@ class CommittedTransactionMaterializationWorkerSpec extends Specification {
     def 'sweepOnce isolates per-transaction failures so one broken transaction cannot stall the rest'() {
         given: 'two committed headers; the first projection fails'
         String otherTxnId = 'bbbbbbbb-cccc-7ddd-8eee-ffffffffffff~test-org~test-grp~jade-cli'
-        mongoTemplate.find(_ as Query, Map.class, COLLECTION) >> Flux.just(
-                committedHeader(), committedHeader(_id: otherTxnId, txn_id: otherTxnId))
+        stubSweepFinds([], [], [committedHeader(), committedHeader(_id: otherTxnId, txn_id: otherTxnId)])
         mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just(committedHeader())
         mongoTemplate.findById(otherTxnId, Map.class, COLLECTION) >> Mono.just(
                 committedHeader(_id: otherTxnId, txn_id: otherTxnId))
@@ -179,11 +212,103 @@ class CommittedTransactionMaterializationWorkerSpec extends Specification {
         (capturedUpdate.getUpdateObject().get('$set') as Map).containsKey('materialized_at')
     }
 
+    def 'the snapshot watermark gates the sweep: an older open snapshot blocks, otherwise the commit runs'() {
+        given: 'a committed UUIDv7 commit and one open transaction'
+        stubSweepFinds([], [openHeader(snapshot_id: openSnapshot)],
+                [committedHeader(commit_id: COMMIT_MID)])
+        mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just(
+                committedHeader(commit_id: COMMIT_MID))
+        mongoTemplate.updateFirst(_ as Query, _ as Update, COLLECTION) >> Mono.empty()
+
+        when:
+        Long processed = worker.sweepOnce().block()
+
+        then:
+        processed == expectedProcessed
+        calls * materializer.materialize(TXN_ID) >> Mono.just(new MaterializeResult())
+
+        where:
+        case_                                  | openSnapshot || expectedProcessed | calls
+        'open older than the commit blocks'    | SNAPSHOT_OLD || 0L                | 0
+        'open newer than the commit is no bar' | SNAPSHOT_NEW || 1L                | 1
+    }
+
+    def 'the oldest open snapshot is the watermark when several transactions are open'() {
+        given: 'two opens straddle the commit — the older one wins'
+        stubSweepFinds([], [openHeader(snapshot_id: SNAPSHOT_NEW), openHeader(snapshot_id: SNAPSHOT_OLD)],
+                [committedHeader(commit_id: COMMIT_MID)])
+
+        when:
+        Long processed = worker.sweepOnce().block()
+
+        then:
+        processed == 0L
+        0 * materializer.materialize(_)
+    }
+
+    def 'a legacy open header without snapshot_id participates via its transaction uuid segment'() {
+        given: 'the legacy open txn uuid predates the commit id'
+        Map legacyOpen = openHeader(_id: "${SNAPSHOT_OLD}~test-org~test-grp~jade-cli" as String)
+        legacyOpen.remove('snapshot_id')
+        stubSweepFinds([], [legacyOpen], [committedHeader(commit_id: COMMIT_MID)])
+
+        when:
+        Long processed = worker.sweepOnce().block()
+
+        then:
+        processed == 0L
+        0 * materializer.materialize(_)
+    }
+
+    def 'a legacy non-uuid commit_id predates every live open and is always eligible'() {
+        given:
+        stubSweepFinds([], [openHeader(snapshot_id: SNAPSHOT_OLD)], [committedHeader()])
+        mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just(committedHeader())
+        materializer.materialize(TXN_ID) >> Mono.just(new MaterializeResult())
+        mongoTemplate.updateFirst(_ as Query, _ as Update, COLLECTION) >> Mono.empty()
+
+        when:
+        Long processed = worker.sweepOnce().block()
+
+        then:
+        processed == 1L
+    }
+
+    def 'the lease pass durably rolls back an expired open with a guarded update and audit data'() {
+        given: 'one open transaction past its lease; nothing committed to project'
+        String expiredTxnId = openHeader().get('_id') as String
+        stubSweepFinds([openHeader()], [], [])
+        Query capturedGuard = null
+        Update capturedUpdate = null
+        mongoTemplate.updateFirst(_ as Query, _ as Update, COLLECTION) >> { Query q, Update u, String _c ->
+            capturedGuard = q
+            capturedUpdate = u
+            return Mono.empty()
+        }
+
+        when:
+        Long processed = worker.sweepOnce().block()
+
+        then:
+        processed == 0L
+
+        and: 'the rollback is guarded on the header still being open'
+        capturedGuard.getQueryObject().get('_id') == expiredTxnId
+        capturedGuard.getQueryObject().get('state') == 'open'
+
+        and: 'the terminal state carries the audit fact'
+        Map setOps = capturedUpdate.getUpdateObject().get('$set') as Map
+        setOps.get('state') == 'rolled_back'
+        setOps.get('rolled_back_at') instanceof Instant
+        (setOps.get('rollback_data') as Map).get('reason') == 'lease_expired'
+        (setOps.get('rollback_data') as Map).get('lease') == 'PT1H'
+    }
+
     def 'nudge is a no-op when the worker is disabled'() {
         given:
         CommittedTransactionMaterializationWorker disabled =
                 new CommittedTransactionMaterializationWorker(
-                        mongoTemplate, materializer, false, Duration.ofSeconds(30))
+                        mongoTemplate, materializer, false, Duration.ofSeconds(30), Duration.ofHours(1))
         disabled.start()
 
         when:

@@ -21,7 +21,6 @@ import org.jadetipi.dto.collections.Transaction
 import org.jadetipi.dto.message.Action
 import org.jadetipi.dto.message.Collection
 import org.jadetipi.dto.message.Message
-import org.jadetipi.id.IdGenerator
 import org.jadetipi.jadetipi.exception.ConflictingDuplicateException
 import org.jadetipi.jadetipi.kafka.KafkaSourceMetadata
 import org.springframework.dao.DuplicateKeyException
@@ -34,7 +33,6 @@ import spock.lang.Specification
 class TransactionMessagePersistenceServiceSpec extends Specification {
 
     ReactiveMongoTemplate mongoTemplate
-    IdGenerator idGenerator
     CommittedTransactionMaterializationWorker materializationWorker
     TransactionMessagePersistenceService service
 
@@ -49,9 +47,8 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
 
     def setup() {
         mongoTemplate = Mock(ReactiveMongoTemplate)
-        idGenerator = Mock(IdGenerator)
         materializationWorker = Mock(CommittedTransactionMaterializationWorker)
-        service = new TransactionMessagePersistenceService(mongoTemplate, idGenerator, materializationWorker)
+        service = new TransactionMessagePersistenceService(mongoTemplate, materializationWorker)
     }
 
     private static Message openMessage(Map data = [hint: 'open']) {
@@ -109,8 +106,9 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
         setOnInsert.get('open_data') == [hint: 'open']
         setOnInsert.containsKey('opened_at')
 
-        and: 'commit_id generator must not be touched on open'
-        0 * idGenerator.nextId()
+        and: 'the backend mints the snapshot point at open-processing time (TASK-063)'
+        String snapshotId = setOnInsert.get('snapshot_id') as String
+        UUID.fromString(snapshotId).version() == 7
     }
 
     def 'open re-delivered for already-open transaction returns OPEN_CONFIRMED_DUPLICATE'() {
@@ -276,14 +274,13 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
         ex.recordId == recordId
     }
 
-    def 'commit assigns commit_id from IdGenerator and returns COMMITTED'() {
+    def 'commit assigns a UUIDv7 commit_id and returns COMMITTED'() {
         given:
         def message = commitMessage(reason: 'done')
         mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just([
                 _id: TXN_ID,
                 state: 'open'
         ])
-        idGenerator.nextId() >> 'COMMIT-001'
         Query capturedCountQuery = null
         mongoTemplate.count(_ as Query, COLLECTION) >> { Query q, String _c ->
             capturedCountQuery = q
@@ -304,9 +301,12 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
         result == PersistResult.COMMITTED
         def updateObject = capturedUpdate.getUpdateObject().get('$set')
         updateObject.get('state') == 'committed'
-        updateObject.get('commit_id') == 'COMMIT-001'
         updateObject.get('commit_data') == [reason: 'done']
         updateObject.containsKey('committed_at')
+
+        and: 'the commit_id is a backend-minted UUIDv7, comparable with transaction UUIDs (TASK-062)'
+        String commitId = updateObject.get('commit_id') as String
+        UUID.fromString(commitId).version() == 7
 
         and: 'the committed set size is fixed on the header at commit time (TASK-056)'
         updateObject.get('message_count') == 2L
@@ -336,7 +336,6 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
 
         then: 'the worker owns projection; redelivery triggers nothing (the sweep covers gaps)'
         result == PersistResult.COMMIT_DUPLICATE
-        0 * idGenerator.nextId()
         0 * mongoTemplate.updateFirst(_, _, _)
         0 * materializationWorker.nudge(_)
     }
@@ -352,7 +351,6 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
         then:
         IllegalStateException ex = thrown()
         ex.message.contains(TXN_ID)
-        0 * idGenerator.nextId()
         0 * mongoTemplate.updateFirst(_, _, _)
     }
 
@@ -386,9 +384,8 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
         capturedQuery.getQueryObject().get('_id') == TXN_ID
         capturedQuery.getQueryObject().get('state') == 'open'
 
-        and: 'no commit id is generated and nothing materializes'
-        0 * idGenerator.nextId()
-        0 * materializationWorker.nudge(_)
+        and: 'the terminal outcome nudges the worker — the watermark may advance (TASK-063)'
+        1 * materializationWorker.nudge(TXN_ID)
     }
 
     def 'rollback re-delivered for a rolled-back transaction returns ROLLBACK_DUPLICATE without writing'() {
@@ -405,7 +402,7 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
         then:
         result == PersistResult.ROLLBACK_DUPLICATE
         0 * mongoTemplate.updateFirst(_, _, _)
-        0 * idGenerator.nextId()
+        0 * materializationWorker.nudge(_)
     }
 
     def 'rollback after commit is refused and never touches the committed header'() {
@@ -423,7 +420,7 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
         then:
         result == PersistResult.ROLLBACK_REFUSED_COMMITTED
         0 * mongoTemplate.updateFirst(_, _, _)
-        0 * idGenerator.nextId()
+        0 * materializationWorker.nudge(_)
     }
 
     def 'commit after rollback is refused: no commit id, no update, no materialization'() {
@@ -439,7 +436,6 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
 
         then:
         result == PersistResult.COMMIT_REFUSED_ROLLED_BACK
-        0 * idGenerator.nextId()
         0 * mongoTemplate.updateFirst(_, _, _)
         0 * materializationWorker.nudge(_)
     }
@@ -456,7 +452,6 @@ class TransactionMessagePersistenceServiceSpec extends Specification {
         IllegalStateException ex = thrown()
         ex.message.contains(TXN_ID)
         0 * mongoTemplate.updateFirst(_, _, _)
-        0 * idGenerator.nextId()
     }
 
     def 'null message rejected with IllegalArgumentException'() {

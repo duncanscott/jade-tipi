@@ -3,7 +3,7 @@
 ID: TASK-063
 TYPE: implementation
 ARTIFACT_INTENT: production-change
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: READY_FOR_REVIEW
 OWNER: unassigned
 SOURCE_TASK:
   - TASK-052
@@ -138,3 +138,84 @@ VERIFICATION:
 - `JADETIPI_IT_KAFKA=1 ./gradlew integrationTest` (both modules — the
   importer's serial open/commit pattern must remain unblocked)
 - `git diff --check`
+
+IMPLEMENTATION_REPORT:
+
+SUMMARY:
+Implemented as designed. Snapshot isolation is enforced structurally:
+open processing mints a backend `snapshot_id` (UUIDv7, same generator
+as commit IDs, ordered by Kafka processing order), and the sweep
+materializes a committed transaction only when no open transaction has
+an older snapshot — so roots always hold the floor state every open
+transaction may see. Leases guarantee liveness. All suites green in
+both modules (unit + integration, `JADETIPI_IT_KAFKA=1`), including
+every pre-existing Kafka itest running under the new gate — proving
+ordinary sequential open→commit flows are never blocked (a transaction
+never blocks its own commit: by materialization time it is no longer
+open).
+
+PRODUCTION CHANGES:
+- `TransactionMessagePersistenceService`: `openHeader` stamps
+  `snapshot_id` via `$setOnInsert` (redelivered opens cannot overwrite
+  it); the durable rollback path now nudges the worker — every terminal
+  outcome advances the watermark.
+- `CommittedTransactionMaterializationWorker`:
+  - A nudge now triggers a **full sweep pass** instead of a
+    single-transaction projection — any terminal outcome can release
+    transactions other than its own. Same signature, same best-effort
+    sink; the periodic sweep remains the guarantee.
+  - `sweepOnce` runs three duties in order: the lease pass
+    (`expireStaleOpens` — guarded `state: "open"` rollback of opens
+    older than `jadetipi.transaction.lease`, default PT1H, with
+    `rollback_data {reason: "lease_expired", lease}` as audit, so
+    releases apply within the same pass), the watermark computation
+    (minimum `snapshot_id` over open headers; a header predating
+    `snapshot_id` contributes its transaction-UUID segment), and the
+    gated selection (committed, `commit_id`-bearing, unstamped, and
+    `commit_id < watermark`; a legacy non-UUID `commit_id` predates
+    every live open and is always eligible; blocked headers just wait).
+  - `materializeAndStamp` is unchanged — the gate is sweep-level policy.
+- `MongoDbInitializer`: startup-ensured `txn` index
+  `(record_type, state, snapshot_id)` for the watermark and lease
+  queries.
+
+TESTS:
+- Worker spec: watermark blocks/releases (where-table: older open
+  blocks, newer open is no bar), oldest-of-several-opens wins, legacy
+  open fallback via txn-UUID segment, legacy non-UUID commit always
+  eligible, lease pass rolls back with guarded update + audit data;
+  existing sweep features updated with query-discriminating find stubs.
+- Persistence spec: open stamps a version-7 `snapshot_id`; durable
+  rollback nudges exactly once; duplicate/refused rollbacks never nudge.
+- `SnapshotWatermarkIntegrationSpec` (Mongo-only, planted state): a
+  committed transaction stays unmaterialized across multiple sweep
+  passes while an older open lives, then materializes with provenance
+  once the open is terminal; a 2h-old open is durably auto-rolled-back
+  with `lease_expired` audit data.
+- `SnapshotWatermarkKafkaIntegrationSpec` (live, end to end): older
+  transaction opens (backend `snapshot_id` v7 asserted); newer
+  transaction creates a loc and commits (its UUIDv7 `commit_id` compares
+  greater than the older snapshot); the commit stays durably marked but
+  unmaterialized through the observation window; committing the older
+  transaction releases it — the loc root appears and both headers gain
+  `materialized_at`.
+
+DOCS:
+- Spec → 0.7.0-draft: snapshot isolation is a Normative §2.4 subsection
+  (visibility rule, backend `snapshot_id` with the client-clock
+  rationale, watermark, floor-state consequence, leases; per-reader
+  overlay reads stay Planned); worker prose updated (nudge = sweep;
+  "eligible" qualification); change note added.
+- Vocabulary doc: header record gains `snapshot_id`; lifecycle passage
+  carries the watermark and lease duties.
+- UT-7 refined in place: "eventually projected" now means "once the
+  watermark passes", with the lease bounding the wait.
+- DIRECTION.md snapshot-isolation section marked implemented.
+
+NOTES:
+- Dev databases keep working without migration: opens predating
+  `snapshot_id` fall back to their transaction UUID for the watermark,
+  legacy commit IDs are always eligible, and any stale `state: "open"`
+  header older than the lease is auto-rolled-back on the first sweep.
+- Freshness under a held watermark is bounded staleness by design; the
+  ratified overlay reads (plan task F) close the per-reader gap later.

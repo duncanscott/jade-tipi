@@ -3,7 +3,7 @@
 ID: TASK-062
 TYPE: implementation
 ARTIFACT_INTENT: production-change
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: READY_FOR_REVIEW
 OWNER: unassigned
 SOURCE_TASK:
   - TASK-003
@@ -89,3 +89,45 @@ VERIFICATION:
 - `./gradlew :jade-tipi:test`
 - `JADETIPI_IT_KAFKA=1 ./gradlew :jade-tipi:integrationTest`
 - `git diff --check`
+
+IMPLEMENTATION_REPORT:
+
+SUMMARY:
+Implemented exactly as designed — a clean swap. `commitHeader` now mints
+`commit_id = UuidCreator.timeOrderedEpoch.toString()` (the idiom
+`GroupAdminService` already uses; `uuid-creator` arrives transitively
+via the dto library's `api` dependency), and `IdGenerator` is gone from
+`TransactionMessagePersistenceService` entirely — import, field, and
+constructor parameter removed. The legacy `IdGeneratorConfig` bean and
+HTTP `TransactionController`/`TransactionService` remain untouched and
+quarantined per TASK-003.
+
+TESTS (full suites green, both modules, unit + integration with
+`JADETIPI_IT_KAFKA=1`; `git diff --check` clean — live Kafka commits now
+mint UUIDv7 commit IDs end to end):
+- 'commit assigns a UUIDv7 commit_id and returns COMMITTED': parses the
+  stamped `commit_id` with `UUID.fromString` and asserts version 7.
+- The redelivery guard feature is unchanged (COMMIT_DUPLICATE without a
+  header write or nudge).
+- The eight obsolete `0 * idGenerator.nextId()` interaction assertions
+  were removed; their guarantee ("no commit stamped on this path") is
+  carried by the surviving `0 * mongoTemplate.updateFirst(_, _, _)`
+  assertions in the same features. The legacy `TransactionServiceSpec`
+  is untouched.
+
+DOCS:
+- Spec → 0.6.1-draft: §2.4 commit-row and lifecycle prose now state
+  `commit_id` is a backend-minted UUIDv7, orderable and comparable with
+  transaction UUIDs (canonical comparison: UUID segment vs UUID value),
+  with a pointer to the ratified snapshot-isolation direction (Planned,
+  TASK-063); 0.6.1 change note answers the 0.6.0 flag; "ratified
+  through TASK-062".
+- UT-10's commit-ID note records the resolution.
+- Vocabulary doc: header-record and value-update-ordering passages
+  updated (msg-UUID ordering now justified as finer-grained, not as a
+  workaround); same wording fix in the materializer's javadoc.
+
+NOTES:
+- No data migration: legacy-format commit_ids in existing dev databases
+  stay readable (the committed-visibility gate requires only non-blank).
+- The legacy trio's retirement remains a separate future task.
