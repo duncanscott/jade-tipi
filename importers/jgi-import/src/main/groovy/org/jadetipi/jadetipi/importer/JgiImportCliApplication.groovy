@@ -92,6 +92,7 @@ class JgiImportCliApplication {
                                       @Value('${jgi-import.mode}') String mode,
                                       @Value('${jgi-import.process:}') String processDocIds,
                                       @Value('${jgi-import.process-type:}') String processType,
+                                      @Value('${jgi-import.files:false}') boolean planFiles,
                                       @Value('${jgi-import.limit:0}') int limit,
                                       @Value('${jgi-import.org:}') String org,
                                       @Value('${jgi-import.grp:}') String grp,
@@ -115,8 +116,8 @@ class JgiImportCliApplication {
 
             if (mode in ['plan', 'import']) {
                 List<String> docIds = processDocIds.tokenize(',')*.trim().findAll { it }
-                Assert.isTrue(!docIds.isEmpty() || processType.trim(),
-                        'jgi-import.process (document ids) or jgi-import.process-type is required to plan')
+                Assert.isTrue(!docIds.isEmpty() || processType.trim() || planFiles,
+                        'jgi-import.process, jgi-import.process-type, or jgi-import.files is required to plan')
                 docIds.each { String docId ->
                     Long inserted = planner.planProcess(docId).block(Duration.ofMinutes(5))
                     log.info('Planned {}: {} newly enqueued row(s)', docId, inserted)
@@ -126,6 +127,12 @@ class JgiImportCliApplication {
                             limit > 0 ? limit : null).block(Duration.ofHours(4))
                     log.info('Planned process type "{}"{}: {} newly enqueued row(s)',
                             processType.trim(), limit > 0 ? " (limit ${limit})" : '', inserted)
+                }
+                if (planFiles) {
+                    Long inserted = planner.planFiles(limit > 0 ? limit : null)
+                            .block(Duration.ofHours(4))
+                    log.info('Files pass planned{}: {} newly enqueued row(s)',
+                            limit > 0 ? " (limit ${limit})" : '', inserted)
                 }
             }
 

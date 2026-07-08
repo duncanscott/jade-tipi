@@ -76,7 +76,7 @@ class ClarityAliquotImportMapperSpec extends Specification {
         ent.collection == 'ent'
         ent.data.type_id == minted[ClarityAliquotImportMapper.KEY_TYPE_ANALYTE]
         (ent.data.properties as Map).output_type == 'Analyte'
-        (ent.data.properties as Map).sample_limsid == 'DES439A6'
+        (ent.data.properties as Map).sample_limsids == ['DES439A6']
 
         and: 'the contents link joins the container to the artifact with the source well'
         MappedImportMessage lnk = messages[1]
@@ -150,6 +150,114 @@ class ClarityAliquotImportMapperSpec extends Specification {
         fil.collection == 'fil'
         fil.data.type_id == minted[ClarityAliquotImportMapper.KEY_TYPE_RESULT_FILE]
         (fil.data.properties as Map).output_type == 'ResultFile'
+    }
+
+    def 'a pooled artifact links every referenced sample (clarity collapses single-element lists) (TASK-068)'() {
+        given: 'an unlocated artifact whose sample field is a LIST, as pooled artifacts carry'
+        Map<String, Object> doc = [
+                _id   : 'artifacts_92-9999',
+                limsid: '92-9999',
+                json  : [
+                        limsid       : '92-9999',
+                        name         : 'pooled result',
+                        'output-type': 'ResultFile',
+                        sample       : [[limsid: 'POOLA1'], [limsid: 'POOLA2']]
+                ]
+        ] as Map<String, Object>
+
+        when:
+        List<MappedImportMessage> messages = mapper.mapArtifact(doc, idFor)
+
+        then: 'the fil root lists both samples and links each'
+        (messages[0].data.properties as Map).sample_limsids == ['POOLA1', 'POOLA2']
+        List<MappedImportMessage> links = messages.drop(1)
+        links.size() == 2
+        links*.data.right == [minted[ClarityAliquotImportMapper.sampleKey('POOLA1')],
+                              minted[ClarityAliquotImportMapper.sampleKey('POOLA2')]]
+    }
+
+    def 'a single-entry input-output-map arrives as a bare object and still maps (TASK-068)'() {
+        given: 'clarity XML→JSON collapses one-element lists to the object'
+        Map<String, Object> doc = [
+                _id   : 'processes_24-9999',
+                limsid: '24-9999',
+                json  : [
+                        limsid            : '24-9999',
+                        type              : ['': 'SM Sample Receipt'],
+                        'input-output-map': [input: [limsid: 'IN1'], output: [limsid: 'OUT1']]
+                ]
+        ] as Map<String, Object>
+
+        when:
+        List<MappedImportMessage> messages = mapper.mapProcess(doc, idFor)
+
+        then: 'prc + 1 procedure_input + 1 produced_by'
+        messages.size() == 3
+        (messages[0].data.output_input as Map).size() == 1
+        messages[0].data.type_id == minted[ClarityAliquotImportMapper.processTypeKey('SM Sample Receipt')]
+    }
+
+    def 'a file-property key declares the ppy definition and registers it on the ResultFile type (TASK-068)'() {
+        when:
+        String key = ClarityAliquotImportMapper.KEY_FILE_PROPERTY_PREFIX + 'content_location'
+        List<MappedImportMessage> messages = mapper.mapFileProperty(key, idFor)
+
+        then: 'a definition create plus an add_property update'
+        messages.size() == 2
+        messages[0].collection == 'ppy'
+        messages[0].action == 'create'
+        messages[0].data.kind == 'definition'
+        messages[0].data.name == 'content_location'
+        messages[0].data.id == minted[key]
+        messages[1].collection == 'typ'
+        messages[1].action == 'update'
+        messages[1].data.operation == 'add_property'
+        messages[1].data.id == minted[ClarityAliquotImportMapper.KEY_TYPE_RESULT_FILE]
+        messages[1].data.property_id == minted[key]
+    }
+
+    def 'a file document maps to property assignments onto the attached artifact root (TASK-068)'() {
+        given: 'the attached artifact id is already recorded as a fil root'
+        String filId = idFor.apply(ClarityAliquotImportMapper.artifactKey('92-4425141'), 'fil')
+        Map<String, Object> doc = [
+                _id   : 'files_40-100013',
+                limsid: '40-100013',
+                json  : [
+                        limsid             : '40-100013',
+                        'attached-to'      : 'https://jgi-prd.claritylims.com/api/v2/artifacts/92-4425141',
+                        'content-location' : 'sftp://host/path/report.xls',
+                        'original-name'    : 'report.xls',
+                        'original-location': '/tmp/report.xls',
+                        'is-published'     : 'false'
+                ]
+        ] as Map<String, Object>
+
+        when:
+        List<MappedImportMessage> messages = mapper.mapFile(doc, idFor)
+
+        then: 'one assignment per present property, targeting the fil root'
+        messages.size() == 5
+        messages.every { MappedImportMessage m ->
+            m.collection == 'ppy' && m.action == 'create' &&
+                    m.data.kind == 'assignment' &&
+                    m.data.object_id == filId &&
+                    m.data.object_collection == 'fil' &&
+                    m.data.id == null
+        }
+        Map<String, Map> bySuffix = messages.collectEntries { MappedImportMessage m ->
+            String propertyKey = minted.find { k, v -> v == m.data.property_id }.key
+            [propertyKey.substring(ClarityAliquotImportMapper.KEY_FILE_PROPERTY_PREFIX.length()),
+             m.data.value as Map]
+        }
+        bySuffix.content_location == [text: 'sftp://host/path/report.xls']
+        bySuffix.original_name == [text: 'report.xls']
+        bySuffix.is_published == [boolean: false]
+        bySuffix.file_limsid == [text: '40-100013']
+    }
+
+    def 'a file without a resolvable attachment maps to nothing (TASK-068)'() {
+        expect:
+        mapper.mapFile([_id: 'files_x', limsid: 'x', json: [:]] as Map<String, Object>, idFor).isEmpty()
     }
 
     def 'the process maps to prc with resolved output_input and the provenance links'() {

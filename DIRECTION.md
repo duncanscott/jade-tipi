@@ -332,9 +332,14 @@ phase 2's core is implemented (TASK-067): process documents are
 discovered by type through the replica's own views, procedure types
 mint dynamically so all 51 clarity process types import with no
 per-type code, and submitted samples join the graph as typed ents with
-`sample_of` links from every artifact. Phase 2b (clarity files with
-their `content-location` retrieval URLs, and artifact groups) remains,
-then the esp phases.
+`sample_of` links from every artifact. Phase 2b's files pass is
+implemented (TASK-068): file metadata — including the `content-location`
+retrieval URL — lands on the existing fil roots as object-targeted
+property assignments, the import's first live use of the TASK-061 value
+machinery. Artifact groups are recorded as a replica deficiency (the
+replicated documents carry only a live-API query URI, no member list —
+membership is unrecoverable from the replica, paralleling the esp
+workflow deficiency). Next: the esp phases.
 `value_schema` validation is not required before bulk import: schemas are
 easier to establish once real data exists. ESP workflow → procedure
 reconstruction is deferred as its own phase (esp has no process

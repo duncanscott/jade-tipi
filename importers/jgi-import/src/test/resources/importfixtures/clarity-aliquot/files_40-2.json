@@ -1,0 +1,9 @@
+{
+  "_id": "files_40-2",
+  "limsid": "40-2",
+  "json": {
+    "limsid": "40-2",
+    "attached-to": "https://jgi-prd.claritylims.com/api/v2/artifacts/UNIMPORTED",
+    "content-location": "sftp://host/path/two.xls"
+  }
+}

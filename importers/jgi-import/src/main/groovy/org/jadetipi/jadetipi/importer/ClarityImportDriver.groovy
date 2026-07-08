@@ -115,12 +115,23 @@ class ClarityImportDriver {
             batch.each { ImportQueueItem item ->
                 try {
                     List<MappedImportMessage> mapped = mapItem(item, idFor)
-                    queue.recordJdtpId(item.id, minted[item.key]).block(BLOCK_TIMEOUT)
+                    String mintedId = minted[item.key]
+                    if (mintedId != null) {
+                        queue.recordJdtpId(item.id, mintedId).block(BLOCK_TIMEOUT)
+                    }
                     mapped.each { MappedImportMessage m ->
-                        // msg-UUID form: the message uuid IS the id's uuid segment
-                        String uuid = (m.data.id as String).split('~')[2]
+                        Action action = 'update' == m.action ? Action.UPDATE : Action.CREATE
+                        // roots use the msg-UUID id form (the message uuid IS the
+                        // id's uuid segment); assignments and updates carry no new
+                        // root id, so their message uuid is minted fresh (TASK-068)
+                        String dataId = m.data.id as String
+                        boolean rootCreate = action == Action.CREATE && dataId != null &&
+                                'assignment' != m.data.kind
+                        String uuid = rootCreate
+                                ? dataId.split('~')[2]
+                                : UuidCreator.timeOrderedEpoch.toString()
                         messages.add(new Message(txn, uuid,
-                                Collection.fromJson(m.collection), Action.CREATE, m.data))
+                                Collection.fromJson(m.collection), action, m.data))
                     }
                     mappedItems.add(item)
                 } catch (Exception ex) {
@@ -175,6 +186,10 @@ class ClarityImportDriver {
                 return mapper.mapArtifact(fetchDoc(item.key), idFor)
             case ClarityAliquotImportPlanner.KIND_PROCESS:
                 return mapper.mapProcess(fetchDoc(item.key), idFor)
+            case ClarityAliquotImportPlanner.KIND_FILE_PROPERTY:
+                return mapper.mapFileProperty(item.key, idFor)
+            case ClarityAliquotImportPlanner.KIND_FILE:
+                return mapper.mapFile(fetchDoc(item.key), idFor)
             default:
                 throw new IllegalStateException("Unknown queue kind: ${item.kind}")
         }

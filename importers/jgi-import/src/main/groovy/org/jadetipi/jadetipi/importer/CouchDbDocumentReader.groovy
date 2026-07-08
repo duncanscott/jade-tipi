@@ -138,6 +138,52 @@ class CouchDbDocumentReader {
     }
 
     /**
+     * Every document id under an id prefix (e.g. {@code files_}), streamed
+     * through {@code _all_docs} with startkey/startkey_docid paging —
+     * constant memory at any prefix size (TASK-068). Downstream
+     * cancellation stops the paging.
+     */
+    Flux<String> docIdsByPrefix(String database, String prefix) {
+        Assert.hasText(database, 'database must not be blank')
+        Assert.hasText(prefix, 'prefix must not be blank')
+        return pageDocIdsByPrefix(database, prefix, null)
+    }
+
+    private Flux<String> pageDocIdsByPrefix(String database, String prefix, String startkeyDocid) {
+        int requestLimit = startkeyDocid == null ? VIEW_PAGE_SIZE : VIEW_PAGE_SIZE + 1
+        String startkeyJson = startkeyDocid == null
+                ? JsonOutput.toJson(prefix)
+                : JsonOutput.toJson(startkeyDocid)
+        String endkeyJson = JsonOutput.toJson(prefix + '￰')
+
+        return webClient.get()
+                .uri({ uriBuilder ->
+                    uriBuilder.path('/{db}/_all_docs')
+                            .queryParam('startkey', '{startkey}')
+                            .queryParam('endkey', '{endkey}')
+                            .queryParam('limit', requestLimit)
+                            .build(database, startkeyJson, endkeyJson)
+                })
+                .retrieve()
+                .bodyToMono(Map)
+                .flatMapMany { Map body ->
+                    List rows = (body.get('rows') as List) ?: []
+                    if (startkeyDocid != null && !rows.isEmpty()) {
+                        rows = rows.drop(1)
+                    }
+                    List<String> ids = rows.collect { Object row -> (row as Map).get('id') as String }
+                    Flux<String> page = Flux.fromIterable(ids)
+                    if (ids.size() < VIEW_PAGE_SIZE) {
+                        return page
+                    }
+                    String lastId = ids.last()
+                    return page.concatWith(Flux.defer {
+                        pageDocIdsByPrefix(database, prefix, lastId)
+                    })
+                }
+    }
+
+    /**
      * Fetch one CouchDB document. Empty {@link Mono} when the document (or
      * database) does not exist; other non-2xx responses surface as errors.
      */

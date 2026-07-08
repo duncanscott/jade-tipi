@@ -39,6 +39,8 @@ class ClarityAliquotImportPlanner {
     static final String KIND_SAMPLE = 'sample'
     static final String KIND_ARTIFACT = 'artifact'
     static final String KIND_PROCESS = 'process'
+    static final String KIND_FILE_PROPERTY = 'file_property'
+    static final String KIND_FILE = 'file'
 
     private final CouchDbDocumentReader reader
     private final ImportQueueService queue
@@ -58,13 +60,16 @@ class ClarityAliquotImportPlanner {
                 .switchIfEmpty(Mono.error(new IllegalArgumentException(
                         "Clarity process document not found: ${processDocId}")))
                 .flatMap { Map<String, Object> process ->
-                    List iom = ((process.get('json') ?: [:]) as Map).get('input-output-map') as List ?: []
+                    List iom = ClarityAliquotImportMapper.asImportList(
+                            ((process.get('json') ?: [:]) as Map).get('input-output-map'))
                     List<String> inputLimsids = []
                     List<String> outputLimsids = []
                     iom.each { Object entry ->
-                        Map mapping = entry as Map
-                        String inLimsid = (mapping.get('input') as Map)?.get('limsid')
-                        String outLimsid = (mapping.get('output') as Map)?.get('limsid')
+                        Map mapping = entry instanceof Map ? (Map) entry : [:]
+                        Object inp = mapping.get('input')
+                        Object out = mapping.get('output')
+                        String inLimsid = inp instanceof Map ? ((Map) inp).get('limsid') : null
+                        String outLimsid = out instanceof Map ? ((Map) out).get('limsid') : null
                         if (inLimsid && !inputLimsids.contains(inLimsid)) {
                             inputLimsids.add(inLimsid)
                         }
@@ -108,6 +113,80 @@ class ClarityAliquotImportPlanner {
                 .reduce(0L, { Long acc, Long rows -> acc + rows }) as Mono<Long>
     }
 
+    /**
+     * Plan the clarity files pass (TASK-068): walk every {@code files_}
+     * document, and for each whose attached-to artifact has already been
+     * imported (its queue row carries a recorded jdtp id), enqueue the
+     * file row — plus, once, the file-property declaration rows (the ppy
+     * definitions and their add_property registrations, which must
+     * precede the assignments). Files attached to artifacts outside the
+     * imported scope are skipped and counted. {@code limit} (when
+     * positive) bounds how many file DOCUMENTS are scanned — the walk is
+     * the expensive part; leave it unset for the full production pass.
+     */
+    Mono<Long> planFiles(Integer limit) {
+        java.util.concurrent.atomic.AtomicLong planned = new java.util.concurrent.atomic.AtomicLong()
+        java.util.concurrent.atomic.AtomicLong skipped = new java.util.concurrent.atomic.AtomicLong()
+        java.util.concurrent.atomic.AtomicBoolean propertiesEnqueued =
+                new java.util.concurrent.atomic.AtomicBoolean(false)
+
+        Flux<String> fileDocIds = reader.docIdsByPrefix(DATABASE, 'files_')
+        if (limit != null && limit > 0) {
+            fileDocIds = fileDocIds.take((long) limit)
+        }
+        return fileDocIds
+                .concatMap { String fileDocId -> planOneFile(fileDocId, planned, skipped, propertiesEnqueued) }
+                .reduce(0L, { Long acc, Long rows -> acc + rows })
+                .doOnNext { Long rows ->
+                    log.info('Files pass planned {} file(s) ({} newly enqueued row(s)); {} skipped (artifact not imported)',
+                            planned.get(), rows, skipped.get())
+                } as Mono<Long>
+    }
+
+    /**
+     * One file document: 0 rows when skipped, otherwise the newly
+     * enqueued row count (property declarations ride the first eligible
+     * file). Emitted as a single element so the plan limit truncates
+     * between files, never inside one.
+     */
+    private Mono<Long> planOneFile(String fileDocId,
+                                   java.util.concurrent.atomic.AtomicLong planned,
+                                   java.util.concurrent.atomic.AtomicLong skipped,
+                                   java.util.concurrent.atomic.AtomicBoolean propertiesEnqueued) {
+        return reader.findDocument(DATABASE, fileDocId)
+                .flatMap { Map<String, Object> fileDoc ->
+                    Map json = (fileDoc.get('json') ?: [:]) as Map
+                    String attachedTo = json.get('attached-to') as String
+                    String artifactLimsid = attachedTo ? attachedTo.tokenize('/').last() : null
+                    if (!artifactLimsid) {
+                        skipped.incrementAndGet()
+                        return Mono.just(0L)
+                    }
+                    String artifactRowId = ImportQueueService.rowId(
+                            ClarityAliquotImportMapper.SOURCE,
+                            ClarityAliquotImportMapper.artifactKey(artifactLimsid))
+                    return queue.jdtpIdOf(artifactRowId)
+                            .flatMap { String recorded ->
+                                planned.incrementAndGet()
+                                Flux<Boolean> propertyRows =
+                                        propertiesEnqueued.compareAndSet(false, true)
+                                                ? Flux.fromIterable(ClarityAliquotImportMapper.FILE_PROPERTY_KEYS)
+                                                .concatMap { String key ->
+                                                    enqueueRow(key, KIND_FILE_PROPERTY)
+                                                }
+                                                : Flux.<Boolean>empty()
+                                return propertyRows.concatWith(enqueueRow(fileDocId, KIND_FILE))
+                                        .reduce(0L, { Long acc, Boolean inserted ->
+                                            inserted ? acc + 1 : acc
+                                        })
+                            }
+                            .switchIfEmpty(Mono.defer {
+                                skipped.incrementAndGet()
+                                return Mono.just(0L)
+                            })
+                } as Mono<Long>
+    }
+
     private Flux<Boolean> enqueueBootstrap() {
         return Flux.fromIterable(ClarityAliquotImportMapper.BOOTSTRAP_KEYS)
                 .concatMap { String key -> enqueueRow(key, KIND_TYPE) }
@@ -124,12 +203,13 @@ class ClarityAliquotImportPlanner {
                             ? enqueueRow(ClarityAliquotImportMapper.containerKey(containerLimsid),
                                     KIND_CONTAINER)
                             : Flux.<Boolean>empty()
-                    String sampleLimsid = (json.get('sample') as Map)?.get('limsid')
-                    Flux<Boolean> sampleNext = sampleLimsid
-                            ? enqueueRow(ClarityAliquotImportMapper.sampleKey(sampleLimsid),
-                                    KIND_SAMPLE)
-                            : Flux.<Boolean>empty()
-                    return containerFirst.concatWith(sampleNext)
+                    Flux<Boolean> samplesNext = Flux.fromIterable(
+                            ClarityAliquotImportMapper.sampleLimsids(json))
+                            .concatMap { String sampleLimsid ->
+                                enqueueRow(ClarityAliquotImportMapper.sampleKey(sampleLimsid),
+                                        KIND_SAMPLE)
+                            }
+                    return containerFirst.concatWith(samplesNext)
                             .concatWith(enqueueRow(artifactKey, KIND_ARTIFACT))
                 }
                 .switchIfEmpty(Flux.defer {

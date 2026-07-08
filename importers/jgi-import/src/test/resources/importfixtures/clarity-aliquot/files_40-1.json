@@ -1,0 +1,11 @@
+{
+  "_id": "files_40-1",
+  "limsid": "40-1",
+  "json": {
+    "limsid": "40-1",
+    "attached-to": "https://jgi-prd.claritylims.com/api/v2/artifacts/92-79368",
+    "content-location": "sftp://host/path/one.xls",
+    "original-name": "one.xls",
+    "is-published": "false"
+  }
+}

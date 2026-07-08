@@ -75,7 +75,7 @@ class ClarityAliquotImportKafkaIntegrationSpec extends Specification {
     private static final String PROCESS_DOC_ID = 'processes_24-35613'
     private static final String TXN_COLLECTION = 'txn'
     private static final String LNK_COLLECTION = 'lnk'
-    private static final List<String> ROOT_COLLECTIONS = ['typ', 'loc', 'ent', 'fil', 'prc', 'lnk']
+    private static final List<String> ROOT_COLLECTIONS = ['typ', 'loc', 'ent', 'fil', 'prc', 'lnk', 'ppy']
     private static final Duration AWAIT_TIMEOUT = Duration.ofSeconds(30)
     private static final Duration POLL_INTERVAL = Duration.ofMillis(250)
     private static final Duration MONGO_BLOCK_TIMEOUT = Duration.ofSeconds(5)
@@ -192,6 +192,8 @@ class ClarityAliquotImportKafkaIntegrationSpec extends Specification {
                         Query.query(Criteria.where('_head.provenance.txn_id').is(txnId)),
                         collection).block(Duration.ofSeconds(10))
             }
+            mongoTemplate.remove(Query.query(Criteria.where('txn_id').is(txnId)), 'hst')
+                    .block(Duration.ofSeconds(10))
         }
         mongoTemplate.remove(new Query(), ImportQueueService.COLLECTION_NAME)
                 .block(Duration.ofSeconds(10))
@@ -307,6 +309,60 @@ class ClarityAliquotImportKafkaIntegrationSpec extends Specification {
         after.every { Map row ->
             row.state == 'done' && row.txn_id == txnId && row.jdtp_id == minted[row.key as String]
         }
+    }
+
+    def 'the files pass assigns file metadata onto the existing fil root as property values (TASK-068)'() {
+        given: 'a small live process whose ResultFile output has an attached file document'
+        // surveyed live: files_40-100013 → artifact 92-4425141 → SQ Sequencing 24-1050055 (5 artifacts)
+        String processDocId = 'processes_24-1050055'
+        String fileDocId = 'files_40-100013'
+        String artifactKey = ClarityAliquotImportMapper.artifactKey('92-4425141')
+        Map fileDoc = reader.findDocument('clarity', fileDocId).block(MONGO_BLOCK_TIMEOUT)
+        String expectedContentLocation = (fileDoc.json as Map).get('content-location') as String
+
+        when: 'the process imports, then the files pass plans and drives'
+        planner.planProcess(processDocId).block(Duration.ofSeconds(60))
+        ImportDriveReport processReport = driver.drive(publisher, 'jade-itest-org', 'import',
+                'itest-user', 200)
+        driveTxnIds.addAll(processReport.txnIds)
+        Long filesPlanned = planner.planFiles(20).block(Duration.ofMinutes(2))
+        ImportDriveReport filesReport = driver.drive(publisher, 'jade-itest-org', 'import',
+                'itest-user', 200)
+        driveTxnIds.addAll(filesReport.txnIds)
+
+        then: 'both drives are clean and the files pass planned rows'
+        processReport.itemsFailed == 0
+        filesReport.itemsFailed == 0
+        filesPlanned >= (ClarityAliquotImportMapper.FILE_PROPERTY_KEYS.size() + 1)
+
+        and: 'the file queue row is done and the property definitions materialized as ppy roots'
+        Map fileRow = mongoTemplate.findById(ImportQueueService.rowId('clarity', fileDocId),
+                Map, ImportQueueService.COLLECTION_NAME).block(MONGO_BLOCK_TIMEOUT)
+        fileRow?.state == 'done'
+        String contentLocationPpyId = queueService.jdtpIdOf(ImportQueueService.rowId('clarity',
+                ClarityAliquotImportMapper.KEY_FILE_PROPERTY_PREFIX + 'content_location'))
+                .block(MONGO_BLOCK_TIMEOUT)
+        awaitMongo(
+                { mongoTemplate.findById(contentLocationPpyId, Map, 'ppy') },
+                { Map d -> d != null }, 'content_location ppy definition root')
+
+        and: 'the assignment landed on the EXISTING fil root with the live content-location'
+        String filId = queueService.jdtpIdOf(ImportQueueService.rowId('clarity', artifactKey))
+                .block(MONGO_BLOCK_TIMEOUT)
+        Map filDoc = awaitMongo(
+                { mongoTemplate.findById(filId, Map, 'fil') },
+                { Map d ->
+                    Map entry = ((Map) d?.property_values)?.get(contentLocationPpyId) as Map
+                    entry?.value != null
+                }, 'fil root with the content_location property value')
+        Map entry = (filDoc.property_values as Map)[contentLocationPpyId] as Map
+        (entry.value as Map).text == expectedContentLocation
+        filesReport.txnIds.contains(entry.txn_id)
+
+        and: 'the assignment is preserved in hst (the TASK-061 machinery live in the import)'
+        mongoTemplate.find(Query.query(Criteria.where('object_id').is(filId)
+                .and('property_id').is(contentLocationPpyId)), Map, 'hst')
+                .collectList().block(MONGO_BLOCK_TIMEOUT).size() == 1
     }
 
     def 'process-type discovery streams document ids and the histogram from the live view (TASK-067)'() {

@@ -104,4 +104,40 @@ class ClarityAliquotImportPlannerSpec extends Specification {
         then:
         thrown(IllegalArgumentException)
     }
+
+    def 'the files pass enqueues property declarations once, then eligible files, skipping unimported artifacts (TASK-068)'() {
+        given: 'three file-doc fixtures: two attached to imported artifacts, one to a stranger'
+        reader.docIdsByPrefix('clarity', 'files_') >> reactor.core.publisher.Flux.just(
+                'files_40-1', 'files_40-2', 'files_40-3')
+        queue.jdtpIdOf(ImportQueueService.rowId('clarity', 'artifacts_92-79368')) >>
+                Mono.just('recorded-1')
+        queue.jdtpIdOf(ImportQueueService.rowId('clarity', 'artifacts_92-79369')) >>
+                Mono.just('recorded-2')
+        queue.jdtpIdOf(_) >> Mono.empty()
+
+        when:
+        Long inserted = planner.planFiles(null).block()
+
+        then: 'property rows ride the first eligible file only; the stranger is skipped'
+        inserted == ClarityAliquotImportMapper.FILE_PROPERTY_KEYS.size() + 2
+        enqueued.take(ClarityAliquotImportMapper.FILE_PROPERTY_KEYS.size()) ==
+                ClarityAliquotImportMapper.FILE_PROPERTY_KEYS
+        enqueued.drop(ClarityAliquotImportMapper.FILE_PROPERTY_KEYS.size()) ==
+                ['files_40-1', 'files_40-3']
+    }
+
+    def 'the files pass limit bounds the document scan (TASK-068)'() {
+        given:
+        reader.docIdsByPrefix('clarity', 'files_') >> reactor.core.publisher.Flux.just(
+                'files_40-1', 'files_40-3')
+        queue.jdtpIdOf(_) >> Mono.just('recorded')
+
+        when:
+        Long inserted = planner.planFiles(1).block()
+
+        then: 'exactly the property rows plus the first file'
+        inserted == ClarityAliquotImportMapper.FILE_PROPERTY_KEYS.size() + 1
+        enqueued.last() == 'files_40-1'
+        !enqueued.contains('files_40-3')
+    }
 }

@@ -74,11 +74,22 @@ conflict handling is the backstop, never the mechanism.
    per-type code), and submitted samples as typed `ent` roots with a
    `sample_of` link from every artifact (container → sample → artifact
    dependency order).
-   **Phase 2b (pending)**: `files_<limsid>` documents (they carry
-   `content-location` — the fil retrieval-URL candidate — and
-   `attached-to` artifact refs; needs its own pass since no by-artifact
-   view exists) and `artifactgroups_` (needs a membership-link
-   vocabulary ruling).
+   **Phase 2b (TASK-068, files delivered)**: file metadata lands on the
+   EXISTING fil roots as object-targeted property assignments — the
+   import's first live use of the value-update machinery: five
+   properties (content_location — the retrieval URL, original_name,
+   original_location, is_published, file_limsid) are defined and
+   registered on the ResultFile type once, then `planFiles`
+   (`--jgi-import.files=true`) walks the `files_` prefix and enqueues
+   every file whose attached-to artifact was imported
+   (`--jgi-import.limit` bounds the scan; unset = the full pass).
+   Re-importing a changed file updates the current value with the trail
+   in `hst`.
+   **Artifact groups: replica deficiency (recorded 2026-07-07).**
+   `artifactgroups_` documents carry only a name and a live-API query
+   URI — no member list exists in the replica, so membership links
+   cannot be built from replicated data. Deferred until a membership
+   source exists or bare named groups are wanted.
 3. **ESP entities**: containers, samples, and the `begat` edges as
    generic provenance links, with the overlap rule (below).
 4. **ESP workflow reconstruction** (separate, later): esp has no process

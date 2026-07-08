@@ -74,12 +74,46 @@ class ClarityAliquotImportMapper {
     static final String OUTPUT_TYPE_ANALYTE = 'Analyte'
     static final String OUTPUT_TYPE_RESULT_FILE = 'ResultFile'
 
+    /**
+     * File metadata lands on the EXISTING fil root (the ResultFile
+     * artifact) as object-targeted property assignments (TASK-068) — the
+     * root is create-only, so assignments are the sanctioned route, and
+     * this is the import's first live use of the TASK-061 value machinery.
+     */
+    static final String KEY_FILE_PROPERTY_PREFIX = 'property:file:'
+    static final List<String> FILE_PROPERTY_KEYS = List.of(
+            KEY_FILE_PROPERTY_PREFIX + 'content_location',
+            KEY_FILE_PROPERTY_PREFIX + 'original_name',
+            KEY_FILE_PROPERTY_PREFIX + 'original_location',
+            KEY_FILE_PROPERTY_PREFIX + 'is_published',
+            KEY_FILE_PROPERTY_PREFIX + 'file_limsid')
+
     // plain Strings, never GStrings: these values reach JSON payloads, and
     // Jackson serializes a GString as a bean, not text
     static String artifactKey(String limsid) { return 'artifacts_' + limsid }
     static String containerKey(String limsid) { return 'containers_' + limsid }
     static String processKey(String limsid) { return 'processes_' + limsid }
     static String sampleKey(String limsid) { return 'samples_' + limsid }
+    static String fileKey(String limsid) { return 'files_' + limsid }
+
+    /**
+     * Clarity's XML→JSON collapses a single-element list to the bare
+     * object (seen live on {@code input-output-map} and {@code sample});
+     * normalize before iterating (TASK-068).
+     */
+    static List asImportList(Object value) {
+        if (value == null) {
+            return []
+        }
+        return value instanceof List ? (List) value : [value]
+    }
+
+    /** Every sample limsid an artifact references (pooled artifacts carry a list). */
+    static List<String> sampleLimsids(Map json) {
+        return asImportList(json?.get('sample')).findResults { Object ref ->
+            ref instanceof Map ? ((Map) ref).get('limsid') as String : null
+        } as List<String>
+    }
 
     /**
      * The import key for one clarity process type's procedure-type
@@ -274,7 +308,10 @@ class ClarityAliquotImportMapper {
         putIfPresent(properties, 'name', json.get('name'))
         putIfPresent(properties, 'output_type', outputType)
         putIfPresent(properties, 'qc_flag', json.get('qc-flag'))
-        putIfPresent(properties, 'sample_limsid', (json.get('sample') as Map)?.get('limsid'))
+        List<String> sampleLimsids = sampleLimsids(json)
+        if (!sampleLimsids.isEmpty()) {
+            properties.put('sample_limsids', sampleLimsids)
+        }
 
         List<MappedImportMessage> messages = [message(collection, [
                 id        : artifactId,
@@ -299,16 +336,97 @@ class ClarityAliquotImportMapper {
             messages.add(message('lnk', linkData))
         }
 
-        String sampleLimsid = (json.get('sample') as Map)?.get('limsid')
-        if (sampleLimsid) {
+        sampleLimsids.each { String sampleLimsid ->
             messages.add(message('lnk', [
-                    id     : idFor.apply("link:sample_of:${limsid}".toString(), 'lnk'),
+                    id     : idFor.apply("link:sample_of:${limsid}:${sampleLimsid}".toString(), 'lnk'),
                     type_id: idFor.apply(KEY_TYPE_LINK_SAMPLE_OF, 'typ'),
                     left   : artifactId,
                     right  : idFor.apply(sampleKey(sampleLimsid), 'ent')
             ]))
         }
         return messages
+    }
+
+    /**
+     * One file-property declaration row (TASK-068): the ppy definition
+     * plus the add_property registration on the ResultFile type.
+     */
+    List<MappedImportMessage> mapFileProperty(String key, BiFunction<String, String, String> idFor) {
+        if (!key.startsWith(KEY_FILE_PROPERTY_PREFIX)) {
+            throw new IllegalArgumentException("Unknown file-property key: ${key}")
+        }
+        String name = key.substring(KEY_FILE_PROPERTY_PREFIX.length())
+        Map valueSchema = name == 'is_published'
+                ? [type: 'object', properties: [boolean: [type: 'boolean']]]
+                : [type: 'object', properties: [text: [type: 'string']]]
+        String propertyId = idFor.apply(key, 'ppy')
+        return [
+                message('ppy', [
+                        kind        : 'definition',
+                        id          : propertyId,
+                        name        : name,
+                        description : 'Clarity file ' + name.replace('_', ' '),
+                        value_schema: valueSchema
+                ]),
+                new MappedImportMessage(collection: 'typ', action: 'update', data: [
+                        id         : idFor.apply(KEY_TYPE_RESULT_FILE, 'typ'),
+                        operation  : 'add_property',
+                        property_id: propertyId
+                ] as Map<String, Object>)
+        ]
+    }
+
+    /**
+     * File document → property assignments onto the attached artifact's
+     * existing root (TASK-068). The target collection comes from the
+     * resolved artifact id's collection segment, so ent-attached files
+     * assign onto ent roots the same way (unregistered properties there
+     * surface as counted gate outcomes, never errors).
+     */
+    List<MappedImportMessage> mapFile(Map<String, Object> doc,
+                                      BiFunction<String, String, String> idFor) {
+        String limsid = doc.get('limsid') as String
+        Map json = (doc.get('json') ?: [:]) as Map
+        String attachedTo = json.get('attached-to') as String
+        String artifactLimsid = attachedTo ? attachedTo.tokenize('/').last() : null
+        if (!artifactLimsid) {
+            log.warn('Clarity file without a resolvable attached-to artifact, skipped: limsid={}', limsid)
+            return []
+        }
+        String artifactId = idFor.apply(artifactKey(artifactLimsid), 'fil')
+        String objectCollection = artifactId.split('~')[3]
+
+        Map<String, Map<String, Object>> values = new LinkedHashMap<>()
+        putValue(values, 'content_location', textValue(json.get('content-location')))
+        putValue(values, 'original_name', textValue(json.get('original-name')))
+        putValue(values, 'original_location', textValue(json.get('original-location')))
+        if (json.get('is-published') != null) {
+            values.put('is_published',
+                    [boolean: 'true' == (json.get('is-published') as String)] as Map<String, Object>)
+        }
+        values.put('file_limsid', [text: limsid] as Map<String, Object>)
+
+        return values.collect { String name, Map<String, Object> value ->
+            message('ppy', [
+                    kind             : 'assignment',
+                    object_collection: objectCollection,
+                    object_id        : artifactId,
+                    property_id      : idFor.apply(KEY_FILE_PROPERTY_PREFIX + name, 'ppy'),
+                    value            : value
+            ])
+        }
+    }
+
+    private static Map<String, Object> textValue(Object raw) {
+        String text = raw as String
+        return text?.trim() ? ([text: text] as Map<String, Object>) : null
+    }
+
+    private static void putValue(Map<String, Map<String, Object>> values,
+                                 String name, Map<String, Object> value) {
+        if (value != null) {
+            values.put(name, value)
+        }
     }
 
     /** Process → prc with output_input, procedure_input links, produced_by links. */
@@ -318,14 +436,16 @@ class ClarityAliquotImportMapper {
         Map json = (doc.get('json') ?: [:]) as Map
         String processId = idFor.apply(processKey(limsid), 'prc')
 
-        List iom = (json.get('input-output-map') ?: []) as List
+        List iom = asImportList(json.get('input-output-map'))
         Map<String, Map<String, Object>> outputInput = new LinkedHashMap<>()
         Set<String> inputLimsids = new LinkedHashSet<>()
         Set<String> outputLimsids = new LinkedHashSet<>()
         iom.each { Object entry ->
-            Map mapping = entry as Map
-            String outLimsid = (mapping.get('output') as Map)?.get('limsid')
-            String inLimsid = (mapping.get('input') as Map)?.get('limsid')
+            Map mapping = entry instanceof Map ? (Map) entry : [:]
+            Object out = mapping.get('output')
+            Object inp = mapping.get('input')
+            String outLimsid = out instanceof Map ? ((Map) out).get('limsid') : null
+            String inLimsid = inp instanceof Map ? ((Map) inp).get('limsid') : null
             if (outLimsid == null || inLimsid == null) {
                 log.warn('Clarity process input-output-map entry missing an endpoint, skipped: process={}', limsid)
                 return
