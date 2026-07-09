@@ -138,6 +138,62 @@ class CouchDbDocumentReader {
     }
 
     /**
+     * Every row id a view emits under one scalar key (e.g. esp
+     * {@code entity_views/by_type_name} keyed by type name), paged with
+     * startkey_docid; {@code limit} (when positive) caps the total
+     * (TASK-069).
+     */
+    Flux<String> docIdsByViewKey(String database, String designDoc, String viewName,
+                                 String key, Integer limit) {
+        Assert.hasText(database, 'database must not be blank')
+        Assert.hasText(designDoc, 'designDoc must not be blank')
+        Assert.hasText(viewName, 'viewName must not be blank')
+        Assert.hasText(key, 'key must not be blank')
+        int remaining = (limit == null || limit <= 0) ? Integer.MAX_VALUE : limit
+        return pageDocIdsByViewKey(database, designDoc, viewName, key, null, remaining)
+    }
+
+    private Flux<String> pageDocIdsByViewKey(String database, String designDoc, String viewName,
+                                             String key, String startkeyDocid, int remaining) {
+        int pageSize = Math.min(remaining, VIEW_PAGE_SIZE)
+        int requestLimit = startkeyDocid == null ? pageSize : pageSize + 1
+        String keyJson = JsonOutput.toJson(key)
+
+        return webClient.get()
+                .uri({ uriBuilder ->
+                    def builder = uriBuilder.path('/{db}/_design/{design}/_view/{view}')
+                            .queryParam('key', '{key}')
+                            .queryParam('limit', requestLimit)
+                    if (startkeyDocid != null) {
+                        builder = builder.queryParam('startkey_docid', '{startkeyDocid}')
+                        return builder.build(database, designDoc, viewName, keyJson, startkeyDocid)
+                    }
+                    return builder.build(database, designDoc, viewName, keyJson)
+                })
+                .retrieve()
+                .bodyToMono(Map)
+                .flatMapMany { Map body ->
+                    List rows = (body.get('rows') as List) ?: []
+                    if (startkeyDocid != null && !rows.isEmpty()) {
+                        rows = rows.drop(1)
+                    }
+                    List<String> ids = rows.collect { Object row -> (row as Map).get('id') as String }
+                    if (ids.size() > remaining) {
+                        ids = ids.take(remaining)
+                    }
+                    boolean lastPage = rows.size() < pageSize || ids.size() >= remaining
+                    Flux<String> page = Flux.fromIterable(ids)
+                    if (lastPage || rows.isEmpty()) {
+                        return page
+                    }
+                    return page.concatWith(Flux.defer {
+                        pageDocIdsByViewKey(database, designDoc, viewName, key,
+                                ids.last(), remaining - ids.size())
+                    })
+                }
+    }
+
+    /**
      * Every document id under an id prefix (e.g. {@code files_}), streamed
      * through {@code _all_docs} with startkey/startkey_docid paging —
      * constant memory at any prefix size (TASK-068). Downstream

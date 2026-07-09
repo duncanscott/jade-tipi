@@ -85,6 +85,7 @@ class JgiImportCliApplication {
     @Bean
     @ConditionalOnProperty(name = 'jgi-import.mode')
     ApplicationRunner jgiImportRunner(ClarityAliquotImportPlanner planner,
+                                      EspEntityImportPlanner espPlanner,
                                       ClarityImportDriver driver,
                                       CouchDbDocumentReader reader,
                                       org.springframework.beans.factory.ObjectProvider<ImportMessagePublisher> publisherProvider,
@@ -93,6 +94,8 @@ class JgiImportCliApplication {
                                       @Value('${jgi-import.process:}') String processDocIds,
                                       @Value('${jgi-import.process-type:}') String processType,
                                       @Value('${jgi-import.files:false}') boolean planFiles,
+                                      @Value('${jgi-import.esp-entity:}') String espEntityUuids,
+                                      @Value('${jgi-import.esp-type-name:}') String espTypeName,
                                       @Value('${jgi-import.limit:0}') int limit,
                                       @Value('${jgi-import.org:}') String org,
                                       @Value('${jgi-import.grp:}') String grp,
@@ -116,8 +119,11 @@ class JgiImportCliApplication {
 
             if (mode in ['plan', 'import']) {
                 List<String> docIds = processDocIds.tokenize(',')*.trim().findAll { it }
-                Assert.isTrue(!docIds.isEmpty() || processType.trim() || planFiles,
-                        'jgi-import.process, jgi-import.process-type, or jgi-import.files is required to plan')
+                List<String> espUuids = espEntityUuids.tokenize(',')*.trim().findAll { it }
+                Assert.isTrue(!docIds.isEmpty() || processType.trim() || planFiles ||
+                        !espUuids.isEmpty() || espTypeName.trim(),
+                        'jgi-import.process, jgi-import.process-type, jgi-import.files, ' +
+                                'jgi-import.esp-entity, or jgi-import.esp-type-name is required to plan')
                 docIds.each { String docId ->
                     Long inserted = planner.planProcess(docId).block(Duration.ofMinutes(5))
                     log.info('Planned {}: {} newly enqueued row(s)', docId, inserted)
@@ -133,6 +139,16 @@ class JgiImportCliApplication {
                             .block(Duration.ofHours(4))
                     log.info('Files pass planned{}: {} newly enqueued row(s)',
                             limit > 0 ? " (limit ${limit})" : '', inserted)
+                }
+                espUuids.each { String uuid ->
+                    Long inserted = espPlanner.planEspEntity(uuid).block(Duration.ofMinutes(5))
+                    log.info('Planned esp entity {}: {} newly enqueued row(s)', uuid, inserted)
+                }
+                if (espTypeName.trim()) {
+                    Long inserted = espPlanner.planEspEntitiesByTypeName(espTypeName.trim(),
+                            limit > 0 ? limit : null).block(Duration.ofHours(4))
+                    log.info('Planned esp type "{}"{}: {} newly enqueued row(s)',
+                            espTypeName.trim(), limit > 0 ? " (limit ${limit})" : '', inserted)
                 }
             }
 

@@ -37,6 +37,7 @@ class ClarityImportDriverSpec extends Specification {
     ImportQueueService queue
     CouchDbDocumentReader reader
     ClarityAliquotImportMapper mapper
+    EspEntityImportMapper espMapper
     ImportMessagePublisher publisher
     ClarityImportDriver driver
     List<Message> published
@@ -45,8 +46,9 @@ class ClarityImportDriverSpec extends Specification {
         queue = Mock(ImportQueueService)
         reader = Mock(CouchDbDocumentReader)
         mapper = Mock(ClarityAliquotImportMapper)
+        espMapper = Mock(EspEntityImportMapper)
         publisher = Mock(ImportMessagePublisher)
-        driver = new ClarityImportDriver(queue, reader, mapper)
+        driver = new ClarityImportDriver(queue, reader, mapper, espMapper)
         published = []
         publisher.publish(_ as Message, _ as String) >> { Message m, String key ->
             published.add(m)
@@ -181,6 +183,41 @@ class ClarityImportDriverSpec extends Specification {
         report.batches == 0
         report.itemsDone == 0
         report.txnIds.isEmpty()
+    }
+
+    def 'esp rows dispatch to the esp mapper with source-scoped ids and injected wells (TASK-069)'() {
+        given: 'one esp entity row whose doc sits in a container'
+        String entityUuid = '019a3ea6-c704-7d47-b951-65268a951c9e'
+        String containerUuid = '019a3ea7-8f4b-771c-9f58-8c833082e9b6'
+        ImportQueueItem espItem = new ImportQueueItem(
+                id: ImportQueueService.rowId('esp', entityUuid),
+                source: 'esp', key: entityUuid, kind: 'esp_entity', state: 'pending', seq: 3)
+        queue.pendingInOrder(200) >>> [Flux.just(espItem), Flux.empty()]
+        queue.jdtpIdOf(_) >> Mono.empty()
+        reader.findDocument('esp-entity', entityUuid) >> Mono.just([
+                _id: entityUuid, uuid: entityUuid, class_name: 'Sample', type_name: 'Nucleic Acid',
+                container: [uuid: containerUuid]] as Map)
+        reader.findDocument('esp-entity', containerUuid) >> Mono.just([
+                _id: containerUuid, uuid: containerUuid, class_name: 'Container',
+                contents: [A2: [uuid: entityUuid]]] as Map)
+        Map capturedDoc = null
+        espMapper.mapEntity(_, _) >> { Map doc, BiFunction idFor ->
+            capturedDoc = doc
+            [new MappedImportMessage(collection: 'ent', action: 'create',
+                    data: [id: idFor.apply(entityUuid, 'ent')] as Map<String, Object>)]
+        }
+
+        when:
+        ImportDriveReport report = driver.drive(publisher, ORG, GRP, USER, 200)
+
+        then: 'the well is injected from the container contents and the id carries the esp suffix'
+        report.itemsDone == 1
+        capturedDoc.get(EspEntityImportMapper.IMPORT_WELL) == 'A2'
+        String entId = published[1].data().id as String
+        entId.split('~')[4].startsWith('esp_')
+
+        and: 'the recorded id rode the esp-scoped queue row'
+        1 * queue.recordJdtpId(ImportQueueService.rowId('esp', entityUuid), { it != null }) >> Mono.empty()
     }
 
     def 'a small batch size splits the queue into one transaction per batch'() {

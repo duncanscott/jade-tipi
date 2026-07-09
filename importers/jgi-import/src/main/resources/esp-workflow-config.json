@@ -1,0 +1,432 @@
+{
+  "_comment": "Vendored ESP workflow config snapshot (TASK-070). Regenerate with scripts/regen_esp_workflow_config.py. lab_procedure is a proposed classification for director review.",
+  "workflows": {
+    "Aliquot Creation": {
+      "protocols": [
+        "Sample Aliquot Setup",
+        "Sample Aliquot Creation and Storage"
+      ],
+      "protocol_count": 2,
+      "input_types": [
+        "SOW Item"
+      ],
+      "lab_procedure": true,
+      "source_file": "aliquot_creation.yml"
+    },
+    "DAPseq Amplified Input Library Pooling": {
+      "protocols": [
+        "DAPseq Amplified Input Library Pooling Setup",
+        "DAPseq Amplified Input Library Pooling"
+      ],
+      "protocol_count": 2,
+      "input_types": [
+        "SOW Item"
+      ],
+      "lab_procedure": true,
+      "source_file": "dapseq_amp_input_lib_pool.yml"
+    },
+    "DAPseq Enrichment Library Pooling": {
+      "protocols": [
+        "Enrichment Library Pooling Setup",
+        "DAPseq Library Pool Cleanup and QC"
+      ],
+      "protocol_count": 2,
+      "input_types": [
+        "DAPseq Enrichment Library"
+      ],
+      "lab_procedure": true,
+      "source_file": "dapseq_enrich_lib_pooling.yml"
+    },
+    "DAPseq Input Library Amplification": {
+      "protocols": [
+        "DAPseq PCR Setup",
+        "DAPseq PCR"
+      ],
+      "protocol_count": 2,
+      "input_types": [
+        "SOW Item"
+      ],
+      "lab_procedure": true,
+      "source_file": "dapseq_input_lib_amp.yml"
+    },
+    "DAPseq Input Library Creation": {
+      "protocols": [
+        "DAPseq Input Library Creation Setup",
+        "DAPseq Input Library Creation and Fragment Analysis"
+      ],
+      "protocol_count": 2,
+      "input_types": [
+        "Aliquot"
+      ],
+      "lab_procedure": true,
+      "source_file": "dapseq_input_lib_creation.yml"
+    },
+    "DAPseq Protein Expression": {
+      "protocols": [
+        "Protein Expression Setup",
+        "Protein Expression",
+        "Protein Elution and i7 Index Stamping Setup",
+        "Protein Elution and i7 Index Stamping",
+        "DAPseq Library Pool Cleanup and QC"
+      ],
+      "protocol_count": 5,
+      "input_types": [
+        "DAPseq TF PCR Product"
+      ],
+      "lab_procedure": true,
+      "source_file": "dapseq_protein_exp.yml"
+    },
+    "DAPseq QC Library Creation": {
+      "protocols": [
+        "DAPseq QC Library Creation Setup",
+        "DAPseq QC Library Creation"
+      ],
+      "protocol_count": 2,
+      "input_types": [
+        "DAPseq Input Library"
+      ],
+      "lab_procedure": true,
+      "source_file": "dapseq_qc_lib.yml"
+    },
+    "DAPseq TF PCR and Cleanup": {
+      "protocols": [
+        "Glycerol Plate Culture and TF PCR Setup",
+        "TF PCR SPRI Cleanup"
+      ],
+      "protocol_count": 2,
+      "input_types": [
+        "DAPseq TF Glycerol Stock"
+      ],
+      "lab_procedure": true,
+      "source_file": "dapseq_tf_pcr_cleanup.yml"
+    },
+    "Final Deliverable Add Create": {
+      "protocols": [
+        "Review Proposal Info",
+        "Create Final Deliverable"
+      ],
+      "protocol_count": 2,
+      "input_types": [
+        "Proposal"
+      ],
+      "lab_procedure": false,
+      "source_file": "final_deliverable_add_create.yml"
+    },
+    "Final Deliverable Edit": {
+      "protocols": [
+        "Edit Final Deliverable"
+      ],
+      "protocol_count": 1,
+      "input_types": [
+        "Final Deliv Project"
+      ],
+      "lab_procedure": false,
+      "source_file": "final_deliverable_edit.yml"
+    },
+    "Freezer Migration": {
+      "protocols": [
+        "Freezer Migration"
+      ],
+      "protocol_count": 1,
+      "input_types": [
+        "96W Plate",
+        "384W Plate",
+        "Nucleic Acid",
+        "Tissue"
+      ],
+      "lab_procedure": true,
+      "source_file": "freezer_migration_wf.yml"
+    },
+    "Illumina Library Creation": {
+      "protocols": [
+        "Illumina Library Creation Setup",
+        "Illumina Library Creation and Fragment Analysis"
+      ],
+      "protocol_count": 2,
+      "input_types": [
+        "Aliquot"
+      ],
+      "lab_procedure": true,
+      "source_file": "il_lib_creation.yml"
+    },
+    "Illumina Library Pooling": {
+      "protocols": [
+        "Pool Batching and Dilution Setup",
+        "Dilution Creation and Pooling Setup",
+        "Library Pooling"
+      ],
+      "protocol_count": 3,
+      "input_types": [
+        "Illumina Library Pool",
+        "DAPseq Enrichment Library Pool",
+        "SOW Item"
+      ],
+      "lab_procedure": true,
+      "source_file": "il_lib_pooling.yml"
+    },
+    "Illumina Sequencing": {
+      "protocols": [
+        "Illumina Physical Run Unit Creation Setup",
+        "Illumina Physical Run Unit Creation",
+        "Illumina Library Sequencing Dilution Sheet"
+      ],
+      "protocol_count": 3,
+      "input_types": [
+        "Illumina Library Pool",
+        "DAPseq Enrichment Library Pool"
+      ],
+      "lab_procedure": true,
+      "source_file": "il_sequencing.yml"
+    },
+    "JGI Bartender Label Printing": {
+      "protocols": [
+        "JGI BarTender Label Printing"
+      ],
+      "protocol_count": 1,
+      "input_types": [],
+      "lab_procedure": false,
+      "source_file": "jgi_bartender_label_printing.yml"
+    },
+    "Manual Freezer Receipt": {
+      "protocols": [
+        "Manual Freezer Receipt"
+      ],
+      "protocol_count": 1,
+      "input_types": [
+        "96W Plate",
+        "384W Plate",
+        "Nucleic Acid",
+        "Tissue"
+      ],
+      "lab_procedure": true,
+      "source_file": "manual_receipt_wf.yml"
+    },
+    "PacBio Library Creation": {
+      "protocols": [
+        "PacBio Library Creation Setup",
+        "PacBio Library Creation"
+      ],
+      "protocol_count": 2,
+      "input_types": [
+        "Aliquot"
+      ],
+      "lab_procedure": true,
+      "source_file": "pacbio_lib_creation.yml"
+    },
+    "PacBio Library Pooling": {
+      "protocols": [
+        "PacBio Library Pooling Setup",
+        "PacBio Library Pooling"
+      ],
+      "protocol_count": 2,
+      "input_types": [
+        "SOW Item"
+      ],
+      "lab_procedure": true,
+      "source_file": "pacbio_lib_pooling.yml"
+    },
+    "PacBio Pool Annealing and Binding": {
+      "protocols": [
+        "PacBio Pool Annealing and Binding",
+        "PacBio Pool Bound Stock Creation"
+      ],
+      "protocol_count": 2,
+      "input_types": [
+        "PacBio Library Pool"
+      ],
+      "lab_procedure": true,
+      "source_file": "pacbio_pool_anneal_bind.yml"
+    },
+    "PacBio Sequencing": {
+      "protocols": [
+        "PacBio Physical Run Unit Creation Setup",
+        "PacBio Physical Run Unit Creation",
+        "PacBio Sequencing Results"
+      ],
+      "protocol_count": 3,
+      "input_types": [
+        "PacBio Library Pool Bound Stock"
+      ],
+      "lab_procedure": true,
+      "source_file": "pacbio_sequencing.yml"
+    },
+    "Pool Edit": {
+      "protocols": [
+        "Edit Pool"
+      ],
+      "protocol_count": 1,
+      "input_types": [
+        "PacBio Library Pool",
+        "DAPseq Enrichment Library Pool",
+        "Illumina Library Pool"
+      ],
+      "lab_procedure": false,
+      "source_file": "pool_edit.yml"
+    },
+    "SIP Metabolomics QC": {
+      "protocols": [
+        "SIP Metabolomics QC"
+      ],
+      "protocol_count": 1,
+      "input_types": [
+        "Nucleic Acid"
+      ],
+      "lab_procedure": true,
+      "source_file": "sip_metagen_qc.yml"
+    },
+    "SOW Item Edit": {
+      "protocols": [
+        "Edit SOW Item"
+      ],
+      "protocol_count": 1,
+      "input_types": [
+        "PM SOW Item"
+      ],
+      "lab_procedure": false,
+      "source_file": "sow_item_edit.yml"
+    },
+    "SOW QC": {
+      "protocols": [
+        "SOW QC"
+      ],
+      "protocol_count": 1,
+      "input_types": [
+        "SOW Item"
+      ],
+      "lab_procedure": true,
+      "source_file": "sow_qc.yml"
+    },
+    "Sample QC": {
+      "protocols": [
+        "Sample QC"
+      ],
+      "protocol_count": 1,
+      "input_types": [
+        "Nucleic Acid"
+      ],
+      "lab_procedure": true,
+      "source_file": "sample_qc.yml"
+    },
+    "Sample Quarantine": {
+      "protocols": [
+        "Sample Quarantine"
+      ],
+      "protocol_count": 1,
+      "input_types": [
+        "96W Plate",
+        "384W Plate",
+        "Nucleic Acid",
+        "Tissue"
+      ],
+      "lab_procedure": true,
+      "source_file": "sample_quarantine_wf.yml"
+    },
+    "Sample Receipt and Storage": {
+      "protocols": [
+        "Sample Receipt and Storage"
+      ],
+      "protocol_count": 1,
+      "input_types": [
+        "96W Plate",
+        "384W Plate",
+        "Nucleic Acid",
+        "Tissue"
+      ],
+      "lab_procedure": true,
+      "source_file": "sample_receipt_wf.yml"
+    },
+    "Sample Ship/Trash": {
+      "protocols": [
+        "Sample Ship/Trash"
+      ],
+      "protocol_count": 1,
+      "input_types": [
+        "96W Plate",
+        "384W Plate",
+        "Nucleic Acid",
+        "Tissue"
+      ],
+      "lab_procedure": true,
+      "source_file": "samples_ship_trash_wf.yml"
+    },
+    "Sample Shipping Approval": {
+      "protocols": [
+        "Sample Shipping Approval"
+      ],
+      "protocol_count": 1,
+      "input_types": [
+        "96W Plate",
+        "384W Plate",
+        "Nucleic Acid",
+        "Tissue"
+      ],
+      "lab_procedure": true,
+      "source_file": "sample_shipping_approval_wf.yml"
+    },
+    "Sequencing Project Add Create": {
+      "protocols": [
+        "Prepare SP Submission",
+        "Create Sequencing Project"
+      ],
+      "protocol_count": 2,
+      "input_types": [
+        "Final Deliv Project"
+      ],
+      "lab_procedure": false,
+      "source_file": "sequencing_project_add_create.yml"
+    },
+    "Sequencing Project Edit": {
+      "protocols": [
+        "Edit Sequencing Project"
+      ],
+      "protocol_count": 1,
+      "input_types": [
+        "Sequencing Project"
+      ],
+      "lab_procedure": false,
+      "source_file": "sequencing_project_edit.yml"
+    },
+    "Tissue Extraction": {
+      "protocols": [
+        "Tissue Extraction Review",
+        "Extract Containers",
+        "Extract Metadata Recording"
+      ],
+      "protocol_count": 3,
+      "input_types": [
+        "SOW Item"
+      ],
+      "lab_procedure": true,
+      "source_file": "tissue_extraction_wf.yml"
+    },
+    "qPCR": {
+      "protocols": [
+        "qPCR Sample Dilution Setup",
+        "qPCR Sample Dilution Creation",
+        "qPCR Results",
+        "qPCR Routing"
+      ],
+      "protocol_count": 4,
+      "input_types": [
+        "Illumina Library Pool",
+        "Illumina Library",
+        "DAPseq Enrichment Library Pool"
+      ],
+      "lab_procedure": true,
+      "source_file": "qpcr.yml"
+    },
+    "tissue_extraction_rnd": {
+      "protocols": [
+        "Tissue Extraction Review",
+        "Extract Containers",
+        "Extract Metadata Recording"
+      ],
+      "protocol_count": 3,
+      "input_types": [
+        "SOW Item"
+      ],
+      "lab_procedure": true,
+      "source_file": "tissue_extraction_rnd.yml"
+    }
+  }
+}

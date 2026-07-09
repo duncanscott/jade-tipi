@@ -28,7 +28,9 @@ import java.util.function.BiFunction
  * The production drive loop (TASK-066), promoted from the live integration
  * test into main scope: drain the dependency-ordered {@code import_queue}
  * in batches, map each item by kind, and publish one JDTP transaction per
- * batch (open → mapped messages → commit) to the transaction topic.
+ * batch (open → mapped messages → commit) to the transaction topic. Since
+ * TASK-069 it drives BOTH sources — clarity and esp rows dispatch to their
+ * own mappers, and ids resolve within source-scoped namespaces.
  *
  * <p><b>Ids and resume.</b> Object ids are message-UUID form
  * ({@code <org>~<grp>~<uuid>~<collection>~<suffix>}, plain-String concat —
@@ -57,13 +59,16 @@ class ClarityImportDriver {
     private final ImportQueueService queue
     private final CouchDbDocumentReader reader
     private final ClarityAliquotImportMapper mapper
+    private final EspEntityImportMapper espMapper
 
     ClarityImportDriver(ImportQueueService queue,
                         CouchDbDocumentReader reader,
-                        ClarityAliquotImportMapper mapper) {
+                        ClarityAliquotImportMapper mapper,
+                        EspEntityImportMapper espMapper) {
         this.queue = queue
         this.reader = reader
         this.mapper = mapper
+        this.espMapper = espMapper
     }
 
     /**
@@ -80,20 +85,27 @@ class ClarityImportDriver {
         Assert.isTrue(batchSize > 0, 'batchSize must be positive')
 
         Map<String, String> minted = new LinkedHashMap<>()
-        BiFunction<String, String, String> idFor = { String key, String collection ->
-            String existing = minted[key]
-            if (existing != null) {
-                return existing
-            }
-            String recorded = queue.jdtpIdOf(
-                    ImportQueueService.rowId(ClarityAliquotImportMapper.SOURCE, key))
-                    .block(BLOCK_TIMEOUT)
-            String id = recorded ?:
-                    (org + '~' + grp + '~' + UuidCreator.timeOrderedEpoch.toString() +
-                            '~' + collection + '~' + ClarityAliquotImportMapper.suffixFor(key))
-            minted[key] = id
-            return id
-        } as BiFunction<String, String, String>
+        // ids resolve within one SOURCE namespace (queue rows are
+        // source-scoped, and each source has its own suffix rule)
+        Closure<BiFunction<String, String, String>> idForSource = { String source ->
+            return { String key, String collection ->
+                String cacheKey = source + '~' + key
+                String existing = minted[cacheKey]
+                if (existing != null) {
+                    return existing
+                }
+                String recorded = queue.jdtpIdOf(ImportQueueService.rowId(source, key))
+                        .block(BLOCK_TIMEOUT)
+                String suffix = source == EspEntityImportMapper.SOURCE
+                        ? EspEntityImportMapper.suffixFor(key)
+                        : ClarityAliquotImportMapper.suffixFor(key)
+                String id = recorded ?:
+                        (org + '~' + grp + '~' + UuidCreator.timeOrderedEpoch.toString() +
+                                '~' + collection + '~' + suffix)
+                minted[cacheKey] = id
+                return id
+            } as BiFunction<String, String, String>
+        }
 
         long batches = 0
         long itemsDone = 0
@@ -114,8 +126,8 @@ class ClarityImportDriver {
 
             batch.each { ImportQueueItem item ->
                 try {
-                    List<MappedImportMessage> mapped = mapItem(item, idFor)
-                    String mintedId = minted[item.key]
+                    List<MappedImportMessage> mapped = mapItem(item, idForSource(item.source))
+                    String mintedId = minted[item.source + '~' + item.key]
                     if (mintedId != null) {
                         queue.recordJdtpId(item.id, mintedId).block(BLOCK_TIMEOUT)
                     }
@@ -190,6 +202,11 @@ class ClarityImportDriver {
                 return mapper.mapFileProperty(item.key, idFor)
             case ClarityAliquotImportPlanner.KIND_FILE:
                 return mapper.mapFile(fetchDoc(item.key), idFor)
+            case EspEntityImportPlanner.KIND_TYPE:
+                return [espMapper.mapBootstrapType(item.key, idFor)]
+            case EspEntityImportPlanner.KIND_ENTITY:
+                return espMapper.mapEntity(withImportWell(
+                        fetchEspDoc(item.key)), idFor)
             default:
                 throw new IllegalStateException("Unknown queue kind: ${item.kind}")
         }
@@ -200,6 +217,42 @@ class ClarityImportDriver {
                 .block(BLOCK_TIMEOUT)
         if (doc == null) {
             throw new IllegalStateException('clarity document not found: ' + key)
+        }
+        return doc
+    }
+
+    private Map<String, Object> fetchEspDoc(String key) {
+        Map<String, Object> doc = reader.findDocument(EspEntityImportMapper.DATABASE, key)
+                .block(BLOCK_TIMEOUT)
+        if (doc == null) {
+            throw new IllegalStateException('esp document not found: ' + key)
+        }
+        return doc
+    }
+
+    /**
+     * The well position of a contained esp entity lives only in its
+     * container's contents map; look it up at drive time and inject it
+     * for the mapper (TASK-069).
+     */
+    private Map<String, Object> withImportWell(Map<String, Object> doc) {
+        Map container = doc.get('container') instanceof Map ? (Map) doc.get('container') : null
+        String containerUuid = container?.get('uuid') as String
+        String uuid = doc.get('uuid') as String ?: doc.get('_id') as String
+        if (!containerUuid || !uuid) {
+            return doc
+        }
+        Map<String, Object> containerDoc = reader
+                .findDocument(EspEntityImportMapper.DATABASE, containerUuid)
+                .block(BLOCK_TIMEOUT)
+        Object contents = containerDoc?.get('contents')
+        if (contents instanceof Map) {
+            Map.Entry wellEntry = ((Map) contents).find { Object k, Object v ->
+                v instanceof Map && uuid == ((Map) v).get('uuid')
+            } as Map.Entry
+            if (wellEntry != null) {
+                doc.put(EspEntityImportMapper.IMPORT_WELL, wellEntry.key as String)
+            }
         }
         return doc
     }

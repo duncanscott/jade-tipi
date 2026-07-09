@@ -90,15 +90,98 @@ conflict handling is the backstop, never the mechanism.
    URI — no member list exists in the replica, so membership links
    cannot be built from replicated data. Deferred until a membership
    source exists or bare named groups are wanted.
-3. **ESP entities**: containers, samples, and the `begat` edges as
-   generic provenance links, with the overlap rule (below).
-4. **ESP workflow reconstruction** (separate, later): esp has no process
-   entities — `sample_sheets[]` gives `{workflow_uuid, protocol_uuid,
-   ...}` with **no input/output lists**, and `workflow_uuid` resolves to
-   no document. Building `prc` + `output_input` from esp means inference
-   over `begat` edges and sheet variables; deferred until the simpler
-   phases surface whether contribution data is recoverable. This is the
-   known esp deficiency, reported to the director 2026-07-05.
+3. **ESP entities (TASK-069, core delivered)**: any entity plans by uuid
+   (`--jgi-import.esp-entity=<uuid>`) or by type name through the
+   replica's `entity_views/by_type_name`
+   (`--jgi-import.esp-type-name='Aliquot'`, `--jgi-import.limit`). The
+   planner walks the begat ancestry recursively (parents first), then
+   the entity's container, then the entity; the mapper emits typed roots
+   (Container class → `loc`, else `ent`; dynamic types per
+   class/type_name), one `begat` link per parent edge, and a positioned
+   `contents` link (the driver looks the well up in the container's
+   contents map at drive time). The esp `variables` bag rides
+   `properties.variables` with keys sanitized to the wire schema's
+   snake_case rule and originals preserved in `variable_names`.
+   **Overlap key discovered (for the precedence phase)**: esp re-imports
+   of clarity entities keep the clarity limsid as their esp
+   name/barcode (e.g. the 96W plate named `27-279088`) — so matching is
+   a lookup against the recorded clarity queue rows, and esp values can
+   then land as assignments on the SAME object (newest wins, clarity
+   trail in `hst`). Deliberately not resolved this slice: esp entities
+   mint esp-keyed roots.
+4. **ESP workflow reconstruction (TASK-070, designed 2026-07-07)**: esp
+   has no first-class process entities — but procedures can be
+   reconstructed from sample sheets, the begat graph, and the esplims
+   workflow configuration. Full design below.
+
+## ESP workflow → procedure reconstruction (TASK-070)
+
+ESP records lab work as **sample sheets** embedded in entity/task
+documents (`sample_sheets[]`, each `{workflow_uuid, workflow_name,
+protocol_uuid, protocol_name, sample_sheet_uuid, sample_sheet_start_time,
+sample_sheet_end_time, state}`). `workflow_uuid`/`protocol_uuid` reference
+generic **types**, not executions (one `workflow_uuid` spans thousands of
+samples over months). Procedures are reconstructed **locally per task**,
+grounded in three sources: the sheet, the begat graph, and a vendored
+snapshot of the esplims workflow configuration.
+
+**The esplims config snapshot** (director ruling 2026-07-07: vendor a
+snapshot). Each esplims `content/workflows/*.yml` declares a workflow's
+`protocols:` (its ordered protocol sequence) and `sample_types:` (its
+accepted input entity types). `scripts/regen_esp_workflow_config.py`
+extracts these into `src/main/resources/esp-workflow-config.json` — the
+importer carries no runtime dependency on the esplims repo. The snapshot
+answers three questions at once:
+- **Sheet-merge count** — `protocol_count` is how many sheets form one
+  workflow *instance* (Aliquot Creation = 2, Illumina Sequencing = 3,
+  qPCR = 4, Protein Expression = 5, Sample QC = 1).
+- **Input identification** — `input_types` names the accepted input
+  (Aliquot Creation ← `SOW Item`; Illumina Library Creation ← `Aliquot`;
+  Sample QC ← `Nucleic Acid`).
+- **Lab vs administrative** — a `lab_procedure` flag (proposed:
+  Edit/Add Create/Label Printing are administrative CRUD, excluded;
+  27 lab / 7 administrative of the 34 workflows). Curated, director-review.
+
+**SOW Items are tasks** (director ruling 2026-07-07). `class_name:
+"SOW Item"` (type_names `SOW Item` and `PM SOW Item`) → `tsk`, not `ent`.
+A SOW Item is the task delivering its begat-parent sample into the
+workflows for which it carries sheets. Its begat children are the
+candidate outputs. Everything a procedure needs is thus local to one
+document — no cross-entity scan.
+
+**Procedure identity and the merge.** A procedure = one workflow
+*instance*: the group of a carrier document's sheets that share a
+`workflow_uuid`, are proximal in time, and number up to the config's
+`protocol_count`. (Observed: a workflow instance's protocols often share
+one `sample_sheet_uuid` already — the SOW Item's and the Aliquot's
+"Aliquot Creation" sheets shared `sample_sheet_uuid` across two
+protocols. Where a workflow splits into distinct sheet uuids, the
+`workflow_uuid` + proximity + `protocol_count` bound is the robust key.)
+The instance's window = earliest sheet start .. latest sheet end, plus a
+configurable slack for outputs created just after the recorded end.
+
+**The reconstruction, per procedure:**
+- **type** — `workflow_name` → a dynamic `procedure_type` (like clarity's
+  process types), skipped when `lab_procedure` is false.
+- **carrier / inputs** — the config `input_types` names the input entity
+  type. For task-carried workflows (input type `SOW Item`) the input is
+  the SOW Item's Sample-class begat parent, and the procedure `fulfills`
+  the task. For entity-carried workflows (input type `Aliquot`,
+  `Nucleic Acid`, …) the input is the carrier entity itself (handles the
+  direct sample→sample steps like Aliquot → Illumina Library).
+- **outputs** — the carrier's Sample-class begat children whose `created`
+  falls within the instance window + slack. QC/logistics workflows
+  legitimately produce none (a `prc` with inputs, no outputs — like the
+  clarity slice's empty contributions).
+- **links** (§1.9 vocabulary): `task_input` (tsk → input ent),
+  `fulfills` (prc → tsk), `procedure_input` (prc → input),
+  `produced_by` (output → prc), and the `output_input` map on the prc.
+
+**Open decisions for review:** the `lab_procedure` classification (the
+7 administrative workflows); the output slack duration; whether the
+logistics workflows (Receipt, Ship, Migration, Quarantine — physical but
+non-transforming) should be procedures or annotations. Recorded in
+TASK-070.
 
 ## Overlap and precedence
 

@@ -339,7 +339,23 @@ property assignments, the import's first live use of the TASK-061 value
 machinery. Artifact groups are recorded as a replica deficiency (the
 replicated documents carry only a live-API query URI, no member list —
 membership is unrecoverable from the replica, paralleling the esp
-workflow deficiency). Next: the esp phases.
+workflow deficiency). The esp entity phase's core is implemented
+(TASK-069): entities plan by uuid or type name, the begat ancestry
+imports recursively with `begat` provenance links, containers land as
+`loc` roots with positioned containment, and esp variables ride the
+roots with schema-safe keys and original names preserved. The overlap
+key is discovered — esp re-imports keep the clarity limsid as
+name/barcode — so the precedence phase (match against recorded clarity
+rows, esp values as assignments on the same objects) is the next esp
+slice. ESP workflow reconstruction is now designed (TASK-070, ratified
+2026-07-07): procedures are reconstructed locally per task from sample
+sheets, the begat graph, and a **vendored snapshot** of the esplims
+workflow configs (each declares its protocol count — the sheet-merge
+key — and input types). SOW Items map to `tsk` carrying their sample
+parent as input; each lab workflow instance becomes a `prc` typed by
+workflow name, with begat children in the sheet window as outputs and
+the §1.9 task/procedure links. Open for review: the lab-vs-administrative
+workflow classification and the output-window slack.
 `value_schema` validation is not required before bulk import: schemas are
 easier to establish once real data exists. ESP workflow → procedure
 reconstruction is deferred as its own phase (esp has no process
