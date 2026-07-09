@@ -343,11 +343,24 @@ workflow deficiency). The esp entity phase's core is implemented
 (TASK-069): entities plan by uuid or type name, the begat ancestry
 imports recursively with `begat` provenance links, containers land as
 `loc` roots with positioned containment, and esp variables ride the
-roots with schema-safe keys and original names preserved. The overlap
-key is discovered — esp re-imports keep the clarity limsid as
-name/barcode — so the precedence phase (match against recorded clarity
-rows, esp values as assignments on the same objects) is the next esp
-slice. ESP workflow reconstruction is now designed (TASK-070, ratified
+roots with schema-safe keys and original names preserved. ESP-over-clarity
+precedence is implemented as far as the data supports (TASK-071): a live,
+adversarially-verified overlap investigation found that only plate-type
+**Containers** overlap by identity (esp name == clarity container limsid),
+while sample-level entities share no key at all (0/90) — so the slice is
+container **identity dedup** (an esp plate re-importing a clarity
+container reuses the clarity root id, existence-gated against the clarity
+import_queue, no duplicate loc root), NOT value merging. Sample-level
+entities have no clean field-based join (the SOW-Item key exists
+conceptually but the clarity and esp SOW id spaces do not align by
+equality). **Ratified 2026-07-07: migrate esp-entity data ONLY for now,
+defer clarity entirely** — esp is self-sufficient for a complete graph
+and esp-only sidesteps cross-database matching. The clarity phases and
+TASK-071 precedence remain but go dormant (no rework). Clarity-only
+historical records migrate later, and the non-duplicated set is
+determinable directly from the director's actual list of clarity→esp
+migrated entities (no field inference needed). ESP workflow
+reconstruction is now designed (TASK-070, ratified
 2026-07-07): procedures are reconstructed locally per task from sample
 sheets, the begat graph, and a **vendored snapshot** of the esplims
 workflow configs (each declares its protocol count — the sheet-merge

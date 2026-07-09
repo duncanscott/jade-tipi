@@ -142,6 +142,15 @@ class ImportQueueService {
                 .mapNotNull { Map row -> row.get(FIELD_JDTP_ID) as String } as Mono<String>
     }
 
+    /**
+     * Whether a queue row exists — used to distinguish "row absent" from
+     * "row present but not yet driven (no jdtp_id)", which
+     * {@link #jdtpIdOf} conflates (TASK-071 ordering guard).
+     */
+    Mono<Boolean> rowExists(String id) {
+        return mongoTemplate.exists(Query.query(Criteria.where(FIELD_ID).is(id)), COLLECTION_NAME)
+    }
+
     private Mono<Long> nextSeq() {
         return mongoTemplate.findAndModify(
                 Query.query(Criteria.where(FIELD_ID).is(SEQ_COUNTER_ID)),

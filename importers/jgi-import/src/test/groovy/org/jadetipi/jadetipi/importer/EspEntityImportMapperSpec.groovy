@@ -100,6 +100,73 @@ class EspEntityImportMapperSpec extends Specification {
         (messages[0].data.properties as Map).esp_type == '96W Plate'
     }
 
+    def 'isClarityContainerCandidate accepts clean container limsids only (TASK-071)'() {
+        expect:
+        EspEntityImportMapper.isClarityContainerCandidate(
+                [class_name: 'Container', name: name] as Map<String, Object>) == expected
+
+        where:
+        name              || expected
+        '27-279088'       || true
+        '27-624292'       || true
+        '27-810364_X'     || false   // re-plate suffix — esp-native, mint new
+        'Guadelou'        || false   // free-text rack name
+        'TR-A0192'        || false   // tube-rack namespace
+        null              || false
+    }
+
+    def 'a Sample-class doc is never a clarity container candidate even with a limsid-shaped name'() {
+        expect:
+        !EspEntityImportMapper.isClarityContainerCandidate(
+                [class_name: 'Sample', name: '27-66958'] as Map<String, Object>)
+        EspEntityImportMapper.clarityContainerKey('27-279088') == 'containers_27-279088'
+    }
+
+    def 'an overlay container reuses the (pre-resolved) root id and emits NO duplicate create (TASK-071)'() {
+        given: 'the driver pre-seeded the resolver to the clarity id and flagged the doc as an overlay'
+        String clarityRootId = 'lbl-gov~jgi-pps~018fd849-c0c0-7000-8000-000000000001~loc~clarity_containers_27-279088'
+        BiFunction<String, String, String> overlayIdFor = { String key, String collection ->
+            key == CONTAINER_UUID ? clarityRootId : minted.computeIfAbsent(key, {
+                "jade-itest-org~import~018fd849-9a02-7222-8a02-929292929292~${collection}~" +
+                        EspEntityImportMapper.suffixFor(key)
+            })
+        } as BiFunction<String, String, String>
+
+        when:
+        List<MappedImportMessage> messages = mapper.mapEntity([
+                _id: CONTAINER_UUID, uuid: CONTAINER_UUID,
+                class_name: 'Container', type_name: '96W Plate',
+                name: '27-279088', barcode: '27-279088',
+                (EspEntityImportMapper.PRECEDENCE_OVERLAY): Boolean.TRUE
+        ] as Map<String, Object>, overlayIdFor)
+
+        then: 'no loc/root create is emitted for the overlay container (the clarity root already exists)'
+        messages.every { it.collection != 'loc' }
+        !messages.any { it.data.id == clarityRootId && it.data.containsKey('properties') }
+    }
+
+    def 'an overlay entity still emits its begat and contents links onto the reused root (TASK-071)'() {
+        given:
+        String reused = 'clarity~root~id'
+        BiFunction<String, String, String> overlayIdFor = { String key, String collection ->
+            key == ENTITY_UUID ? reused : minted.computeIfAbsent(key, {
+                "jade-itest-org~import~018fd849-9a02-7222-8a02-929292929292~${collection}~" +
+                        EspEntityImportMapper.suffixFor(key)
+            })
+        } as BiFunction<String, String, String>
+
+        when:
+        List<MappedImportMessage> messages = mapper.mapEntity([
+                _id: ENTITY_UUID, uuid: ENTITY_UUID, class_name: 'Sample', type_name: 'Nucleic Acid',
+                name: 'NA1', parents: [[uuid: PARENT_UUID]],
+                (EspEntityImportMapper.PRECEDENCE_OVERLAY): Boolean.TRUE
+        ] as Map<String, Object>, overlayIdFor)
+
+        then: 'no ent create, but the begat link is present pointing at the reused root'
+        messages.every { it.collection == 'lnk' }
+        messages.find { it.data.type_id == minted[EspEntityImportMapper.KEY_TYPE_LINK_BEGAT] }.data.right == reused
+    }
+
     def 'esp type keys declare dynamic typ roots and the esp link types'() {
         expect: 'the dynamic entity type'
         MappedImportMessage typ = mapper.mapBootstrapType(

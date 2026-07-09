@@ -183,16 +183,82 @@ logistics workflows (Receipt, Ship, Migration, Quarantine — physical but
 non-transforming) should be procedures or annotations. Recorded in
 TASK-070.
 
-## Overlap and precedence
+## Overlap and precedence (TASK-071)
 
-Many clarity entities were re-imported into the ESP LIMS and appear in
-both databases. Director ruling: **esp-entity properties take precedence
-over clarity**. Clarity imports first (static), esp second. The required
-value-update semantics are implemented (TASK-061): a later assignment
-message becomes the current value and every applied assignment is
-preserved in `hst` — so esp assigning after clarity yields esp-current
-values with the clarity trail retained. This prerequisite for a real
-production import is cleared.
+Director ruling: **esp-entity properties take precedence over clarity**;
+clarity imports first (static), esp second. The value-update machinery
+this needs is in place (TASK-061). But a live overlap investigation
+(2026-07-07, adversarially verified) found the overlap is far narrower
+than the ruling's framing assumed:
+
+- **Only plate-type Containers overlap by identity.** An esp Container
+  that is a clarity re-import keeps the clarity container limsid as its
+  `name` (== `barcode` == clarity `containers_<limsid>` == the clarity
+  doc id, same-entity-verified). The transform is a literal
+  `"containers_" + name`.
+- **Sample-level entities do NOT overlap at all.** Nucleic Acid, Aliquot,
+  and Illumina Library carry their own JGI ITS ids (NA…, AQ…, 5-char
+  library codes) with **no clarity limsid in any field** (0/90 matched,
+  positive-control validated). Clarity's biological ids (DES… samples,
+  2-NNNNN artifacts) are a disjoint namespace. SOW Items and JgiProjects
+  likewise carry JGI ids, not clarity keys.
+
+**Consequence — the ruling's character changes.** Because samples don't
+overlap and containers carry no rich esp measurements, there is no
+*value* to merge under precedence. What IS implementable, and valuable,
+is **identity dedup**: when both databases are imported, the same
+physical plate must not become two `loc` roots. That is the TASK-071
+slice.
+
+**Implemented (TASK-071): container id-unification.** An esp Container is
+an OVERLAY onto the clarity root when (1) `class_name == "Container"`,
+(2) `name` matches `^[0-9]+-[0-9]+$` (clean limsid, no `_X` re-plate
+suffix), and (3) the clarity import_queue row `clarity~containers_<name>`
+exists with a recorded `jdtp_id`. The esp entity then **reuses that
+jdtp_id** as its root (recorded on the esp queue row, so every downstream
+esp reference — contents links from contained samples, begat links —
+resolves to the shared clarity plate) and emits **no duplicate
+root-create**. Existence-gated: absence of the clarity row (clarity not
+imported, or an esp-native container in the 27-810xxx block, ~11% of
+limsid-shaped names) falls through to the normal esp mint path. Keyed on
+`name` only (rack `barcode` can hold the esp UUID). Container-only.
+
+**Sample matching needs an external cross-reference (available).** There
+is no clean field-based join between esp and clarity sample-level
+entities. The conceptual key is the SOW Item (director, 2026-07-07):
+clarity samples/analytes carry a `SOW Item ID` UDF, and esp SOW Items
+are first-class entities — but the two id spaces do NOT align by string
+equality (clarity `SOW Item ID` 125510 does not resolve to an esp SOW
+Item; esp SOW numbers are a different space; many clarity samples carry
+no SOW Item ID), so a translation is required, not a lookup. This is
+moot for now: **the director holds the actual list of clarity entities
+that were migrated into ESP**, so the clarity-only (non-duplicated) set
+is determinable directly from that list when clarity migration is
+scheduled — no field-based inference needed.
+
+## ESP-only migration (ratified 2026-07-07)
+
+Director decision: **migrate esp-entity data only for now; defer clarity
+entirely.** Rationale — esp is self-sufficient for a complete Jade-Tipi
+graph (entities + containment + begat provenance + reconstructed
+procedures, TASK-070), and esp-only sidesteps the cross-database
+matching problem entirely (confirmed non-trivial: only container limsids
+align cleanly; samples need a SOW-Item translation). Consequences:
+
+- **No rework.** The importer already runs esp standalone
+  (`--jgi-import.esp-entity` / `--jgi-import.esp-type-name`). The
+  clarity phases (TASK-059/066/067/068) and the TASK-071 precedence code
+  remain but are simply not run; precedence goes dormant (its existence
+  gate never fires without clarity rows — harmless, and ready for when
+  clarity is eventually imported).
+- **What esp-only omits:** the clarity-only historical tail (records
+  predating the esp LIMS, never re-imported into esp). Migrated later,
+  using the director's migrated-entity list to select the
+  non-duplicated set.
+- **Priority becomes** TASK-070 (workflow reconstruction — the central
+  esp piece, since no clarity supplies first-class procedures) then a
+  full-esp migration sweep (scale-out of TASK-069's plan-by-uuid, like
+  the clarity production trigger).
 
 ## The production trigger (TASK-066)
 

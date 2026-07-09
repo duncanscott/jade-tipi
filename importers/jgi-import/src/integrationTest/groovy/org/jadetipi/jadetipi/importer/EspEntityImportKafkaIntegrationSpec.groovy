@@ -244,6 +244,47 @@ class EspEntityImportKafkaIntegrationSpec extends Specification {
         ((naRoot.properties as Map).variables instanceof Map)
     }
 
+    def 'an esp container reuses the id of an already-imported clarity container (TASK-071 precedence)'() {
+        given: 'the clarity container 27-279088 is imported FIRST (clarity-before-esp), recording its jdtp_id'
+        // surveyed live: esp 96W Plate 019a3ea7... name "27-279088" == clarity containers_27-279088
+        String espPlateUuid = '019a3ea7-8f4b-771c-9f58-8c833082e9b6'
+        String clarityKey = 'containers_27-279088'
+        queueService.enqueue('clarity', ClarityAliquotImportMapper.KEY_TYPE_CONTAINER, 'type')
+                .block(MONGO_BLOCK_TIMEOUT)
+        queueService.enqueue('clarity', clarityKey, 'container').block(MONGO_BLOCK_TIMEOUT)
+        ImportDriveReport clarityReport = driver.drive(publisher, 'jade-itest-org', 'import',
+                'itest-user', 200)
+        driveTxnIds.addAll(clarityReport.txnIds)
+        String clarityRootId = queueService.jdtpIdOf(ImportQueueService.rowId('clarity', clarityKey))
+                .block(MONGO_BLOCK_TIMEOUT)
+
+        and: 'the clarity container loc root materialized'
+        awaitMongo(
+                { mongoTemplate.findById(clarityRootId, Map, 'loc') },
+                { Map d -> d != null }, 'clarity container loc root')
+
+        when: 'the matching esp container is planned and driven (clarity already present)'
+        Long inserted = espPlanner.planEspEntity(espPlateUuid).block(Duration.ofSeconds(60))
+        ImportDriveReport espReport = driver.drive(publisher, 'jade-itest-org', 'import',
+                'itest-user', 200)
+        driveTxnIds.addAll(espReport.txnIds)
+
+        then: 'the esp container row reused the clarity root id — no duplicate plate root'
+        inserted > 0
+        espReport.itemsFailed == 0
+        String espRootId = queueService.jdtpIdOf(ImportQueueService.rowId('esp', espPlateUuid))
+                .block(MONGO_BLOCK_TIMEOUT)
+        espRootId == clarityRootId
+
+        and: 'esp minted NO second loc root for this plate (no doc carries its esp_uuid)'
+        mongoTemplate.find(
+                Query.query(Criteria.where('properties.esp_uuid').is(espPlateUuid)),
+                Map, 'loc').collectList().block(MONGO_BLOCK_TIMEOUT).isEmpty()
+
+        and: 'the shared clarity root is the only loc for that plate'
+        mongoTemplate.findById(clarityRootId, Map, 'loc').block(MONGO_BLOCK_TIMEOUT) != null
+    }
+
     private Mono<Map> findLink(String left, String right) {
         return mongoTemplate.find(
                 Query.query(Criteria.where('left').is(left).and('right').is(right)),

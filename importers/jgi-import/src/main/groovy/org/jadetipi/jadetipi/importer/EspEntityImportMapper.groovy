@@ -38,9 +38,17 @@ import java.util.function.BiFunction
  * with keys sanitized to the wire schema's snake_case rule (the schema
  * constrains nested property keys); the original human names
  * ('Concentration (ng/ul)') are preserved in a sibling
- * {@code variable_names} map. Overlap with clarity
- * (esp re-imports carry the clarity limsid as name/barcode) is
- * deliberately NOT resolved this slice; see the design doc.
+ * {@code variable_names} map.
+ *
+ * <p>Clarity overlap (TASK-071): esp re-imports of clarity containers keep
+ * the clarity limsid as the esp name. A Container passing
+ * {@link #isClarityContainerCandidate} whose clarity row was already
+ * imported becomes an OVERLAY — the driver reuses the clarity root id and
+ * sets {@link #PRECEDENCE_OVERLAY}, so this mapper emits the entity's links
+ * (attaching the esp graph to the shared clarity plate) but not a
+ * duplicate root-create. Sample-level entities carry no clarity key, so
+ * value-level precedence is not reconstructable from the replica — a
+ * recorded deficiency; see the design doc.
  */
 @Slf4j
 @Service
@@ -58,6 +66,32 @@ class EspEntityImportMapper {
     static final String CLASS_CONTAINER = 'Container'
     /** Driver-injected well label for a contained entity (not source data). */
     static final String IMPORT_WELL = '_import_well'
+    /**
+     * Driver-injected flag (TASK-071): this esp entity is an overlay onto an
+     * already-imported clarity root whose id it reuses — the mapper emits its
+     * links but NOT a duplicate root-create.
+     */
+    static final String PRECEDENCE_OVERLAY = '_precedence_overlay'
+
+    /**
+     * True when an esp document is a Container whose name is a clean clarity
+     * container limsid ({@code <digits>-<digits>}, no re-plate suffix like
+     * {@code _X}). Per the TASK-071 overlap investigation this is the sole
+     * class where esp identity maps to a clarity container with verified
+     * same-entity identity (esp name == barcode == clarity limsid ==
+     * clarity doc id). The driver still EXISTENCE-GATES against the clarity
+     * import_queue before reusing an id — shape alone is not sufficient
+     * (~11% of limsid-shaped esp names have no clarity doc).
+     */
+    static boolean isClarityContainerCandidate(Map<String, Object> doc) {
+        String name = doc?.get('name') as String
+        return CLASS_CONTAINER == doc?.get('class_name') && name != null && name.matches('[0-9]+-[0-9]+')
+    }
+
+    /** The clarity container document key for a bare container limsid. */
+    static String clarityContainerKey(String containerLimsid) {
+        return 'containers_' + containerLimsid
+    }
 
     /** One dynamic type per esp (class_name, type_name); raw names carry identity. */
     static String typeKey(String className, String typeName) {
@@ -127,42 +161,49 @@ class EspEntityImportMapper {
         String uuid = doc.get('uuid') as String ?: doc.get('_id') as String
         String collection = entityCollection(doc)
         String entityId = idFor.apply(uuid, collection)
+        // TASK-071: an overlay entity reuses an already-imported clarity root
+        // (its id is pre-resolved by the driver), so it contributes its links
+        // but must NOT re-create the root (create-only; a duplicate create
+        // would be a counted conflict, never the intent).
+        boolean overlay = doc.get(PRECEDENCE_OVERLAY) == Boolean.TRUE
 
-        Map<String, Object> properties = [
-                source_kind: 'esp_entity',
-                esp_uuid   : uuid
-        ] as Map<String, Object>
-        putIfPresent(properties, 'name', doc.get('name'))
-        putIfPresent(properties, 'barcode', doc.get('barcode'))
-        putIfPresent(properties, 'esp_class', doc.get('class_name'))
-        putIfPresent(properties, 'esp_type', doc.get('type_name'))
-        putIfPresent(properties, 'created', doc.get('created'))
-        if (doc.get('archived')) {
-            properties.put('archived', true)
-        }
-        Object variables = doc.get('variables')
-        if (variables instanceof Map && !((Map) variables).isEmpty()) {
-            Map<String, Object> sanitized = new LinkedHashMap<>()
-            Map<String, String> originalNames = new LinkedHashMap<>()
-            ((Map) variables).each { Object k, Object v ->
-                String key = sanitizeKey(k as String)
-                if (sanitized.containsKey(key)) {
-                    log.warn('esp variable key collision after sanitizing, last wins: {} → {}', k, key)
-                }
-                sanitized.put(key, v)
-                originalNames.put(key, k as String)
+        List<MappedImportMessage> messages = []
+        if (!overlay) {
+            Map<String, Object> properties = [
+                    source_kind: 'esp_entity',
+                    esp_uuid   : uuid
+            ] as Map<String, Object>
+            putIfPresent(properties, 'name', doc.get('name'))
+            putIfPresent(properties, 'barcode', doc.get('barcode'))
+            putIfPresent(properties, 'esp_class', doc.get('class_name'))
+            putIfPresent(properties, 'esp_type', doc.get('type_name'))
+            putIfPresent(properties, 'created', doc.get('created'))
+            if (doc.get('archived')) {
+                properties.put('archived', true)
             }
-            properties.put('variables', sanitized)
-            properties.put('variable_names', originalNames)
+            Object variables = doc.get('variables')
+            if (variables instanceof Map && !((Map) variables).isEmpty()) {
+                Map<String, Object> sanitized = new LinkedHashMap<>()
+                Map<String, String> originalNames = new LinkedHashMap<>()
+                ((Map) variables).each { Object k, Object v ->
+                    String key = sanitizeKey(k as String)
+                    if (sanitized.containsKey(key)) {
+                        log.warn('esp variable key collision after sanitizing, last wins: {} → {}', k, key)
+                    }
+                    sanitized.put(key, v)
+                    originalNames.put(key, k as String)
+                }
+                properties.put('variables', sanitized)
+                properties.put('variable_names', originalNames)
+            }
+            messages.add(message(collection, [
+                    id        : entityId,
+                    type_id   : idFor.apply(typeKey(doc.get('class_name') as String,
+                            doc.get('type_name') as String), 'typ'),
+                    properties: properties,
+                    links     : [:]
+            ]))
         }
-
-        List<MappedImportMessage> messages = [message(collection, [
-                id        : entityId,
-                type_id   : idFor.apply(typeKey(doc.get('class_name') as String,
-                        doc.get('type_name') as String), 'typ'),
-                properties: properties,
-                links     : [:]
-        ])]
 
         ClarityAliquotImportMapper.asImportList(doc.get('parents')).each { Object edge ->
             Map parent = edge instanceof Map ? (Map) edge : [:]

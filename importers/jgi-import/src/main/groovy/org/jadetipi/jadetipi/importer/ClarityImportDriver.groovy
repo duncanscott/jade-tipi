@@ -126,7 +126,7 @@ class ClarityImportDriver {
 
             batch.each { ImportQueueItem item ->
                 try {
-                    List<MappedImportMessage> mapped = mapItem(item, idForSource(item.source))
+                    List<MappedImportMessage> mapped = mapItem(item, minted, idForSource)
                     String mintedId = minted[item.source + '~' + item.key]
                     if (mintedId != null) {
                         queue.recordJdtpId(item.id, mintedId).block(BLOCK_TIMEOUT)
@@ -163,17 +163,24 @@ class ClarityImportDriver {
                                 messages.size() + ' message(s)'] as Map<String, Object>),
                         txn.id)
                 publisher.flush()
-
-                mappedItems.each { ImportQueueItem item ->
-                    queue.markDone(item.id, txn.id).block(BLOCK_TIMEOUT)
-                }
                 batches++
-                itemsDone += mappedItems.size()
                 messagesPublished += messages.size() + 2
                 txnIds.add(txn.id)
                 log.info('Import batch committed: txnId={}, items={}, messages={}',
                         txn.id, mappedItems.size(), messages.size())
             }
+
+            // Every successfully-mapped item is marked done — including
+            // TASK-071 overlay containers that emit zero messages (their id
+            // was reused from clarity). Guarding markDone on published
+            // messages would leave an all-overlay batch pending forever. A
+            // zero-message batch published no transaction, so its rows carry a
+            // null txn_id rather than a phantom (never-committed) one.
+            String doneTxnId = messages.isEmpty() ? null : txn.id
+            mappedItems.each { ImportQueueItem item ->
+                queue.markDone(item.id, doneTxnId).block(BLOCK_TIMEOUT)
+            }
+            itemsDone += mappedItems.size()
         }
 
         return new ImportDriveReport(
@@ -186,7 +193,9 @@ class ClarityImportDriver {
     }
 
     private List<MappedImportMessage> mapItem(ImportQueueItem item,
-                                              BiFunction<String, String, String> idFor) {
+                                              Map<String, String> minted,
+                                              Closure<BiFunction<String, String, String>> idForSource) {
+        BiFunction<String, String, String> idFor = idForSource(item.source)
         switch (item.kind) {
             case ClarityAliquotImportPlanner.KIND_TYPE:
                 return [mapper.mapBootstrapType(item.key, idFor)]
@@ -205,11 +214,55 @@ class ClarityImportDriver {
             case EspEntityImportPlanner.KIND_TYPE:
                 return [espMapper.mapBootstrapType(item.key, idFor)]
             case EspEntityImportPlanner.KIND_ENTITY:
-                return espMapper.mapEntity(withImportWell(
-                        fetchEspDoc(item.key)), idFor)
+                Map<String, Object> doc = withImportWell(fetchEspDoc(item.key))
+                applyClarityPrecedence(doc, item, minted)
+                return espMapper.mapEntity(doc, idFor)
             default:
                 throw new IllegalStateException("Unknown queue kind: ${item.kind}")
         }
+    }
+
+    /**
+     * ESP-over-clarity precedence for shared containers (TASK-071). When an
+     * esp Container's name is a clean clarity container limsid AND that
+     * clarity container was already imported — its {@code import_queue} row
+     * (\"clarity~containers_&lt;name&gt;\") carries a recorded {@code jdtp_id} —
+     * the esp entity REUSES the clarity root id instead of minting a
+     * duplicate: it pre-seeds the resolver so the esp uuid resolves to the
+     * clarity id (recorded on the esp row for downstream references), and
+     * flags the doc so the mapper emits the entity's links but not a
+     * duplicate root-create. Existence-gated: absence of the clarity row
+     * (clarity not imported, or an esp-native container) means the standard
+     * esp mint path — shape alone is never sufficient. Container-only per
+     * the overlap investigation; sample-level entities carry no clarity key.
+     */
+    private void applyClarityPrecedence(Map<String, Object> doc, ImportQueueItem item,
+                                        Map<String, String> minted) {
+        if (!EspEntityImportMapper.isClarityContainerCandidate(doc)) {
+            return
+        }
+        String name = doc.get('name') as String
+        String clarityRowId = ImportQueueService.rowId(ClarityAliquotImportMapper.SOURCE,
+                EspEntityImportMapper.clarityContainerKey(name))
+        String clarityId = queue.jdtpIdOf(clarityRowId).block(BLOCK_TIMEOUT)
+        if (clarityId == null) {
+            // Distinguish an expected esp-native plate (no clarity row at all —
+            // e.g. the 27-810xxx block) from an ORDERING VIOLATION (the clarity
+            // container is planned but not yet driven, so esp-before-clarity
+            // would mint a duplicate root for the same physical plate). Only the
+            // latter warrants a warning — clarity-first is the ratified order.
+            if (Boolean.TRUE == queue.rowExists(clarityRowId).block(BLOCK_TIMEOUT)) {
+                log.warn('esp Container {} matches clarity {} but that clarity container is queued and ' +
+                        'not yet driven — importing esp before clarity splits plate identity; ' +
+                        'import clarity containers first', name, clarityRowId)
+            }
+            return
+        }
+        String uuid = doc.get('uuid') as String ?: doc.get('_id') as String
+        minted[item.source + '~' + uuid] = clarityId
+        doc.put(EspEntityImportMapper.PRECEDENCE_OVERLAY, Boolean.TRUE)
+        log.info('esp Container reuses clarity root (precedence): esp name={} -> clarity id={}',
+                name, clarityId)
     }
 
     private Map<String, Object> fetchDoc(String key) {

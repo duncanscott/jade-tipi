@@ -56,6 +56,7 @@ class ClarityImportDriverSpec extends Specification {
         queue.recordJdtpId(_, _) >> Mono.empty()
         queue.markDone(_, _) >> Mono.empty()
         queue.markFailed(_, _) >> Mono.empty()
+        queue.rowExists(_) >> Mono.just(false)
     }
 
     private static ImportQueueItem item(String key, String kind, long seq) {
@@ -218,6 +219,95 @@ class ClarityImportDriverSpec extends Specification {
 
         and: 'the recorded id rode the esp-scoped queue row'
         1 * queue.recordJdtpId(ImportQueueService.rowId('esp', entityUuid), { it != null }) >> Mono.empty()
+    }
+
+    def 'an esp container matching an imported clarity container reuses the clarity id, no duplicate create (TASK-071)'() {
+        given: 'clarity container 27-279088 already imported — its queue row carries a jdtp_id'
+        String espUuid = '019a3ea7-8f4b-771c-9f58-8c833082e9b6'
+        String clarityId = 'jade-test-org~import~018fd849-c0c0-7000-8000-000000000009~loc~clarity_containers_27-279088'
+        ImportQueueItem espItem = new ImportQueueItem(
+                id: ImportQueueService.rowId('esp', espUuid),
+                source: 'esp', key: espUuid, kind: 'esp_entity', state: 'pending', seq: 5)
+        queue.pendingInOrder(200) >>> [Flux.just(espItem), Flux.empty()]
+        reader.findDocument('esp-entity', espUuid) >> Mono.just([
+                _id: espUuid, uuid: espUuid, class_name: 'Container', type_name: '96W Plate',
+                name: '27-279088', barcode: '27-279088'] as Map)
+        queue.jdtpIdOf(ImportQueueService.rowId('clarity', 'containers_27-279088')) >> Mono.just(clarityId)
+        queue.jdtpIdOf(_) >> Mono.empty()
+        Map capturedDoc = null
+        espMapper.mapEntity(_, _) >> { Map doc, BiFunction idFor ->
+            capturedDoc = doc
+            return []   // an overlay container emits no messages — its id was reused
+        }
+
+        when:
+        ImportDriveReport report = driver.drive(publisher, ORG, GRP, USER, 200)
+
+        then: 'the mapper saw the overlay flag and the esp row recorded the CLARITY id'
+        capturedDoc[EspEntityImportMapper.PRECEDENCE_OVERLAY] == Boolean.TRUE
+        1 * queue.recordJdtpId(ImportQueueService.rowId('esp', espUuid), clarityId) >> Mono.empty()
+
+        and: 'nothing was published (no duplicate root create), yet the item is done and counted'
+        published.isEmpty()
+        report.itemsDone == 1
+        report.batches == 0
+
+        and: 'the zero-message overlay batch marks done with a NULL txn id, not a phantom one'
+        1 * queue.markDone(ImportQueueService.rowId('esp', espUuid), null) >> Mono.empty()
+    }
+
+    def 'a candidate whose clarity container is queued-but-not-driven warns and mints esp-native (TASK-071 ordering guard)'() {
+        given: 'the clarity container row exists but has no jdtp_id yet (ordering violation)'
+        String espUuid = '019a3ea7-8f4b-771c-9f58-8c833082e9b6'
+        ImportQueueItem espItem = new ImportQueueItem(
+                id: ImportQueueService.rowId('esp', espUuid),
+                source: 'esp', key: espUuid, kind: 'esp_entity', state: 'pending', seq: 5)
+        queue.pendingInOrder(200) >>> [Flux.just(espItem), Flux.empty()]
+        reader.findDocument('esp-entity', espUuid) >> Mono.just([
+                _id: espUuid, uuid: espUuid, class_name: 'Container', type_name: '96W Plate',
+                name: '27-279088', barcode: '27-279088'] as Map)
+        queue.jdtpIdOf(_) >> Mono.empty()
+        Map capturedDoc = null
+        espMapper.mapEntity(_, _) >> { Map doc, BiFunction idFor ->
+            capturedDoc = doc
+            [new MappedImportMessage(collection: 'loc', action: 'create',
+                    data: [id: idFor.apply(espUuid, 'loc')] as Map<String, Object>)]
+        }
+
+        when:
+        driver.drive(publisher, ORG, GRP, USER, 200)
+
+        then: 'the ordering violation is detected (clarity row existence checked) and the plate mints esp-native'
+        1 * queue.rowExists(ImportQueueService.rowId('clarity', 'containers_27-279088')) >> Mono.just(true)
+        capturedDoc[EspEntityImportMapper.PRECEDENCE_OVERLAY] == null
+        (published.find { it.collection().abbreviation == 'loc' }.data().id as String).split('~')[4].startsWith('esp_')
+    }
+
+    def 'an esp container with no matching clarity row takes the normal esp mint path (TASK-071)'() {
+        given: 'no clarity container row exists for the name (esp-native container)'
+        String espUuid = '019f14a8-e5d8-7594-88d4-a19bc8998f5f'
+        ImportQueueItem espItem = new ImportQueueItem(
+                id: ImportQueueService.rowId('esp', espUuid),
+                source: 'esp', key: espUuid, kind: 'esp_entity', state: 'pending', seq: 5)
+        queue.pendingInOrder(200) >>> [Flux.just(espItem), Flux.empty()]
+        reader.findDocument('esp-entity', espUuid) >> Mono.just([
+                _id: espUuid, uuid: espUuid, class_name: 'Container', type_name: '96W Plate',
+                name: '27-810708', barcode: '27-810708'] as Map)
+        queue.jdtpIdOf(_) >> Mono.empty()   // clarity row absent -> mint new
+        Map capturedDoc = null
+        espMapper.mapEntity(_, _) >> { Map doc, BiFunction idFor ->
+            capturedDoc = doc
+            [new MappedImportMessage(collection: 'loc', action: 'create',
+                    data: [id: idFor.apply(espUuid, 'loc')] as Map<String, Object>)]
+        }
+
+        when:
+        driver.drive(publisher, ORG, GRP, USER, 200)
+
+        then: 'no overlay flag; the container mints a fresh esp-keyed loc root'
+        capturedDoc[EspEntityImportMapper.PRECEDENCE_OVERLAY] == null
+        published.any { it.collection().abbreviation == 'loc' }
+        (published.find { it.collection().abbreviation == 'loc' }.data().id as String).split('~')[4].startsWith('esp_')
     }
 
     def 'a small batch size splits the queue into one transaction per batch'() {
