@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service
 import org.springframework.util.Assert
 
 import java.time.Duration
+import java.time.Instant
 import java.util.function.BiFunction
 
 /**
@@ -56,19 +57,25 @@ class ClarityImportDriver {
 
     private static final Duration BLOCK_TIMEOUT = Duration.ofSeconds(30)
 
+    /** Outputs created within this slack after a workflow's last sheet end still count (TASK-070). */
+    private static final Duration OUTPUT_SLACK = Duration.ofHours(72)
+
     private final ImportQueueService queue
     private final CouchDbDocumentReader reader
     private final ClarityAliquotImportMapper mapper
     private final EspEntityImportMapper espMapper
+    private final EspWorkflowConfigService workflowConfig
 
     ClarityImportDriver(ImportQueueService queue,
                         CouchDbDocumentReader reader,
                         ClarityAliquotImportMapper mapper,
-                        EspEntityImportMapper espMapper) {
+                        EspEntityImportMapper espMapper,
+                        EspWorkflowConfigService workflowConfig) {
         this.queue = queue
         this.reader = reader
         this.mapper = mapper
         this.espMapper = espMapper
+        this.workflowConfig = workflowConfig
     }
 
     /**
@@ -94,8 +101,8 @@ class ClarityImportDriver {
                 if (existing != null) {
                     return existing
                 }
-                String recorded = queue.jdtpIdOf(ImportQueueService.rowId(source, key))
-                        .block(BLOCK_TIMEOUT)
+                String rowId = ImportQueueService.rowId(source, key)
+                String recorded = queue.jdtpIdOf(rowId).block(BLOCK_TIMEOUT)
                 String suffix = source == EspEntityImportMapper.SOURCE
                         ? EspEntityImportMapper.suffixFor(key)
                         : ClarityAliquotImportMapper.suffixFor(key)
@@ -103,6 +110,15 @@ class ClarityImportDriver {
                         (org + '~' + grp + '~' + UuidCreator.timeOrderedEpoch.toString() +
                                 '~' + collection + '~' + suffix)
                 minted[cacheKey] = id
+                if (recorded == null) {
+                    // Persist the freshly minted id on its own queue row NOW, so a
+                    // reference minted while processing another item (e.g. a prc's
+                    // produced_by pointing at an output entity that has not been
+                    // driven yet) survives a resume: the re-run re-resolves the
+                    // identical id via jdtpIdOf instead of minting a new one and
+                    // dangling the link. A no-op for synthetic keys with no row.
+                    queue.recordJdtpId(rowId, id).block(BLOCK_TIMEOUT)
+                }
                 return id
             } as BiFunction<String, String, String>
         }
@@ -126,11 +142,10 @@ class ClarityImportDriver {
 
             batch.each { ImportQueueItem item ->
                 try {
+                    // Ids are recorded on their rows at mint time (in the
+                    // resolver) and, for pre-seeded overlays, in
+                    // applyClarityPrecedence — so no per-item record here.
                     List<MappedImportMessage> mapped = mapItem(item, minted, idForSource)
-                    String mintedId = minted[item.source + '~' + item.key]
-                    if (mintedId != null) {
-                        queue.recordJdtpId(item.id, mintedId).block(BLOCK_TIMEOUT)
-                    }
                     mapped.each { MappedImportMessage m ->
                         Action action = 'update' == m.action ? Action.UPDATE : Action.CREATE
                         // roots use the msg-UUID id form (the message uuid IS the
@@ -216,6 +231,7 @@ class ClarityImportDriver {
             case EspEntityImportPlanner.KIND_ENTITY:
                 Map<String, Object> doc = withImportWell(fetchEspDoc(item.key))
                 applyClarityPrecedence(doc, item, minted)
+                withWorkflowProcedures(doc)
                 return espMapper.mapEntity(doc, idFor)
             default:
                 throw new IllegalStateException("Unknown queue kind: ${item.kind}")
@@ -260,6 +276,9 @@ class ClarityImportDriver {
         }
         String uuid = doc.get('uuid') as String ?: doc.get('_id') as String
         minted[item.source + '~' + uuid] = clarityId
+        // the id is pre-seeded (not minted through the resolver), so record it
+        // on the esp row here for downstream/resume resolution
+        queue.recordJdtpId(item.id, clarityId).block(BLOCK_TIMEOUT)
         doc.put(EspEntityImportMapper.PRECEDENCE_OVERLAY, Boolean.TRUE)
         log.info('esp Container reuses clarity root (precedence): esp name={} -> clarity id={}',
                 name, clarityId)
@@ -281,6 +300,82 @@ class ClarityImportDriver {
             throw new IllegalStateException('esp document not found: ' + key)
         }
         return doc
+    }
+
+    /**
+     * Resolve each reconstructed workflow instance's input and
+     * window-filtered outputs (TASK-070) and inject them for the mapper.
+     * Input: a SOW Item task's first non-task/project (biological) begat
+     * parent, or the carrier itself for an entity-carried workflow. Outputs:
+     * the carrier's begat children (tasks/projects excluded) whose creation
+     * date falls within the instance window plus {@link #OUTPUT_SLACK}. The
+     * child creation dates live only on the child documents, so they are
+     * fetched here at drive time.
+     */
+    private void withWorkflowProcedures(Map<String, Object> doc) {
+        List<Map<String, Object>> instances =
+                EspEntityImportMapper.reconstructWorkflowInstances(doc, workflowConfig)
+        if (instances.isEmpty()) {
+            return
+        }
+        boolean taskCarried = EspEntityImportMapper.CLASS_SOW_ITEM == doc.get('class_name')
+        String uuid = doc.get('uuid') as String ?: doc.get('_id') as String
+        String inputUuid = taskCarried
+                ? ClarityAliquotImportMapper.asImportList(doc.get('parents')).findResult { Object edge ->
+                    Map parent = edge instanceof Map ? (Map) edge : [:]
+                    (parent.get('uuid') && !EspEntityImportMapper.NON_INPUT_PARENT_TYPES
+                            .contains(parent.get('type_name'))) ? parent.get('uuid') as String : null
+                }
+                : uuid
+
+        // candidate outputs: begat children (tasks/projects excluded), with
+        // their creation dates fetched once
+        Map<String, String> childCreated = new LinkedHashMap<>()
+        ClarityAliquotImportMapper.asImportList(doc.get('children')).each { Object edge ->
+            Map child = edge instanceof Map ? (Map) edge : [:]
+            String childUuid = child.get('uuid') as String
+            if (childUuid && !EspEntityImportMapper.NON_INPUT_PARENT_TYPES.contains(child.get('type_name'))) {
+                Map<String, Object> childDoc = reader.findDocument(EspEntityImportMapper.DATABASE, childUuid)
+                        .block(BLOCK_TIMEOUT)
+                if (childDoc != null) {
+                    childCreated.put(childUuid, childDoc.get('created') as String)
+                }
+            }
+        }
+
+        instances.each { Map<String, Object> inst ->
+            inst.put('task_carried', taskCarried)
+            inst.put('input_uuid', inputUuid)
+            Instant start = parseInstant(inst.get('start') as String)
+            Instant end = parseInstant(inst.get('end') as String)
+            List<String> outputs = []
+            if (start != null && end != null) {
+                Instant windowEnd = end.plus(OUTPUT_SLACK)
+                childCreated.each { String childUuid, String created ->
+                    Instant c = parseInstant(created)
+                    if (c != null && !c.isBefore(start) && !c.isAfter(windowEnd)) {
+                        outputs.add(childUuid)
+                    }
+                }
+            } else if (!childCreated.isEmpty()) {
+                log.warn('esp workflow {} on {} has no sheet start/end window — its {} candidate ' +
+                        'output(s) cannot be attributed and are dropped',
+                        inst.get('workflow_name'), uuid, childCreated.size())
+            }
+            inst.put('output_uuids', outputs)
+        }
+        doc.put(EspEntityImportMapper.WORKFLOW_PROCEDURES, instances)
+    }
+
+    private static Instant parseInstant(String iso) {
+        if (!iso) {
+            return null
+        }
+        try {
+            return Instant.parse(iso)
+        } catch (Exception ignored) {
+            return null
+        }
     }
 
     /**

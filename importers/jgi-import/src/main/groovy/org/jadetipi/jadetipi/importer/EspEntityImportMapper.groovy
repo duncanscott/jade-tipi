@@ -58,12 +58,102 @@ class EspEntityImportMapper {
     static final String DATABASE = 'esp-entity'
 
     static final String TYPE_KEY_PREFIX = 'type:esp:'
+    static final String PROCEDURE_TYPE_KEY_PREFIX = 'type:esp:procedure:'
     static final String KEY_TYPE_LINK_CONTENTS = 'type:esp:link:contents'
     static final String KEY_TYPE_LINK_BEGAT = 'type:esp:link:begat'
+    static final String KEY_TYPE_LINK_TASK_INPUT = 'type:esp:link:task_input'
+    static final String KEY_TYPE_LINK_FULFILLS = 'type:esp:link:fulfills'
+    static final String KEY_TYPE_LINK_PROCEDURE_INPUT = 'type:esp:link:procedure_input'
+    static final String KEY_TYPE_LINK_PRODUCED_BY = 'type:esp:link:produced_by'
     static final List<String> BOOTSTRAP_KEYS = List.of(
-            KEY_TYPE_LINK_CONTENTS, KEY_TYPE_LINK_BEGAT)
+            KEY_TYPE_LINK_CONTENTS, KEY_TYPE_LINK_BEGAT, KEY_TYPE_LINK_TASK_INPUT,
+            KEY_TYPE_LINK_FULFILLS, KEY_TYPE_LINK_PROCEDURE_INPUT, KEY_TYPE_LINK_PRODUCED_BY)
 
     static final String CLASS_CONTAINER = 'Container'
+    static final String CLASS_SOW_ITEM = 'SOW Item'
+    /**
+     * Driver-injected reconstructed workflow procedures (TASK-070): a list of
+     * maps { workflow_name, procedure_key, input_uuid, output_uuids } for the
+     * lab workflow instances the carrier's sample sheets attest, with inputs
+     * and window-filtered outputs already resolved by the driver.
+     */
+    static final String WORKFLOW_PROCEDURES = '_workflow_procedures'
+
+    /** esp begat-parent type_names that are tasks/projects, not biological inputs. */
+    static final Set<String> NON_INPUT_PARENT_TYPES = Set.of(
+            'SOW Item', 'PM SOW Item', 'Sequencing Project', 'Final Deliv Project', 'Proposal')
+
+    /** The procedure-type import key for one esp workflow name (dynamic type). */
+    static String procedureTypeKey(String workflowName) {
+        return PROCEDURE_TYPE_KEY_PREFIX + workflowName
+    }
+
+    /**
+     * Reconstruct the lab workflow INSTANCES this document is the input-side
+     * carrier for (TASK-070). A document's sample sheets are grouped by
+     * {@code workflow_uuid} and chunked into instances of the workflow's
+     * {@code protocol_count} (so a wizard's 2–4 protocol sheets merge into
+     * one procedure, and a re-run splits). Only LAB workflows are kept, and
+     * only when THIS carrier's {@code type_name} is one of the workflow's
+     * configured input types — so a workflow instance is reconstructed once,
+     * from its input-side carrier (the SOW Item task for e.g. Aliquot
+     * Creation, the Aliquot itself for Illumina Library Creation), never
+     * duplicated by the output entity that also carries the sheet.
+     *
+     * <p>Returns skeletons {@code {workflow_name, procedure_key, start, end}};
+     * the driver resolves each instance's input and window-filtered outputs.
+     *
+     * <p><b>Limitation (TASK-072):</b> reconstruction is per-carrier, correct
+     * for the single-input/single-output pattern but NOT for batch/pool
+     * workflows where many carriers share one {@code sample_sheet_uuid}
+     * (each reconstructs the same prc, so only one carrier's contributions
+     * survive). Procedure-centric aggregation is deferred to TASK-072.
+     */
+    static List<Map<String, Object>> reconstructWorkflowInstances(Map<String, Object> doc,
+                                                                  EspWorkflowConfigService config) {
+        String carrierType = doc.get('type_name') as String
+        Map<String, List<Map>> byWorkflow = new LinkedHashMap<>()
+        ClarityAliquotImportMapper.asImportList(doc.get('sample_sheets')).each { Object s ->
+            if (!(s instanceof Map)) {
+                return
+            }
+            Map sheet = (Map) s
+            String wfName = sheet.get('workflow_name') as String
+            if (wfName == null || !config.isLabProcedure(wfName)) {
+                return
+            }
+            if (!config.inputTypes(wfName).contains(carrierType)) {
+                return   // not the input-side carrier for this workflow
+            }
+            String wfUuid = sheet.get('workflow_uuid') as String ?: wfName
+            byWorkflow.computeIfAbsent(wfUuid, { new ArrayList<Map>() }).add(sheet)
+        }
+
+        List<Map<String, Object>> instances = []
+        byWorkflow.each { String wfUuid, List<Map> group ->
+            String wfName = group.first().get('workflow_name') as String
+            int chunk = Math.max(1, config.protocolCount(wfName))
+            List<Map> ordered = group.sort(false) { (it.get('sample_sheet_start_time') as String) ?: '' }
+            for (int i = 0; i < ordered.size(); i += chunk) {
+                List<Map> inst = ordered.subList(i, Math.min(i + chunk, ordered.size()))
+                List<String> starts = inst.collect { it.get('sample_sheet_start_time') as String }.findAll { it }
+                List<String> ends = inst.collect { it.get('sample_sheet_end_time') as String }.findAll { it }
+                List<String> sheetUuids = inst.collect { it.get('sample_sheet_uuid') as String }.findAll { it }.sort()
+                instances.add([
+                        workflow_name: wfName,
+                        procedure_key: sheetUuids ? sheetUuids.first() : (wfUuid + ':' + i),
+                        start        : starts ? starts.min() : null,
+                        end          : ends ? ends.max() : null,
+                ] as Map<String, Object>)
+            }
+        }
+        return instances
+    }
+
+    /** The prc import key for one reconstructed procedure instance. */
+    static String procedureKey(String procedureInstanceKey) {
+        return 'procedure:esp:' + procedureInstanceKey
+    }
     /** Driver-injected well label for a contained entity (not source data). */
     static final String IMPORT_WELL = '_import_well'
     /**
@@ -104,38 +194,54 @@ class EspEntityImportMapper {
 
     /** The Mongo collection an esp document's root lands in. */
     static String entityCollection(Map<String, Object> doc) {
-        return CLASS_CONTAINER == doc.get('class_name') ? 'loc' : 'ent'
+        String className = doc.get('class_name')
+        if (CLASS_CONTAINER == className) {
+            return 'loc'
+        }
+        if (CLASS_SOW_ITEM == className) {
+            return 'tsk'   // SOW Items are tasks (TASK-070)
+        }
+        return 'ent'
     }
 
     /** One typ/link-type declaration per esp type key. */
     MappedImportMessage mapBootstrapType(String key, BiFunction<String, String, String> idFor) {
         String id = idFor.apply(key, 'typ')
         if (key == KEY_TYPE_LINK_CONTENTS) {
-            return message('typ', [
-                    kind                     : 'link_type',
-                    id                       : id,
-                    name                     : 'contents',
-                    description              : 'containment between an esp container and its contents',
-                    left_role                : 'container',
-                    right_role               : 'content',
-                    left_to_right_label      : 'contains',
-                    right_to_left_label      : 'contained_by',
-                    allowed_left_collections : ['loc'],
-                    allowed_right_collections: ['loc', 'ent', 'fil']
-            ])
+            return linkType(id, 'contents', 'containment between an esp container and its contents',
+                    'container', 'content', 'contains', 'contained_by',
+                    ['loc'], ['loc', 'ent', 'fil', 'tsk'])
         }
         if (key == KEY_TYPE_LINK_BEGAT) {
+            // begat edges connect entities, containers, files AND tasks (SOW
+            // Items are tsk since TASK-070), so both sides admit tsk.
+            return linkType(id, 'begat', 'esp provenance: a parent entity begat a child entity',
+                    'parent', 'child', 'begat', 'begat_by',
+                    ['ent', 'loc', 'fil', 'tsk'], ['ent', 'loc', 'fil', 'tsk'])
+        }
+        if (key == KEY_TYPE_LINK_TASK_INPUT) {
+            return linkType(id, 'task_input', 'an input entity a task delivers into its workflows',
+                    'task', 'input', 'task_input', 'input_of', ['tsk'], ['ent', 'loc', 'fil'])
+        }
+        if (key == KEY_TYPE_LINK_FULFILLS) {
+            return linkType(id, 'fulfills', 'the performed procedure that fulfilled a task',
+                    'procedure', 'task', 'fulfills', 'fulfilled_by', ['prc'], ['tsk'])
+        }
+        if (key == KEY_TYPE_LINK_PROCEDURE_INPUT) {
+            return linkType(id, 'procedure_input', 'an input consumed by a performed procedure',
+                    'procedure', 'input', 'consumed', 'consumed_by', ['prc'], ['ent', 'loc', 'fil', 'tsk'])
+        }
+        if (key == KEY_TYPE_LINK_PRODUCED_BY) {
+            return linkType(id, 'produced_by', 'an output and the performed procedure that created it',
+                    'output', 'procedure', 'produced_by', 'produced', ['ent', 'loc', 'fil'], ['prc'])
+        }
+        if (key.startsWith(PROCEDURE_TYPE_KEY_PREFIX)) {
+            String workflowName = key.substring(PROCEDURE_TYPE_KEY_PREFIX.length())
             return message('typ', [
-                    kind                     : 'link_type',
-                    id                       : id,
-                    name                     : 'begat',
-                    description              : 'esp provenance: a parent entity begat a child entity',
-                    left_role                : 'parent',
-                    right_role               : 'child',
-                    left_to_right_label      : 'begat',
-                    right_to_left_label      : 'begat_by',
-                    allowed_left_collections : ['ent', 'loc', 'fil'],
-                    allowed_right_collections: ['ent', 'loc', 'fil']
+                    kind       : 'procedure_type',
+                    id         : id,
+                    name       : 'esp_' + workflowName.toLowerCase().replaceAll('[^a-z0-9_-]', '_'),
+                    description: 'ESP workflow: ' + workflowName
             ])
         }
         if (key.startsWith(TYPE_KEY_PREFIX)) {
@@ -150,6 +256,24 @@ class EspEntityImportMapper {
             ])
         }
         throw new IllegalArgumentException("Unknown esp type key: ${key}")
+    }
+
+    private static MappedImportMessage linkType(String id, String name, String description,
+                                                String leftRole, String rightRole,
+                                                String leftToRight, String rightToLeft,
+                                                List<String> allowedLeft, List<String> allowedRight) {
+        return message('typ', [
+                kind                     : 'link_type',
+                id                       : id,
+                name                     : name,
+                description              : description,
+                left_role                : leftRole,
+                right_role               : rightRole,
+                left_to_right_label      : leftToRight,
+                right_to_left_label      : rightToLeft,
+                allowed_left_collections : allowedLeft,
+                allowed_right_collections: allowedRight
+        ])
     }
 
     /**
@@ -233,6 +357,84 @@ class EspEntityImportMapper {
                 linkData.put('properties', [position: [kind: 'esp_well', label: well]])
             }
             messages.add(message('lnk', linkData))
+        }
+
+        // task_input (TASK-070): a SOW Item task delivers its biological
+        // (sample) begat parent as an input into its workflows.
+        if (CLASS_SOW_ITEM == doc.get('class_name')) {
+            ClarityAliquotImportMapper.asImportList(doc.get('parents')).each { Object edge ->
+                Map parent = edge instanceof Map ? (Map) edge : [:]
+                String parentUuid = parent.get('uuid') as String
+                if (parentUuid && !NON_INPUT_PARENT_TYPES.contains(parent.get('type_name'))) {
+                    messages.add(message('lnk', [
+                            id     : idFor.apply('link:esp:task_input:' + uuid + ':' + parentUuid, 'lnk'),
+                            type_id: idFor.apply(KEY_TYPE_LINK_TASK_INPUT, 'typ'),
+                            left   : entityId,
+                            right  : idFor.apply(parentUuid, 'ent')
+                    ]))
+                }
+            }
+        }
+
+        // reconstructed workflow procedures (TASK-070): each instance was
+        // enriched by the driver with its resolved input and window-filtered
+        // outputs; emit the prc plus its fulfills/procedure_input/produced_by
+        // links and the output_input map.
+        ClarityAliquotImportMapper.asImportList(doc.get(WORKFLOW_PROCEDURES)).each { Object p ->
+            Map inst = p instanceof Map ? (Map) p : [:]
+            String workflowName = inst.get('workflow_name') as String
+            if (workflowName == null) {
+                return
+            }
+            String procInstKey = inst.get('procedure_key') as String
+            String procId = idFor.apply(procedureKey(procInstKey), 'prc')
+            String inputUuid = inst.get('input_uuid') as String
+            String inputId = inputUuid ? idFor.apply(inputUuid, 'ent') : null
+            List<String> outputUuids = (inst.get('output_uuids') ?: []) as List<String>
+
+            Map<String, Object> outputInput = new LinkedHashMap<>()
+            outputUuids.each { String outUuid ->
+                outputInput.put(idFor.apply(outUuid, 'ent'),
+                        inputId ? [(inputId): [:] as Map<String, Object>] : [:] as Map<String, Object>)
+            }
+            Map<String, Object> prcProps = [
+                    source_kind : 'esp_workflow',
+                    esp_workflow: workflowName
+            ] as Map<String, Object>
+            putIfPresent(prcProps, 'started', inst.get('start'))
+            putIfPresent(prcProps, 'ended', inst.get('end'))
+            putIfPresent(prcProps, 'esp_sample_sheet', procInstKey)
+            messages.add(message('prc', [
+                    id          : procId,
+                    type_id     : idFor.apply(procedureTypeKey(workflowName), 'typ'),
+                    properties  : prcProps,
+                    links       : [:],
+                    output_input: outputInput
+            ]))
+            if (inst.get('task_carried') == Boolean.TRUE) {
+                messages.add(message('lnk', [
+                        id     : idFor.apply('link:esp:fulfills:' + procInstKey + ':' + uuid, 'lnk'),
+                        type_id: idFor.apply(KEY_TYPE_LINK_FULFILLS, 'typ'),
+                        left   : procId,
+                        right  : entityId
+                ]))
+            }
+            if (inputId) {
+                messages.add(message('lnk', [
+                        id     : idFor.apply('link:esp:procedure_input:' + procInstKey, 'lnk'),
+                        type_id: idFor.apply(KEY_TYPE_LINK_PROCEDURE_INPUT, 'typ'),
+                        left   : procId,
+                        right  : inputId
+                ]))
+            }
+            outputUuids.each { String outUuid ->
+                messages.add(message('lnk', [
+                        id     : idFor.apply('link:esp:produced_by:' + procInstKey + ':' + outUuid, 'lnk'),
+                        type_id: idFor.apply(KEY_TYPE_LINK_PRODUCED_BY, 'typ'),
+                        left   : idFor.apply(outUuid, 'ent'),
+                        right  : procId
+                ]))
+            }
         }
         return messages
     }

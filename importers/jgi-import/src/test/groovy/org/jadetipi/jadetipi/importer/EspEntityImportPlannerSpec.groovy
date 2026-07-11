@@ -38,7 +38,7 @@ class EspEntityImportPlannerSpec extends Specification {
     def setup() {
         reader = Mock(CouchDbDocumentReader)
         queue = Mock(ImportQueueService)
-        planner = new EspEntityImportPlanner(reader, queue)
+        planner = new EspEntityImportPlanner(reader, queue, new EspWorkflowConfigService())
         enqueued = []
         existing = [] as Set
         queue.enqueue('esp', _ as String, _ as String) >> { String _s, String key, String _k ->
@@ -68,7 +68,7 @@ class EspEntityImportPlannerSpec extends Specification {
         inserted == (enqueued as Set).size()
 
         and: 'link-type bootstrap leads'
-        enqueued.take(2) == EspEntityImportMapper.BOOTSTRAP_KEYS
+        enqueued.take(EspEntityImportMapper.BOOTSTRAP_KEYS.size()) == EspEntityImportMapper.BOOTSTRAP_KEYS
 
         and: 'depth-first ancestry: grandparent, parent, container, child — each after its type row'
         List<String> entityOrder = enqueued.findAll { it in [CHILD, PARENT, GRANDPARENT, CONTAINER] }
@@ -109,6 +109,6 @@ class EspEntityImportPlannerSpec extends Specification {
         Long inserted = planner.planEspEntity('no-such').block()
 
         then: 'only the link-type bootstrap rows'
-        inserted == 2L
+        inserted == EspEntityImportMapper.BOOTSTRAP_KEYS.size()
     }
 }

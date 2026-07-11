@@ -121,6 +121,39 @@ to the procedure that created it) arrive with the planned denormalized
 fine-grained contribution weights live only in the procedure's
 `output_input` map: execution-owned data, not a duplicate of the links.
 
+Ratified 2026-07-08 — procedure input model. **Either tasks OR other
+objects may be inputs to a procedure; it is not the case that only tasks
+may be inputs.** The procedure root carries two ID-keyed maps alongside
+`output_input`:
+
+- `tasks`: `{ <task_id>: {} }` — the tasks that are inputs to the
+  procedure. Value objects are empty for now (an open shape for later
+  per-task facts).
+- `inputs`: `{ <input_id>: { "task_id": <task_id>, ... } }` — the
+  **non-task** inputs. When a task carried an object into the procedure,
+  that object is modeled as an input **independent of the task**, and its
+  input entry's `task_id` back-references the delivering task. A directly
+  supplied object input simply omits `task_id`.
+
+So a SOW Item task carrying a nucleic-acid sample into Aliquot Creation
+yields `tasks: {<sow_id>: {}}`, `inputs: {<na_id>: {"task_id": <sow_id>}}`,
+`output_input: {<aliquot_id>: {<na_id>: {}}}`. A pool records every member
+library as its own `inputs` entry, so every input is captured.
+
+These maps are the **canonical structured record** of a procedure's
+inputs. The `lnk` records are **kept** for graph traversal (director
+ruling 2026-07-08): `procedure_input` (prc→input), `fulfills` (prc→task),
+`produced_by` (output→prc), and `task_input` (tsk→object) remain, exactly
+as the clarity procedure model carries both `output_input` and its links.
+The maps and links are complementary, not a source-of-truth duplication:
+the maps are execution-owned aggregate state, the links are the traversable
+graph edges. This is general to the JDTP procedure model; clarity
+procedures may adopt the `tasks`/`inputs` maps later, and their existing
+`output_input` stays valid meanwhile. The wire schema's procedure-data
+branch admits `tasks` and `inputs` as ID-keyed, snake_case-key maps
+(parallel to `output_input`), and the materializer hoists them onto the
+prc root.
+
 Instances stay in their own collections regardless of the type hierarchy:
 tasks are `tsk` records and procedures are `prc` records.
 
@@ -360,15 +393,30 @@ TASK-071 precedence remain but go dormant (no rework). Clarity-only
 historical records migrate later, and the non-duplicated set is
 determinable directly from the director's actual list of clarity→esp
 migrated entities (no field inference needed). ESP workflow
-reconstruction is now designed (TASK-070, ratified
-2026-07-07): procedures are reconstructed locally per task from sample
+reconstruction is **implemented** (TASK-070, ratified + built
+2026-07-07): procedures are reconstructed locally per carrier from sample
 sheets, the begat graph, and a **vendored snapshot** of the esplims
 workflow configs (each declares its protocol count — the sheet-merge
 key — and input types). SOW Items map to `tsk` carrying their sample
 parent as input; each lab workflow instance becomes a `prc` typed by
-workflow name, with begat children in the sheet window as outputs and
-the §1.9 task/procedure links. Open for review: the lab-vs-administrative
-workflow classification and the output-window slack.
+workflow name, with begat children in the sheet window (+72h slack) as
+outputs and the §1.9 task/procedure links (task_input, fulfills,
+procedure_input, produced_by, output_input). Proven live on the worked
+example. The per-carrier reconstruction is correct for the
+single-input/single-output pattern but not for batch/pool workflows
+(many carriers share one sample sheet) — deferred to **TASK-072** for a
+procedure-centric aggregation. TASK-072 also carries the ratified
+procedure input model (the `tasks` and `inputs` maps — see "Procedures And
+Tasks"): the aggregation unions all carriers of a sample sheet into one
+prc whose `tasks` holds every task input, `inputs` holds every non-task
+object input with a `task_id` back-reference, and `output_input` +
+`produced_by`/`procedure_input`/`fulfills` links stay as the traversable
+graph. Open for review: the lab-vs-administrative workflow
+classification, the output-window slack, and the logistics workflows.
+**Migration paused 2026-07-08 (director ruling): do not run the ESP
+migration yet — data is to be added to the esp-entity source documents
+first.** The importer stays built and green; TASK-072 and the full-esp
+sweep wait on the enriched source data.
 `value_schema` validation is not required before bulk import: schemas are
 easier to establish once real data exists. ESP workflow → procedure
 reconstruction is deferred as its own phase (esp has no process

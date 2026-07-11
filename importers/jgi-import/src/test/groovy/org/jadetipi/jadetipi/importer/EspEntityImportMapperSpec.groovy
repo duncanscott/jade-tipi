@@ -34,8 +34,8 @@ class EspEntityImportMapperSpec extends Specification {
 
     private BiFunction<String, String, String> idFor = { String key, String collection ->
         return minted.computeIfAbsent(key, {
-            "jade-itest-org~import~018fd849-9a02-7222-8a02-929292929292~${collection}~" +
-                    EspEntityImportMapper.suffixFor(key)
+            ('jade-itest-org~import~018fd849-9a02-7222-8a02-929292929292~' + collection + '~' +
+                    EspEntityImportMapper.suffixFor(key)).toString()
         })
     } as BiFunction<String, String, String>
 
@@ -165,6 +165,98 @@ class EspEntityImportMapperSpec extends Specification {
         then: 'no ent create, but the begat link is present pointing at the reused root'
         messages.every { it.collection == 'lnk' }
         messages.find { it.data.type_id == minted[EspEntityImportMapper.KEY_TYPE_LINK_BEGAT] }.data.right == reused
+    }
+
+    def 'reconstructWorkflowInstances keeps only lab workflows this carrier owns (TASK-070)'() {
+        given: 'a SOW Item task carrying SOW QC + Aliquot Creation sheets (both input_types include SOW Item)'
+        EspWorkflowConfigService config = new EspWorkflowConfigService()
+        Map<String, Object> sow = [
+                uuid: 'sow-1', class_name: 'SOW Item', type_name: 'SOW Item',
+                sample_sheets: [
+                        [workflow_name: 'SOW QC', workflow_uuid: 'wf-qc', sample_sheet_uuid: 'ss-qc',
+                         sample_sheet_start_time: '2026-06-12T17:47:00Z', sample_sheet_end_time: '2026-06-12T18:16:00Z'],
+                        [workflow_name: 'Aliquot Creation', workflow_uuid: 'wf-ac', sample_sheet_uuid: 'ss-ac',
+                         sample_sheet_start_time: '2026-06-15T19:30:00Z', sample_sheet_end_time: '2026-06-17T15:45:00Z'],
+                ]
+        ] as Map<String, Object>
+
+        when:
+        List<Map<String, Object>> instances = EspEntityImportMapper.reconstructWorkflowInstances(sow, config)
+
+        then:
+        instances*.workflow_name.toSet() == ['SOW QC', 'Aliquot Creation'] as Set
+        Map ac = instances.find { it.workflow_name == 'Aliquot Creation' }
+        ac.procedure_key == 'ss-ac'
+        ac.start == '2026-06-15T19:30:00Z'
+        ac.end == '2026-06-17T15:45:00Z'
+    }
+
+    def 'an output entity does not reconstruct a workflow it only participates in (owner dedup, TASK-070)'() {
+        given: 'an Aliquot carrying Aliquot Creation (input SOW Item) and Illumina Library Creation (input Aliquot)'
+        EspWorkflowConfigService config = new EspWorkflowConfigService()
+        Map<String, Object> aliquot = [
+                uuid: 'aq-1', class_name: 'Sample', type_name: 'Aliquot',
+                sample_sheets: [
+                        [workflow_name: 'Aliquot Creation', workflow_uuid: 'wf-ac', sample_sheet_uuid: 'ss-ac',
+                         sample_sheet_start_time: '2026-06-15T19:30:00Z', sample_sheet_end_time: '2026-06-17T15:45:00Z'],
+                        [workflow_name: 'Illumina Library Creation', workflow_uuid: 'wf-ill', sample_sheet_uuid: 'ss-ill',
+                         sample_sheet_start_time: '2026-06-21T03:41:00Z', sample_sheet_end_time: '2026-06-25T17:32:00Z'],
+                ]
+        ] as Map<String, Object>
+
+        expect: 'only Illumina Library Creation (whose input type is Aliquot) is owned here'
+        EspEntityImportMapper.reconstructWorkflowInstances(aliquot, config)*.workflow_name ==
+                ['Illumina Library Creation']
+    }
+
+    def 'administrative workflows are not reconstructed as procedures (TASK-070)'() {
+        given:
+        EspWorkflowConfigService config = new EspWorkflowConfigService()
+        Map<String, Object> pm = [
+                uuid: 'pm-1', class_name: 'SOW Item', type_name: 'PM SOW Item',
+                sample_sheets: [[workflow_name: 'SOW Item Edit', workflow_uuid: 'wf-e', sample_sheet_uuid: 'ss-e',
+                                 sample_sheet_start_time: 't', sample_sheet_end_time: 't']]
+        ] as Map<String, Object>
+
+        expect:
+        EspEntityImportMapper.reconstructWorkflowInstances(pm, config).isEmpty()
+    }
+
+    def 'a SOW Item maps to a tsk with task_input, and an injected procedure emits prc + links (TASK-070)'() {
+        given: 'a SOW Item with a Nucleic Acid parent (input), a Sequencing Project parent (not an input), and a driver-injected Aliquot Creation procedure'
+        Map<String, Object> sow = [
+                uuid       : 'sow-1', class_name: 'SOW Item', type_name: 'SOW Item',
+                parents    : [[uuid: 'na-1', type_name: 'Nucleic Acid'],
+                              [uuid: 'sp-1', type_name: 'Sequencing Project']],
+                (EspEntityImportMapper.WORKFLOW_PROCEDURES): [[
+                        workflow_name: 'Aliquot Creation', procedure_key: 'ss-ac',
+                        input_uuid   : 'na-1', output_uuids: ['aq-1'], task_carried: Boolean.TRUE,
+                        start        : '2026-06-15T19:30:00Z', end: '2026-06-17T15:45:00Z']]
+        ] as Map<String, Object>
+
+        when:
+        List<MappedImportMessage> messages = mapper.mapEntity(sow, idFor)
+
+        then: 'the root is a tsk'
+        MappedImportMessage root = messages.find { it.data.containsKey('properties') && it.data.id == minted['sow-1'] }
+        root.collection == 'tsk'
+
+        and: 'task_input links the tsk to the Nucleic Acid input, never the Sequencing Project'
+        List<MappedImportMessage> taskInputs = messages.findAll {
+            it.data.type_id == minted[EspEntityImportMapper.KEY_TYPE_LINK_TASK_INPUT]
+        }
+        taskInputs*.data.right == [minted['na-1']]
+
+        and: 'the procedure is a prc typed by the workflow, with output_input {aliquot: {na}}'
+        MappedImportMessage prc = messages.find { it.collection == 'prc' }
+        prc.data.type_id == minted[EspEntityImportMapper.procedureTypeKey('Aliquot Creation')]
+        (prc.data.output_input as Map)[minted['aq-1']] == [(minted['na-1']): [:]]
+        (prc.data.properties as Map).esp_workflow == 'Aliquot Creation'
+
+        and: 'fulfills → the SOW Item task, procedure_input → the NA, produced_by ← the Aliquot'
+        messages.find { it.data.type_id == minted[EspEntityImportMapper.KEY_TYPE_LINK_FULFILLS] }.data.right == root.data.id
+        messages.find { it.data.type_id == minted[EspEntityImportMapper.KEY_TYPE_LINK_PROCEDURE_INPUT] }.data.right == minted['na-1']
+        messages.find { it.data.type_id == minted[EspEntityImportMapper.KEY_TYPE_LINK_PRODUCED_BY] }.data.left == minted['aq-1']
     }
 
     def 'esp type keys declare dynamic typ roots and the esp link types'() {

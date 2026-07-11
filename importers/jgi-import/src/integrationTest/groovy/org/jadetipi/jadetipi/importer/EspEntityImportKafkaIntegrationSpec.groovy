@@ -65,7 +65,7 @@ class EspEntityImportKafkaIntegrationSpec extends Specification {
     /** Surveyed live 2026-07-07: Aliquot AQ00155404 with a 6-ancestor begat chain. */
     private static final String ALIQUOT_UUID = '019a3ea4-4e3f-787c-878a-b51665a0f3a9'
     private static final String TXN_COLLECTION = 'txn'
-    private static final List<String> ROOT_COLLECTIONS = ['typ', 'loc', 'ent', 'fil', 'prc', 'lnk', 'ppy']
+    private static final List<String> ROOT_COLLECTIONS = ['typ', 'loc', 'ent', 'fil', 'prc', 'tsk', 'lnk', 'ppy']
     private static final Duration AWAIT_TIMEOUT = Duration.ofSeconds(30)
     private static final Duration POLL_INTERVAL = Duration.ofMillis(250)
     private static final Duration MONGO_BLOCK_TIMEOUT = Duration.ofSeconds(5)
@@ -225,8 +225,8 @@ class EspEntityImportKafkaIntegrationSpec extends Specification {
                 { findLink(jdtpId(sowUuid), aliquotId) },
                 { Map d -> d != null }, 'begat link SOW Item → Aliquot')
 
-        and: 'the ancestry chain materialized (SOW Item → ... → Proposal all present)'
-        mongoTemplate.findById(jdtpId(sowUuid), Map, 'ent').block(MONGO_BLOCK_TIMEOUT) != null
+        and: 'the ancestry chain materialized (the SOW Item as a tsk, the NA as an ent)'
+        mongoTemplate.findById(jdtpId(sowUuid), Map, 'tsk').block(MONGO_BLOCK_TIMEOUT) != null
         mongoTemplate.findById(jdtpId(naUuid), Map, 'ent').block(MONGO_BLOCK_TIMEOUT) != null
 
         and: 'the nucleic acid sits in its 96W plate with the live well position'
@@ -283,6 +283,55 @@ class EspEntityImportKafkaIntegrationSpec extends Specification {
 
         and: 'the shared clarity root is the only loc for that plate'
         mongoTemplate.findById(clarityRootId, Map, 'loc').block(MONGO_BLOCK_TIMEOUT) != null
+    }
+
+    def 'a SOW Item reconstructs its Aliquot Creation procedure from sample sheets (TASK-070)'() {
+        given: 'the worked example: plan the Aliquot (its ancestry pulls in the SOW Item task and NA input)'
+        // surveyed live: SOW05715930 (SOW Item) carries SOW QC + Aliquot Creation sheets;
+        // begat NA00462849 -> SOW05715930 -> AQ00425694 (created inside the Aliquot Creation window)
+        String aliquotUuid = '019eccd0-ce7c-7eec-ba71-b5e403b6c25e'
+        String sowUuid = '019dfbd5-3a63-7d0d-a460-15850f00cc4b'
+        String naUuid = '019dfbd6-9114-7a77-89ab-7f77e672fbf5'
+        String aliquotCreationSheet = '019eccc3-fb0b-7a6a-bc6f-1535cb13a3ba'
+
+        when: 'the plan is driven through the production path'
+        Long inserted = espPlanner.planEspEntity(aliquotUuid).block(Duration.ofSeconds(120))
+        ImportDriveReport report = driver.drive(publisher, 'jade-itest-org', 'import',
+                'itest-user', 500)
+        driveTxnIds = report.txnIds
+
+        then: 'a clean drive'
+        inserted > 0
+        report.itemsFailed == 0
+
+        and: 'the SOW Item materialized as a tsk (not an ent)'
+        String sowId = jdtpId(sowUuid)
+        awaitMongo({ mongoTemplate.findById(sowId, Map, 'tsk') }, { Map d -> d != null }, 'SOW Item tsk root')
+        mongoTemplate.findById(sowId, Map, 'ent').block(MONGO_BLOCK_TIMEOUT) == null
+
+        and: 'the Aliquot Creation procedure materialized as a prc from the sample sheet'
+        Map prc = awaitMongo(
+                { mongoTemplate.find(Query.query(
+                        Criteria.where('properties.esp_sample_sheet').is(aliquotCreationSheet)),
+                        Map, 'prc').next() },
+                { Map d -> d != null }, 'Aliquot Creation prc')
+        (prc.properties as Map).esp_workflow == 'Aliquot Creation'
+        String prcId = prc._id
+
+        and: 'the prc fulfills the SOW Item task, consumes the NA input, and produced the Aliquot'
+        String naId = jdtpId(naUuid)
+        String aliquotId = jdtpId(aliquotUuid)
+        awaitMongo({ findLink(prcId, sowId) }, { Map d -> d != null }, 'fulfills prc -> SOW Item tsk')
+        awaitMongo({ findLink(prcId, naId) }, { Map d -> d != null }, 'procedure_input prc -> NA')
+        awaitMongo({ findLink(aliquotId, prcId) }, { Map d -> d != null }, 'produced_by Aliquot -> prc')
+
+        and: 'output_input maps the Aliquot output to the NA input'
+        Map outputInput = prc.output_input as Map
+        outputInput.containsKey(aliquotId)
+        (outputInput.get(aliquotId) as Map).containsKey(naId)
+
+        and: 'the SOW Item task carries the NA as a task_input'
+        awaitMongo({ findLink(sowId, naId) }, { Map d -> d != null }, 'task_input SOW Item -> NA')
     }
 
     private Mono<Map> findLink(String left, String right) {

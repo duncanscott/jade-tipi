@@ -40,10 +40,13 @@ class EspEntityImportPlanner {
 
     private final CouchDbDocumentReader reader
     private final ImportQueueService queue
+    private final EspWorkflowConfigService workflowConfig
 
-    EspEntityImportPlanner(CouchDbDocumentReader reader, ImportQueueService queue) {
+    EspEntityImportPlanner(CouchDbDocumentReader reader, ImportQueueService queue,
+                           EspWorkflowConfigService workflowConfig) {
         this.reader = reader
         this.queue = queue
+        this.workflowConfig = workflowConfig
     }
 
     /**
@@ -98,8 +101,18 @@ class EspEntityImportPlanner {
                     Flux<Boolean> typeRow = enqueueRow(EspEntityImportMapper.typeKey(
                             doc.get('class_name') as String, doc.get('type_name') as String),
                             KIND_TYPE)
+                    // procedure types for the lab workflows this carrier owns
+                    // (TASK-070) — enqueued before the entity that references them
+                    List<Map<String, Object>> instances =
+                            EspEntityImportMapper.reconstructWorkflowInstances(doc, workflowConfig)
+                    Set<String> procTypeKeys = instances
+                            .collect { EspEntityImportMapper.procedureTypeKey(it.get('workflow_name') as String) }
+                            .toSet()
+                    Flux<Boolean> procTypeRows = Flux.fromIterable(procTypeKeys)
+                            .concatMap { String k -> enqueueRow(k, KIND_TYPE) }
                     return parentsFirst.concatWith(containerNext)
                             .concatWith(typeRow)
+                            .concatWith(procTypeRows)
                             .concatWith(enqueueRow(uuid, KIND_ENTITY))
                 }
                 .switchIfEmpty(Flux.defer {
