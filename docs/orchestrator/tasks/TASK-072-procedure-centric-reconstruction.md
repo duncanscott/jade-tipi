@@ -39,45 +39,47 @@ MOTIVATING DEFECTS (from the TASK-070 review, confirmed against live data):
 
 PROCEDURE INPUT MODEL (director-ratified 2026-07-08):
 Either tasks OR other objects may be inputs to a procedure (not only
-tasks). A procedure root carries two ID-keyed maps alongside the
-existing `output_input`:
-- `tasks: { <task_id>: {} }` — the task inputs (value objects empty for
-  now).
-- `inputs: { <input_id>: { task_id: <task_id>, ... } }` — the NON-task
+tasks). There is **no separate `tasks` map on the prc** (director ruling
+2026-07-08): the task relationship is carried by the `fulfills` link and
+by the `task_id` back-reference on each input. A procedure root carries
+one ID-keyed input map alongside the existing `output_input`:
+- `inputs: { <input_id>: { task_id: <task_id>, ... } }` — the object
   inputs. When a task carried the object into the procedure, the object
   is modeled as an input **independent of the task**, with its input
-  entry's `task_id` back-referencing the delivering task.
+  entry's `task_id` back-referencing the delivering task. A directly
+  supplied object input omits `task_id`.
 - `output_input: { <output_id>: { <input_id>: {} } }` — unchanged
-  (outputs and their contributing non-task inputs).
+  (outputs and their contributing inputs).
 
 Worked example (SOW Item task carries the NA into Aliquot Creation):
-`tasks: {sow_id: {}}`, `inputs: {na_id: {task_id: sow_id}}`,
-`output_input: {aliquot_id: {na_id: {}}}`. A task-free object input:
-`inputs: {obj_id: {}}`, `tasks: {}`. A pool: every member library is an
-`inputs` entry (each with its `task_id` if delivered by a task), so ALL
-inputs are captured — the multi-input defect dissolves.
+`inputs: {na_id: {task_id: sow_id}}`,
+`output_input: {aliquot_id: {na_id: {}}}`, plus a `fulfills` link
+prc→SOW Item. A task-free object input: `inputs: {obj_id: {}}`. A pool:
+every member library is an `inputs` entry (each with its `task_id` if
+delivered by a task), so ALL inputs are captured — the multi-input defect
+dissolves.
 
-**Links are KEPT** (director ruling): the maps are the canonical record,
-and the `procedure_input`/`fulfills`/`produced_by` links remain for graph
-traversal (mirrors the clarity procedure model, which carries both
-`output_input` and links). Fix the `procedure_input` link id to include
-the input uuid (TASK-070's omits it and collides across carriers).
+**Links are KEPT** (director ruling): the `inputs` map is the canonical
+record, and the `procedure_input`/`fulfills`/`produced_by` links remain
+for graph traversal (mirrors the clarity procedure model, which carries
+both `output_input` and links). Fix the `procedure_input` link id to
+include the input uuid (TASK-070's omits it and collides across carriers).
 
 Schema/materializer (general, not just the importer): the wire schema's
-`ProcedureData` branch must allow `tasks` and `inputs` (same ID-keyed,
-snake_case-key shape as `output_input`), and the materializer must
-hoist/store them on the prc root like `output_input`. General to the
-JDTP procedure model — clarity procedures could adopt the maps later;
-clarity's existing `output_input` stays valid. Spec §1.9 gets the maps
-and a version bump when this task lands.
+`ProcedureData` branch must allow `inputs` (same ID-keyed, snake_case-key
+shape as `output_input`), and the materializer must hoist/store it on the
+prc root like `output_input`. General to the JDTP procedure model —
+clarity procedures could adopt the map later; clarity's existing
+`output_input` stays valid. Spec §1.9 gets the map and a version bump
+when this task lands.
 
 DESIGN DIRECTION:
 - Reconstruct **procedure-centrically**: a procedure is identified by its
   `sample_sheet_uuid` (with the TASK-070 protocol-count merge for
   multi-sheet instances). Gather ALL input-side carriers of that sheet,
-  unioning their tasks into `tasks`, their carried/direct objects into
-  `inputs` (with `task_id` back-refs), and all outputs into
-  `output_input` + `produced_by`.
+  unioning their carried/direct objects into `inputs` (with `task_id`
+  back-refs and one `fulfills` link per delivering task), and all outputs
+  into `output_input` + `produced_by`.
 - This needs a **by-sample-sheet grouping** the per-carrier walk cannot
   provide. Options: (a) a replica view keyed by `sample_sheet_uuid`
   (mirrors clarity phase 2 / esp entity discovery — the preferred shape);

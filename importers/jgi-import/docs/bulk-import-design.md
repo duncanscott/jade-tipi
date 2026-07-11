@@ -179,19 +179,22 @@ configurable slack for outputs created just after the recorded end.
 
 **Procedure input model (director-ratified 2026-07-08).** Either tasks OR
 other objects may be procedure inputs (not only tasks). Beyond the links
-above, a `prc` root carries two ID-keyed maps parallel to `output_input`:
-`tasks` = `{ <task_id>: {} }` (the task inputs) and `inputs` =
-`{ <input_id>: { "task_id": <task_id>, … } }` (the non-task object inputs,
-each modeled independently of any delivering task and back-referencing it
-via `task_id`). So a SOW Item task carrying an NA into Aliquot Creation
-gives `tasks: {<sow>: {}}`, `inputs: {<na>: {"task_id": <sow>}}`,
-`output_input: {<aliquot>: {<na>: {}}}`; a pool records every member as
-its own `inputs` entry. The links are **kept** for graph traversal (the
-maps are the canonical structured record; both coexist, as in the clarity
-procedure model). The wire schema's procedure-data branch admits `tasks`
-and `inputs` as ID-keyed snake_case-key maps, and the materializer hoists
-them onto the prc root. This maps/links model lands with TASK-072 (the
-per-carrier TASK-070 emits only the links + `output_input` today).
+above, a `prc` root carries one ID-keyed input map parallel to
+`output_input`: `inputs` = `{ <input_id>: { "task_id": <task_id>, … } }`
+(the object inputs, each modeled independently of any delivering task and
+back-referencing it via `task_id`). There is **no separate `tasks` map on
+the prc** (director ruling 2026-07-08) — the task relationship is carried
+by the `fulfills` link and the `task_id` back-reference. So a SOW Item
+task carrying an NA into Aliquot Creation gives
+`inputs: {<na>: {"task_id": <sow>}}`,
+`output_input: {<aliquot>: {<na>: {}}}`, plus a `fulfills` link prc→SOW
+Item; a pool records every member as its own `inputs` entry. The links
+are **kept** for graph traversal (the `inputs` map is the canonical
+structured record; both coexist, as in the clarity procedure model). The
+wire schema's procedure-data branch admits `inputs` as an ID-keyed
+snake_case-key map, and the materializer hoists it onto the prc root.
+This map/links model lands with TASK-072 (the per-carrier TASK-070 emits
+only the links + `output_input` today).
 
 **Known limitation — batch/pool workflows (TASK-072).** The TASK-070
 reconstruction is *per-carrier*, correct for the single-input/
@@ -201,7 +204,7 @@ each reconstruct the same prc, so only one carrier's `output_input`
 survives (duplicate prc inserts are counted conflicts) and pooling can
 root the procedure on the pool-as-input. The fix is *procedure-centric*
 reconstruction — aggregate all carriers of a `sample_sheet_uuid` into one
-prc, unioning their `tasks`/`inputs`/`output_input` — which needs a
+prc, unioning their `inputs`/`output_input` — which needs a
 by-sample-sheet grouping (a view or a two-pass aggregation); opened as
 TASK-072. The TASK-070 review also fixed: the `begat`/`contents` link
 types now admit `tsk` (SOW Items are tasks); minted ids are recorded at

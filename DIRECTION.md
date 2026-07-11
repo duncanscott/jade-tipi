@@ -123,36 +123,35 @@ fine-grained contribution weights live only in the procedure's
 
 Ratified 2026-07-08 — procedure input model. **Either tasks OR other
 objects may be inputs to a procedure; it is not the case that only tasks
-may be inputs.** The procedure root carries two ID-keyed maps alongside
-`output_input`:
+may be inputs.** There is **no separate `tasks` map on the prc** (director
+ruling 2026-07-08): the task relationship is carried by the `fulfills`
+link and by the `task_id` back-reference on each input. The procedure
+root carries one `inputs` map alongside `output_input`:
 
-- `tasks`: `{ <task_id>: {} }` — the tasks that are inputs to the
-  procedure. Value objects are empty for now (an open shape for later
-  per-task facts).
-- `inputs`: `{ <input_id>: { "task_id": <task_id>, ... } }` — the
-  **non-task** inputs. When a task carried an object into the procedure,
-  that object is modeled as an input **independent of the task**, and its
-  input entry's `task_id` back-references the delivering task. A directly
-  supplied object input simply omits `task_id`.
+- `inputs`: `{ <input_id>: { "task_id": <task_id>, ... } }` — the object
+  inputs. When a task carried an object into the procedure, that object is
+  modeled as an input **independent of the task**, and its input entry's
+  `task_id` back-references the delivering task. A directly supplied
+  object input simply omits `task_id`.
 
 So a SOW Item task carrying a nucleic-acid sample into Aliquot Creation
-yields `tasks: {<sow_id>: {}}`, `inputs: {<na_id>: {"task_id": <sow_id>}}`,
-`output_input: {<aliquot_id>: {<na_id>: {}}}`. A pool records every member
-library as its own `inputs` entry, so every input is captured.
+yields `inputs: {<na_id>: {"task_id": <sow_id>}}`,
+`output_input: {<aliquot_id>: {<na_id>: {}}}`, and a `fulfills` link from
+the prc to the SOW Item task. A pool records every member library as its
+own `inputs` entry, so every input is captured.
 
-These maps are the **canonical structured record** of a procedure's
+This `inputs` map is the **canonical structured record** of a procedure's
 inputs. The `lnk` records are **kept** for graph traversal (director
 ruling 2026-07-08): `procedure_input` (prc→input), `fulfills` (prc→task),
 `produced_by` (output→prc), and `task_input` (tsk→object) remain, exactly
 as the clarity procedure model carries both `output_input` and its links.
-The maps and links are complementary, not a source-of-truth duplication:
-the maps are execution-owned aggregate state, the links are the traversable
+The map and links are complementary, not a source-of-truth duplication:
+the map is execution-owned aggregate state, the links are the traversable
 graph edges. This is general to the JDTP procedure model; clarity
-procedures may adopt the `tasks`/`inputs` maps later, and their existing
+procedures may adopt the `inputs` map later, and their existing
 `output_input` stays valid meanwhile. The wire schema's procedure-data
-branch admits `tasks` and `inputs` as ID-keyed, snake_case-key maps
-(parallel to `output_input`), and the materializer hoists them onto the
-prc root.
+branch admits `inputs` as an ID-keyed, snake_case-key map (parallel to
+`output_input`), and the materializer hoists it onto the prc root.
 
 Instances stay in their own collections regardless of the type hierarchy:
 tasks are `tsk` records and procedures are `prc` records.
@@ -406,10 +405,10 @@ example. The per-carrier reconstruction is correct for the
 single-input/single-output pattern but not for batch/pool workflows
 (many carriers share one sample sheet) — deferred to **TASK-072** for a
 procedure-centric aggregation. TASK-072 also carries the ratified
-procedure input model (the `tasks` and `inputs` maps — see "Procedures And
-Tasks"): the aggregation unions all carriers of a sample sheet into one
-prc whose `tasks` holds every task input, `inputs` holds every non-task
-object input with a `task_id` back-reference, and `output_input` +
+procedure input model (the `inputs` map — see "Procedures And Tasks"; no
+separate `tasks` map): the aggregation unions all carriers of a sample
+sheet into one prc whose `inputs` holds every object input with a
+`task_id` back-reference to its delivering task, and `output_input` +
 `produced_by`/`procedure_input`/`fulfills` links stay as the traversable
 graph. Open for review: the lab-vs-administrative workflow
 classification, the output-window slack, and the logistics workflows.
