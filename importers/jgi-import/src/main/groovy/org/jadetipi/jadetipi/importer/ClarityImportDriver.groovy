@@ -65,17 +65,20 @@ class ClarityImportDriver {
     private final ClarityAliquotImportMapper mapper
     private final EspEntityImportMapper espMapper
     private final EspWorkflowConfigService workflowConfig
+    private final EspEnrichedEntityClient enrichedClient
 
     ClarityImportDriver(ImportQueueService queue,
                         CouchDbDocumentReader reader,
                         ClarityAliquotImportMapper mapper,
                         EspEntityImportMapper espMapper,
-                        EspWorkflowConfigService workflowConfig) {
+                        EspWorkflowConfigService workflowConfig,
+                        EspEnrichedEntityClient enrichedClient) {
         this.queue = queue
         this.reader = reader
         this.mapper = mapper
         this.espMapper = espMapper
         this.workflowConfig = workflowConfig
+        this.enrichedClient = enrichedClient
     }
 
     /**
@@ -139,33 +142,56 @@ class ClarityImportDriver {
             Transaction txn = Transaction.newInstance(org, grp, CLIENT, user)
             List<Message> messages = []
             List<ImportQueueItem> mappedItems = []
+            List<MappedImportMessage> mapped = []
+            // TASK-072: a workflow instance (procedure) is carried by many
+            // entities; accumulate its inputs/tasks/outputs across the batch's
+            // carriers, keyed by workflow_instance_uuid, then emit ONE prc each.
+            Map<String, Map<String, Object>> wiAccumulator = new LinkedHashMap<>()
 
             batch.each { ImportQueueItem item ->
                 try {
                     // Ids are recorded on their rows at mint time (in the
                     // resolver) and, for pre-seeded overlays, in
                     // applyClarityPrecedence — so no per-item record here.
-                    List<MappedImportMessage> mapped = mapItem(item, minted, idForSource)
-                    mapped.each { MappedImportMessage m ->
-                        Action action = 'update' == m.action ? Action.UPDATE : Action.CREATE
-                        // roots use the msg-UUID id form (the message uuid IS the
-                        // id's uuid segment); assignments and updates carry no new
-                        // root id, so their message uuid is minted fresh (TASK-068)
-                        String dataId = m.data.id as String
-                        boolean rootCreate = action == Action.CREATE && dataId != null &&
-                                'assignment' != m.data.kind
-                        String uuid = rootCreate
-                                ? dataId.split('~')[2]
-                                : UuidCreator.timeOrderedEpoch.toString()
-                        messages.add(new Message(txn, uuid,
-                                Collection.fromJson(m.collection), action, m.data))
-                    }
+                    mapped.addAll(mapItem(item, minted, idForSource, wiAccumulator))
                     mappedItems.add(item)
                 } catch (Exception ex) {
                     log.error('Import item failed, continuing: id={}, error={}', item.id, ex.message)
                     queue.markFailed(item.id, ex.message ?: ex.class.name).block(BLOCK_TIMEOUT)
                     itemsFailed++
                 }
+            }
+
+            // TASK-072: emit one prc per accumulated workflow instance, with the
+            // run's full input set (inputs map + output_input + links).
+            if (!wiAccumulator.isEmpty()) {
+                BiFunction<String, String, String> espIdFor = idForSource(EspEntityImportMapper.SOURCE)
+                wiAccumulator.values().each { Map<String, Object> wi ->
+                    mapped.addAll(espMapper.workflowInstanceProcedure(wi, espIdFor))
+                }
+            }
+
+            // Wrap mapped messages into transaction messages. A transaction must
+            // not carry two messages with the same id, so de-duplicate root
+            // creates by their message uuid (the id's uuid segment) — a defensive
+            // guard; TASK-072 aggregation already emits each prc once.
+            Set<String> seenRootUuids = new HashSet<>()
+            mapped.each { MappedImportMessage m ->
+                Action action = 'update' == m.action ? Action.UPDATE : Action.CREATE
+                // roots use the msg-UUID id form (the message uuid IS the id's
+                // uuid segment); assignments and updates carry no new root id, so
+                // their message uuid is minted fresh (TASK-068)
+                String dataId = m.data.id as String
+                boolean rootCreate = action == Action.CREATE && dataId != null &&
+                        'assignment' != m.data.kind
+                String uuid = rootCreate
+                        ? dataId.split('~')[2]
+                        : UuidCreator.timeOrderedEpoch.toString()
+                if (rootCreate && !seenRootUuids.add(uuid)) {
+                    return
+                }
+                messages.add(new Message(txn, uuid,
+                        Collection.fromJson(m.collection), action, m.data))
             }
 
             if (!messages.isEmpty()) {
@@ -209,7 +235,8 @@ class ClarityImportDriver {
 
     private List<MappedImportMessage> mapItem(ImportQueueItem item,
                                               Map<String, String> minted,
-                                              Closure<BiFunction<String, String, String>> idForSource) {
+                                              Closure<BiFunction<String, String, String>> idForSource,
+                                              Map<String, Map<String, Object>> wiAccumulator) {
         BiFunction<String, String, String> idFor = idForSource(item.source)
         switch (item.kind) {
             case ClarityAliquotImportPlanner.KIND_TYPE:
@@ -231,7 +258,7 @@ class ClarityImportDriver {
             case EspEntityImportPlanner.KIND_ENTITY:
                 Map<String, Object> doc = withImportWell(fetchEspDoc(item.key))
                 applyClarityPrecedence(doc, item, minted)
-                withWorkflowProcedures(doc)
+                accumulateWorkflowInstances(doc, wiAccumulator)
                 return espMapper.mapEntity(doc, idFor)
             default:
                 throw new IllegalStateException("Unknown queue kind: ${item.kind}")
@@ -303,23 +330,59 @@ class ClarityImportDriver {
     }
 
     /**
-     * Resolve each reconstructed workflow instance's input and
-     * window-filtered outputs (TASK-070) and inject them for the mapper.
-     * Input: a SOW Item task's first non-task/project (biological) begat
-     * parent, or the carrier itself for an entity-carried workflow. Outputs:
-     * the carrier's begat children (tasks/projects excluded) whose creation
-     * date falls within the instance window plus {@link #OUTPUT_SLACK}. The
-     * child creation dates live only on the child documents, so they are
-     * fetched here at drive time.
+     * Accumulate this esp entity's contribution to the workflow instances it
+     * participates in as an INPUT-side carrier (TASK-072), keyed by
+     * {@code workflow_instance_uuid} so the batch's carriers aggregate into one
+     * prc. The workflow-instance id is not in the bulk replica's sample sheets,
+     * so it is sourced from the enriched service ({@link EspEnrichedEntityClient},
+     * the V2 cache-first endpoint), falling back to none when the client is
+     * disabled or the entity is unknown.
+     *
+     * <p>Per lab workflow instance the entity owns (its {@code type_name} is one
+     * of the workflow's configured input types): the input is the SOW Item's
+     * first non-task/project (biological) begat parent for a task-carried
+     * workflow — recorded with {@code task_id} = the SOW Item — or the carrier
+     * itself otherwise; the outputs are the carrier's begat children
+     * (tasks/projects excluded) created within the instance window plus
+     * {@link #OUTPUT_SLACK}. Child creation dates live only on the child
+     * documents and are fetched once here.
      */
-    private void withWorkflowProcedures(Map<String, Object> doc) {
-        List<Map<String, Object>> instances =
-                EspEntityImportMapper.reconstructWorkflowInstances(doc, workflowConfig)
-        if (instances.isEmpty()) {
+    private void accumulateWorkflowInstances(Map<String, Object> doc,
+                                             Map<String, Map<String, Object>> wiAccumulator) {
+        String carrierType = doc.get('type_name') as String
+        String uuid = doc.get('uuid') as String ?: doc.get('_id') as String
+
+        // workflow-instance-bearing sheets: prefer the enriched service (carries
+        // workflow_instance_uuid), fall back to local sheets (which lack it).
+        List<Map<String, Object>> sheets = enrichedClient.enrichedSampleSheets(uuid)
+        if (sheets.isEmpty()) {
+            sheets = ClarityAliquotImportMapper.asImportList(doc.get('sample_sheets'))
+                    .findAll { it instanceof Map } as List<Map<String, Object>>
+        }
+        // this carrier's owned lab workflow instances: wiUuid -> {name, start, end}
+        Map<String, Map<String, Object>> owned = new LinkedHashMap<>()
+        sheets.each { Map sheet ->
+            String wfName = sheet.get('workflow_name') as String
+            String wiUuid = sheet.get('workflow_instance_uuid') as String
+            if (wfName == null || wiUuid == null || !workflowConfig.isLabProcedure(wfName)) {
+                return
+            }
+            if (!workflowConfig.inputTypes(wfName).contains(carrierType)) {
+                return   // not the input-side carrier for this workflow
+            }
+            Map<String, Object> w = owned.computeIfAbsent(wiUuid, {
+                [workflow_name: wfName, starts: [] as List, ends: [] as List] as Map<String, Object>
+            })
+            String s = (sheet.get('workflow_instance_start_time') ?: sheet.get('sample_sheet_start_time')) as String
+            String e = (sheet.get('workflow_instance_end_time') ?: sheet.get('sample_sheet_end_time')) as String
+            if (s) { ((List) w.get('starts')).add(s) }
+            if (e) { ((List) w.get('ends')).add(e) }
+        }
+        if (owned.isEmpty()) {
             return
         }
+
         boolean taskCarried = EspEntityImportMapper.CLASS_SOW_ITEM == doc.get('class_name')
-        String uuid = doc.get('uuid') as String ?: doc.get('_id') as String
         String inputUuid = taskCarried
                 ? ClarityAliquotImportMapper.asImportList(doc.get('parents')).findResult { Object edge ->
                     Map parent = edge instanceof Map ? (Map) edge : [:]
@@ -327,9 +390,11 @@ class ClarityImportDriver {
                             .contains(parent.get('type_name'))) ? parent.get('uuid') as String : null
                 }
                 : uuid
+        if (inputUuid == null) {
+            return
+        }
 
-        // candidate outputs: begat children (tasks/projects excluded), with
-        // their creation dates fetched once
+        // candidate outputs: begat children (tasks/projects excluded), created dates fetched once
         Map<String, String> childCreated = new LinkedHashMap<>()
         ClarityAliquotImportMapper.asImportList(doc.get('children')).each { Object edge ->
             Map child = edge instanceof Map ? (Map) edge : [:]
@@ -343,28 +408,34 @@ class ClarityImportDriver {
             }
         }
 
-        instances.each { Map<String, Object> inst ->
-            inst.put('task_carried', taskCarried)
-            inst.put('input_uuid', inputUuid)
-            Instant start = parseInstant(inst.get('start') as String)
-            Instant end = parseInstant(inst.get('end') as String)
-            List<String> outputs = []
+        owned.each { String wiUuid, Map<String, Object> w ->
+            Map<String, Object> acc = wiAccumulator.computeIfAbsent(wiUuid, {
+                [workflow_instance_uuid: wiUuid, workflow_name: w.get('workflow_name'),
+                 inputs: new LinkedHashMap<String, String>(), tasks: new LinkedHashSet<String>(),
+                 outputs: new LinkedHashSet<String>(), starts: new TreeSet<String>(),
+                 ends: new TreeSet<String>()] as Map<String, Object>
+            })
+            ((Map) acc.get('inputs')).put(inputUuid, taskCarried ? uuid : null)
+            if (taskCarried) { ((Set) acc.get('tasks')).add(uuid) }
+            ((Set) acc.get('starts')).addAll((List) w.get('starts'))
+            ((Set) acc.get('ends')).addAll((List) w.get('ends'))
+
+            List<String> starts = ((Set) acc.get('starts')) as List
+            List<String> ends = ((Set) acc.get('ends')) as List
+            acc.put('started', starts ? starts.first() : null)
+            acc.put('ended', ends ? ends.last() : null)
+            Instant start = starts ? parseInstant(starts.first()) : null
+            Instant end = ends ? parseInstant(ends.last()) : null
             if (start != null && end != null) {
                 Instant windowEnd = end.plus(OUTPUT_SLACK)
                 childCreated.each { String childUuid, String created ->
                     Instant c = parseInstant(created)
                     if (c != null && !c.isBefore(start) && !c.isAfter(windowEnd)) {
-                        outputs.add(childUuid)
+                        ((Set) acc.get('outputs')).add(childUuid)
                     }
                 }
-            } else if (!childCreated.isEmpty()) {
-                log.warn('esp workflow {} on {} has no sheet start/end window — its {} candidate ' +
-                        'output(s) cannot be attributed and are dropped',
-                        inst.get('workflow_name'), uuid, childCreated.size())
             }
-            inst.put('output_uuids', outputs)
         }
-        doc.put(EspEntityImportMapper.WORKFLOW_PROCEDURES, instances)
     }
 
     private static Instant parseInstant(String iso) {

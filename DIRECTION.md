@@ -401,16 +401,23 @@ parent as input; each lab workflow instance becomes a `prc` typed by
 workflow name, with begat children in the sheet window (+72h slack) as
 outputs and the §1.9 task/procedure links (task_input, fulfills,
 procedure_input, produced_by, output_input). Proven live on the worked
-example. The per-carrier reconstruction is correct for the
+example. The per-carrier reconstruction was correct for the
 single-input/single-output pattern but not for batch/pool workflows
-(many carriers share one sample sheet) — deferred to **TASK-072** for a
-procedure-centric aggregation. TASK-072 also carries the ratified
-procedure input model (the `inputs` map — see "Procedures And Tasks"; no
-separate `tasks` map): the aggregation unions all carriers of a sample
-sheet into one prc whose `inputs` holds every object input with a
-`task_id` back-reference to its delivering task, and `output_input` +
-`produced_by`/`procedure_input`/`fulfills` links stay as the traversable
-graph. Open for review: the lab-vs-administrative workflow
+(many carriers share one workflow run) — **resolved by TASK-072
+(implemented 2026-07-19): procedure-centric aggregation grouped by
+`workflow_instance_uuid`.** All carriers of one run aggregate into a
+single prc whose `inputs` map holds every object input with a `task_id`
+back-reference to its delivering task (the ratified model — see
+"Procedures And Tasks"; no separate `tasks` map), alongside
+`output_input` and the traversable `produced_by`/`procedure_input`/
+`fulfills` links. The workflow-instance id is not in the bulk replica's
+sample sheets (a point-in-time snapshot predating the field), so the
+importer sources it from the pps-esp-entity enriched service
+(`GET /api/v2/entities/{uuid}`, cache-first and self-backfilling) where a
+local sheet lacks it. Proven live on a real 17-library pool: the pooling
+run that produced the PRU carries all 17 libraries as inputs, each wired
+to its SOW Item. The batch-collision hard failure (N carriers emitting the
+same prc id) is gone. Open for review: the lab-vs-administrative workflow
 classification, the output-window slack, and the logistics workflows.
 **Migration paused 2026-07-08 (director ruling): do not run the ESP
 migration yet — data is to be added to the esp-entity source documents

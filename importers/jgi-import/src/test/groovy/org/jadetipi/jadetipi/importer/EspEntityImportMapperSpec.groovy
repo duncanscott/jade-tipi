@@ -222,16 +222,12 @@ class EspEntityImportMapperSpec extends Specification {
         EspEntityImportMapper.reconstructWorkflowInstances(pm, config).isEmpty()
     }
 
-    def 'a SOW Item maps to a tsk with task_input, and an injected procedure emits prc + links (TASK-070)'() {
-        given: 'a SOW Item with a Nucleic Acid parent (input), a Sequencing Project parent (not an input), and a driver-injected Aliquot Creation procedure'
+    def 'a SOW Item maps to a tsk with task_input to its biological parent, and emits no procedure (TASK-072)'() {
+        given: 'a SOW Item with a Nucleic Acid parent (input) and a Sequencing Project parent (not an input)'
         Map<String, Object> sow = [
-                uuid       : 'sow-1', class_name: 'SOW Item', type_name: 'SOW Item',
-                parents    : [[uuid: 'na-1', type_name: 'Nucleic Acid'],
-                              [uuid: 'sp-1', type_name: 'Sequencing Project']],
-                (EspEntityImportMapper.WORKFLOW_PROCEDURES): [[
-                        workflow_name: 'Aliquot Creation', procedure_key: 'ss-ac',
-                        input_uuid   : 'na-1', output_uuids: ['aq-1'], task_carried: Boolean.TRUE,
-                        start        : '2026-06-15T19:30:00Z', end: '2026-06-17T15:45:00Z']]
+                uuid   : 'sow-1', class_name: 'SOW Item', type_name: 'SOW Item',
+                parents: [[uuid: 'na-1', type_name: 'Nucleic Acid'],
+                          [uuid: 'sp-1', type_name: 'Sequencing Project']]
         ] as Map<String, Object>
 
         when:
@@ -247,16 +243,42 @@ class EspEntityImportMapperSpec extends Specification {
         }
         taskInputs*.data.right == [minted['na-1']]
 
-        and: 'the procedure is a prc typed by the workflow, with output_input {aliquot: {na}}'
+        and: 'procedures are NOT emitted per entity — the driver aggregates them by workflow instance (TASK-072)'
+        messages.every { it.collection != 'prc' }
+    }
+
+    def 'workflowInstanceProcedure aggregates a run into one prc with an inputs map and links (TASK-072)'() {
+        given: 'an accumulated workflow instance with two task-carried inputs and one output'
+        Map<String, Object> wi = [
+                workflow_instance_uuid: 'wi-ac', workflow_name: 'Aliquot Creation',
+                started               : '2026-06-15T19:30:00Z', ended: '2026-06-17T15:45:00Z',
+                inputs                : ['na-1': 'sow-1', 'na-2': 'sow-2'],
+                tasks                 : ['sow-1', 'sow-2'] as LinkedHashSet,
+                outputs               : ['aq-1'] as LinkedHashSet
+        ] as Map<String, Object>
+
+        when:
+        List<MappedImportMessage> messages = mapper.workflowInstanceProcedure(wi, idFor)
+
+        then: 'one prc typed by the workflow, tagged with the workflow-instance id'
         MappedImportMessage prc = messages.find { it.collection == 'prc' }
         prc.data.type_id == minted[EspEntityImportMapper.procedureTypeKey('Aliquot Creation')]
-        (prc.data.output_input as Map)[minted['aq-1']] == [(minted['na-1']): [:]]
         (prc.data.properties as Map).esp_workflow == 'Aliquot Creation'
+        (prc.data.properties as Map).esp_workflow_instance == 'wi-ac'
 
-        and: 'fulfills → the SOW Item task, procedure_input → the NA, produced_by ← the Aliquot'
-        messages.find { it.data.type_id == minted[EspEntityImportMapper.KEY_TYPE_LINK_FULFILLS] }.data.right == root.data.id
-        messages.find { it.data.type_id == minted[EspEntityImportMapper.KEY_TYPE_LINK_PROCEDURE_INPUT] }.data.right == minted['na-1']
-        messages.find { it.data.type_id == minted[EspEntityImportMapper.KEY_TYPE_LINK_PRODUCED_BY] }.data.left == minted['aq-1']
+        and: 'the inputs map carries every input, each back-referencing its delivering task'
+        Map inputs = prc.data.inputs as Map
+        inputs.keySet() == [minted['na-1'], minted['na-2']] as Set
+        inputs[minted['na-1']] == [task_id: minted['sow-1']]
+        inputs[minted['na-2']] == [task_id: minted['sow-2']]
+
+        and: 'output_input maps the output to all of the run inputs'
+        (prc.data.output_input as Map)[minted['aq-1']].keySet() == [minted['na-1'], minted['na-2']] as Set
+
+        and: 'one fulfills per task, one procedure_input per input, one produced_by per output'
+        messages.findAll { it.data.type_id == minted[EspEntityImportMapper.KEY_TYPE_LINK_FULFILLS] }.size() == 2
+        messages.findAll { it.data.type_id == minted[EspEntityImportMapper.KEY_TYPE_LINK_PROCEDURE_INPUT] }.size() == 2
+        messages.findAll { it.data.type_id == minted[EspEntityImportMapper.KEY_TYPE_LINK_PRODUCED_BY] }.size() == 1
     }
 
     def 'esp type keys declare dynamic typ roots and the esp link types'() {

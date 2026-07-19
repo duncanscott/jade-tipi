@@ -32,7 +32,7 @@
     },
     "data": {
       "type": "object",
-      "description": "Message-specific payload data. Property names must be snake_case for every collection except the grp permissions map (keyed by world-unique grp IDs) and the prc output_input map (keyed by object IDs)."
+      "description": "Message-specific payload data. Property names must be snake_case for every collection except the grp permissions map (keyed by world-unique grp IDs) and the prc output_input and inputs maps (keyed by object IDs)."
     }
   },
   "allOf": [
@@ -97,7 +97,7 @@
       }
     },
     {
-      "description": "Pick the data payload schema by collection. grp uses GroupData (permits world-unique grp IDs as permissions map keys); prc uses ProcedureData (permits object IDs as output_input map keys); every other collection uses SnakeCaseObject. In every branch a top-level data.id, when present, must follow the ObjectId convention.",
+      "description": "Pick the data payload schema by collection. grp uses GroupData (permits world-unique grp IDs as permissions map keys); prc uses ProcedureData (permits object IDs as output_input and inputs map keys); every other collection uses SnakeCaseObject. In every branch a top-level data.id, when present, must follow the ObjectId convention.",
       "if": {
         "properties": {
           "collection": {
@@ -310,7 +310,7 @@
     },
     "ProcedureData": {
       "title": "ProcedureData",
-      "description": "prc payload. Outer property names are snake_case; the optional output_input property is the execution-provenance map keyed by output object IDs.",
+      "description": "prc payload. Outer property names are snake_case; the optional output_input property is the execution-provenance map keyed by output object IDs, and the optional inputs property is the procedure-input map keyed by input object IDs.",
       "type": "object",
       "propertyNames": {
         "pattern": "^[a-z][a-z0-9_]*$"
@@ -318,10 +318,32 @@
       "properties": {
         "output_input": {
           "$ref": "#/$defs/OutputInput"
+        },
+        "inputs": {
+          "$ref": "#/$defs/ProcedureInputs"
         }
       },
       "additionalProperties": {
         "$ref": "#/$defs/SnakeCaseValue"
+      }
+    },
+    "ProcedureInputs": {
+      "title": "ProcedureInputs",
+      "description": "Procedure input map: keys are the object IDs of the procedure's inputs (either tasks or other objects may be inputs; a task's carried object is modeled as an input independent of the task). Each value is an open object whose optional task_id references the task that delivered the input; a directly supplied input omits task_id. There is no separate tasks map — task relationships ride the fulfills links and these task_id back-references.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "propertyNames": {
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "properties": {
+          "task_id": {
+            "$ref": "#/$defs/ObjectId"
+          }
+        },
+        "additionalProperties": {
+          "$ref": "#/$defs/SnakeCaseValue"
+        }
       }
     },
     "OutputInput": {

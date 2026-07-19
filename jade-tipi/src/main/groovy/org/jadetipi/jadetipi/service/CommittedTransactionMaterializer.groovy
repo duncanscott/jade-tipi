@@ -188,6 +188,7 @@ class CommittedTransactionMaterializer {
     static final String FIELD_PROPERTY_VALUES = 'property_values'
     static final String FIELD_PARENT_TYPE_ID = 'parent_type_id'
     static final String FIELD_OUTPUT_INPUT = 'output_input'
+    static final String FIELD_INPUTS = 'inputs'
     static final String ENTRY_APPLIED_AT = 'applied_at'
 
     static final String FIELD_APPLY_STATE = 'apply_state'
@@ -1089,6 +1090,12 @@ class CommittedTransactionMaterializer {
             // to lnk's left/right (DIRECTION.md, Procedures And Tasks).
             doc.put(FIELD_OUTPUT_INPUT, copyProperties(data.get(FIELD_OUTPUT_INPUT)))
         }
+        if (COLLECTION_PRC == message.collection
+                && data.get(FIELD_INPUTS) instanceof Map) {
+            // The procedure-input map (TASK-072): input object IDs, each with
+            // an optional task_id back-reference to the delivering task.
+            doc.put(FIELD_INPUTS, copyProperties(data.get(FIELD_INPUTS)))
+        }
 
         if (COLLECTION_LNK == message.collection) {
             doc.put(FIELD_LEFT, data.get(FIELD_LEFT))
@@ -1111,7 +1118,7 @@ class CommittedTransactionMaterializer {
         Map<String, Object> properties = new LinkedHashMap<>()
         data.each { String key, Object value ->
             if (key != FIELD_DATA_ID && key != FIELD_TYPE_ID && key != FIELD_LINKS
-                    && key != FIELD_OUTPUT_INPUT) {
+                    && key != FIELD_OUTPUT_INPUT && key != FIELD_INPUTS) {
                 properties.put(key, value)
             }
         }

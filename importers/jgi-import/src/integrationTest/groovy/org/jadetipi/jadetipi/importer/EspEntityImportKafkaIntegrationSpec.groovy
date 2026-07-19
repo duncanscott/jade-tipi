@@ -26,6 +26,7 @@ import org.springframework.data.mongodb.core.query.Query
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
+import org.spockframework.spring.SpringBean
 import reactor.core.publisher.Mono
 import spock.lang.IgnoreIf
 import spock.lang.Specification
@@ -147,6 +148,14 @@ class EspEntityImportKafkaIntegrationSpec extends Specification {
     ImportMessagePublisher publisher
     @Autowired
     CouchDbDocumentReader reader
+
+    // TASK-072: the bulk replica's sheets predate workflow_instance_uuid, so the
+    // importer sources it from the enriched service. Stub it here (rather than
+    // depend on a live service/network) to drive the workflow-instance
+    // aggregation hermetically. Unstubbed uuids return [] → the driver falls
+    // back to local sheets (which lack the id) → no procedure, as intended.
+    @SpringBean
+    EspEnrichedEntityClient enrichedClient = Stub()
 
     List<String> driveTxnIds = []
 
@@ -285,14 +294,21 @@ class EspEntityImportKafkaIntegrationSpec extends Specification {
         mongoTemplate.findById(clarityRootId, Map, 'loc').block(MONGO_BLOCK_TIMEOUT) != null
     }
 
-    def 'a SOW Item reconstructs its Aliquot Creation procedure from sample sheets (TASK-070)'() {
-        given: 'the worked example: plan the Aliquot (its ancestry pulls in the SOW Item task and NA input)'
-        // surveyed live: SOW05715930 (SOW Item) carries SOW QC + Aliquot Creation sheets;
-        // begat NA00462849 -> SOW05715930 -> AQ00425694 (created inside the Aliquot Creation window)
+    def 'a workflow instance reconstructs as one aggregated prc with an inputs map (TASK-072)'() {
+        given: 'the worked example — the enriched service returns the Aliquot Creation run for the SOW Item'
+        // surveyed live: SOW05715930 (SOW Item) begat NA00462849 -> SOW05715930 -> AQ00425694.
+        // The bulk replica's sheets lack workflow_instance_uuid, so the enriched
+        // client supplies it; a wide window keeps the Aliquot output in range.
         String aliquotUuid = '019eccd0-ce7c-7eec-ba71-b5e403b6c25e'
         String sowUuid = '019dfbd5-3a63-7d0d-a460-15850f00cc4b'
         String naUuid = '019dfbd6-9114-7a77-89ab-7f77e672fbf5'
-        String aliquotCreationSheet = '019eccc3-fb0b-7a6a-bc6f-1535cb13a3ba'
+        String workflowInstance = 'wi-itest-aliquot-creation'
+        enrichedClient.enrichedSampleSheets(sowUuid) >> [[
+                workflow_name               : 'Aliquot Creation',
+                workflow_instance_uuid      : workflowInstance,
+                workflow_instance_start_time: '2020-01-01T00:00:00Z',
+                workflow_instance_end_time  : '2030-01-01T00:00:00Z'
+        ] as Map<String, Object>]
 
         when: 'the plan is driven through the production path'
         Long inserted = espPlanner.planEspEntity(aliquotUuid).block(Duration.ofSeconds(120))
@@ -309,26 +325,30 @@ class EspEntityImportKafkaIntegrationSpec extends Specification {
         awaitMongo({ mongoTemplate.findById(sowId, Map, 'tsk') }, { Map d -> d != null }, 'SOW Item tsk root')
         mongoTemplate.findById(sowId, Map, 'ent').block(MONGO_BLOCK_TIMEOUT) == null
 
-        and: 'the Aliquot Creation procedure materialized as a prc from the sample sheet'
+        and: 'the Aliquot Creation run materialized as one prc keyed by its workflow instance'
         Map prc = awaitMongo(
                 { mongoTemplate.find(Query.query(
-                        Criteria.where('properties.esp_sample_sheet').is(aliquotCreationSheet)),
+                        Criteria.where('properties.esp_workflow_instance').is(workflowInstance)),
                         Map, 'prc').next() },
                 { Map d -> d != null }, 'Aliquot Creation prc')
         (prc.properties as Map).esp_workflow == 'Aliquot Creation'
         String prcId = prc._id
-
-        and: 'the prc fulfills the SOW Item task, consumes the NA input, and produced the Aliquot'
         String naId = jdtpId(naUuid)
         String aliquotId = jdtpId(aliquotUuid)
-        awaitMongo({ findLink(prcId, sowId) }, { Map d -> d != null }, 'fulfills prc -> SOW Item tsk')
-        awaitMongo({ findLink(prcId, naId) }, { Map d -> d != null }, 'procedure_input prc -> NA')
-        awaitMongo({ findLink(aliquotId, prcId) }, { Map d -> d != null }, 'produced_by Aliquot -> prc')
+
+        and: 'the inputs map carries the NA input, back-referencing the SOW Item task that delivered it'
+        Map inputs = prc.inputs as Map
+        inputs.containsKey(naId)
+        (inputs.get(naId) as Map).task_id == sowId
 
         and: 'output_input maps the Aliquot output to the NA input'
         Map outputInput = prc.output_input as Map
-        outputInput.containsKey(aliquotId)
         (outputInput.get(aliquotId) as Map).containsKey(naId)
+
+        and: 'the prc fulfills the SOW Item task, consumes the NA input, and produced the Aliquot'
+        awaitMongo({ findLink(prcId, sowId) }, { Map d -> d != null }, 'fulfills prc -> SOW Item tsk')
+        awaitMongo({ findLink(prcId, naId) }, { Map d -> d != null }, 'procedure_input prc -> NA')
+        awaitMongo({ findLink(aliquotId, prcId) }, { Map d -> d != null }, 'produced_by Aliquot -> prc')
 
         and: 'the SOW Item task carries the NA as a task_input'
         awaitMongo({ findLink(sowId, naId) }, { Map d -> d != null }, 'task_input SOW Item -> NA')

@@ -1,7 +1,16 @@
 # JDTP Specification
 
-**Version:** 0.7.2-draft · **Date:** 2026-07-07 · **Status:** Draft for
+**Version:** 0.8.0-draft · **Date:** 2026-07-19 · **Status:** Draft for
 director review
+
+*Changes in 0.8.0: the procedure root gains the top-level `inputs` map
+(director-ratified 2026-07-08; TASK-072) — the canonical structured
+record of a procedure's inputs, keyed by input object IDs, each value an
+open object whose optional `task_id` back-references the delivering
+task. Either tasks or other objects may be procedure inputs; a task's
+carried object is an input independent of the task; there is no separate
+`tasks` map. Like `output_input`, the map is hoisted onto the `prc` root
+and schema-admitted only on `prc` payloads (§1.9).*
 
 *Changes in 0.7.2: the object assignment history (TASK-061's `hst`
 collection) becomes readable (TASK-065) — a resource read beside the
@@ -424,6 +433,22 @@ Two further collections realize the manifesto's process-tracing extension
   Because its keys are object IDs, the wire schema admits `output_input`
   only on `prc` payloads (each contribution MUST be an object), mirroring
   the `grp` permissions escape from the snake_case rule.
+- The procedure root also carries a top-level `inputs` map — the
+  canonical structured record of the procedure's inputs (director-ratified
+  2026-07-08; implemented in TASK-072): keys are input object IDs; each
+  value is an open object whose optional `task_id` references the task
+  that delivered that input to the procedure. **Either tasks or other
+  objects may be inputs to a procedure.** When a task carried an object
+  into the procedure, the object is modeled as an input *independent of
+  the task*, back-referencing it via `task_id`; a directly supplied input
+  omits `task_id`. There is no separate `tasks` map — task relationships
+  ride the `fulfills` links and these `task_id` back-references. Like
+  `output_input`, the map is hoisted onto the `prc` root top level,
+  excluded from the inline `properties` bag, and admitted by the wire
+  schema only on `prc` payloads. The maps and the `lnk` records are
+  complementary, not a source-of-truth duplication: the maps are
+  execution-owned aggregate state; the links are the traversable graph
+  edges.
 - **[Planned]** The schema for contribution objects will be supplied by a
   `vdn` record associated with the procedure type once `vdn` materializes
   (UT-4).
@@ -512,7 +537,7 @@ record but skipped as unsupported at materialization, without error):
 | `txn + commit` | Commits: the backend mints a **UUIDv7** `commit_id` — orderable, and comparable with transaction UUIDs as points on one timeline — and marks the header for materialization. |
 | `txn + rollback` | Durably marks the header `rolled_back` (terminal), keeping the message's `data` as `rollback_data` — the audit fact. Re-delivery is idempotent; rollback-after-commit is refused; rollback before open is an error. |
 | `loc/ent/grp/tsk/fil + create` | Root document per §1.3; `data.type_id` surfaces as the root `type_id` (unresolved references are not checked). |
-| `prc + create` | Root document per §1.3 whose optional top-level `output_input` map is hoisted onto the root (§1.9), parallel to `lnk` endpoints. |
+| `prc + create` | Root document per §1.3 whose optional top-level `output_input` and `inputs` maps are hoisted onto the root (§1.9), parallel to `lnk` endpoints. |
 | `typ + create` | Entity type (optionally with `parent_type_id`), or a declaration with a `kind` discriminator: `link_type`, `task_type` (carrying `procedure_type_id`), `procedure_type`. |
 | `typ + update`, `operation: "add_property"` | Registers `data.property_id` under the target type's `properties.property_refs` (verbatim metadata; no `ppy` resolution). |
 | `ppy + create`, `kind: "definition"` | Property definition root. |
@@ -764,6 +789,7 @@ Contracts of note:
 | Envelope shape, UUIDv7s, action/collection matrix, snake_case payloads | wire schema | Normative |
 | Object identifier convention on `data.id` | wire schema (+ materializer warning) | Normative |
 | `prc` `output_input` shape (ID-keyed map; object contributions; `prc`-only) | wire schema | Normative |
+| `prc` `inputs` shape (ID-keyed map; optional `task_id` back-reference; `prc`-only) | wire schema | Normative |
 | Type-registration gate for property values (inheritance-aware) | materializer | Normative |
 | Duplicate/conflict semantics (§2.5) | store + materializer | Normative |
 | `value_schema` validation of submitted values | — | Deferred by director ruling (2026-07-05): schemas follow real data; not required before bulk import |

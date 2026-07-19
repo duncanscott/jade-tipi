@@ -3,7 +3,7 @@
 ID: TASK-072
 TYPE: implementation
 ARTIFACT_INTENT: production-change
-STATUS: READY_FOR_IMPLEMENTATION
+STATUS: READY_FOR_REVIEW
 OWNER: unassigned
 SOURCE_TASK:
   - TASK-070
@@ -110,3 +110,68 @@ VERIFICATION:
 - `./gradlew :importers:jgi-import:test`
 - `JADETIPI_IT_KAFKA=1 ./gradlew integrationTest` (both modules)
 - `git diff --check`
+
+IMPLEMENTATION_REPORT:
+
+SUMMARY:
+Implemented and proven live on a real 17-library pool (PRU40280). Procedures
+are reconstructed **procedure-centrically**, grouped by the
+`workflow_instance_uuid` (sourced from the enriched service where the bulk
+replica lacks it), so all carriers of one run aggregate into a single `prc`
+carrying the full `inputs` map. The pooling run that produced the PRU now
+carries all 17 libraries as inputs — each back-referencing its delivering
+SOW Item via `task_id` — where the per-carrier TASK-070 build recorded one.
+All unit suites green (dto, materializer, importer); the esp itest's TASK-072
+feature passes end to end (drive → Kafka → materialize).
+
+CHANGES (app-side — the ratified `inputs` map, prerequisite):
+- Wire schema `message.schema.json`: `ProcedureData` admits an `inputs` map
+  (new `ProcedureInputs` def) — object-ID keys → `{ task_id?, … }` — legal
+  only on `prc`, mirroring the `output_input` / `grp`-permissions escape.
+- `CommittedTransactionMaterializer`: hoists `inputs` onto the `prc` root,
+  parallel to `output_input`, excluded from the inline properties bag.
+- Spec `jdtp-specification.md` → 0.8.0-draft, §1.9 Normative: either tasks
+  or objects may be inputs; no separate `tasks` map; the task relationship
+  rides the `fulfills` link and the `task_id` back-reference.
+- `MessageSpec` schema tests (accept the map with `task_id`; reject a
+  non-object value).
+
+CHANGES (importer-side — the aggregation):
+- `EspEnrichedEntityClient` (new): fetches `workflow_instance_uuid`-bearing
+  sample sheets from `GET /api/v2/entities/{uuid}` (the V2 cache-first,
+  self-backfilling route). Config `jadetipi.import.esp-api.base-url` /
+  `auth-header` / `max-in-memory-mb`; disabled → falls back to local sheets.
+- `EspEntityImportMapper`: `mapEntity` no longer emits per-carrier
+  procedures; new `workflowInstanceProcedure(accumulator, idFor)` emits one
+  `prc` per run — `inputs` map, `output_input`, and `procedure_input`
+  (link id now includes the input uuid, fixing the collision) / `fulfills`
+  (per task) / `produced_by` (per output) links.
+- `ClarityImportDriver`: `accumulateWorkflowInstances` (replaces
+  `withWorkflowProcedures`) sources enriched sheets and accumulates each
+  carrier's inputs/tasks/outputs by `workflow_instance_uuid` across the
+  batch; the batch loop emits aggregated procedures after the items.
+- `CouchDbDocumentReader`: raised the WebClient in-memory codec limit
+  (`jadetipi.import.couchdb.max-in-memory-mb:64`) — real pool/plate docs
+  exceed WebFlux's 256 KB default and blew up the reader.
+
+TESTS:
+- `EspEntityImportMapperSpec`: SOW Item → tsk emits no per-entity procedure;
+  `workflowInstanceProcedure` builds the `inputs` map with `task_id`
+  back-references, `output_input`, and the three link kinds.
+- `ClarityImportDriverSpec`: constructor takes the enriched client
+  (disabled stub).
+- Esp itest: the worked example drives to one aggregated `prc` keyed by
+  workflow instance, asserting the `inputs` map (`{NA: {task_id: SOW}}`),
+  `output_input`, and the fulfills/procedure_input/produced_by/task_input
+  links — with the enriched client stubbed (`@SpringBean`) so it stays
+  hermetic.
+
+KNOWN / NOTES:
+- The bulk replica predates `workflow_instance_uuid`; until the pps-esp-entity
+  backfill completes, the importer sources it per entity from the V2 endpoint
+  (~one call per entity during drive, which also backfills prod CouchDB).
+- Rebuild the backend after the schema change — an old backend rejects the
+  `inputs` map and leaves the prc-referencing links dangling.
+- `output_input` records each output against ALL of the run's inputs (the
+  replica gives no finer per-output attribution); `reconstructWorkflowInstances`
+  now serves only the planner's procedure-type enqueue.

@@ -376,65 +376,106 @@ class EspEntityImportMapper {
             }
         }
 
-        // reconstructed workflow procedures (TASK-070): each instance was
-        // enriched by the driver with its resolved input and window-filtered
-        // outputs; emit the prc plus its fulfills/procedure_input/produced_by
-        // links and the output_input map.
-        ClarityAliquotImportMapper.asImportList(doc.get(WORKFLOW_PROCEDURES)).each { Object p ->
-            Map inst = p instanceof Map ? (Map) p : [:]
-            String workflowName = inst.get('workflow_name') as String
-            if (workflowName == null) {
-                return
-            }
-            String procInstKey = inst.get('procedure_key') as String
-            String procId = idFor.apply(procedureKey(procInstKey), 'prc')
-            String inputUuid = inst.get('input_uuid') as String
-            String inputId = inputUuid ? idFor.apply(inputUuid, 'ent') : null
-            List<String> outputUuids = (inst.get('output_uuids') ?: []) as List<String>
+        // Procedures are NOT emitted per entity (TASK-072): a workflow
+        // instance is carried by many entities (a pool of N libraries, a plate
+        // of N samples), so its prc is aggregated across all of them by the
+        // driver and emitted once via workflowInstanceProcedure(). Per-entity
+        // emission produced one duplicate prc per carrier — the batch collision.
+        return messages
+    }
 
-            Map<String, Object> outputInput = new LinkedHashMap<>()
-            outputUuids.each { String outUuid ->
-                outputInput.put(idFor.apply(outUuid, 'ent'),
-                        inputId ? [(inputId): [:] as Map<String, Object>] : [:] as Map<String, Object>)
+    /**
+     * Emit the messages for ONE workflow instance aggregated across all of its
+     * carriers (TASK-072). The driver accumulates, per {@code workflow_instance_uuid},
+     * the union of the run's inputs (each with the {@code task_id} of the SOW
+     * Item that delivered it, if any), tasks, and outputs; this turns that
+     * accumulator into a single {@code prc}:
+     * <ul>
+     *   <li>the {@code inputs} map — {@code {input_id: {task_id: <task>}}} — the
+     *       canonical structured record of the procedure's inputs;</li>
+     *   <li>the {@code output_input} map — each output to the run's contributing
+     *       inputs (the replica gives no finer per-output attribution, so all
+     *       inputs are recorded against each output);</li>
+     *   <li>{@code procedure_input} (one per distinct input, link id includes the
+     *       input uuid so it never collides), {@code fulfills} (one per task),
+     *       and {@code produced_by} (one per output) links.</li>
+     * </ul>
+     *
+     * @param wi accumulator: {@code workflow_instance_uuid}, {@code workflow_name},
+     *        {@code started}/{@code ended}, {@code inputs} ({@code Map<inputUuid, taskUuid|null>}),
+     *        {@code tasks} ({@code Set<taskUuid>}), {@code outputs} ({@code Set<outputUuid>}).
+     */
+    List<MappedImportMessage> workflowInstanceProcedure(Map<String, Object> wi,
+                                                        BiFunction<String, String, String> idFor) {
+        String workflowName = wi.get('workflow_name') as String
+        String wiUuid = wi.get('workflow_instance_uuid') as String
+        if (workflowName == null || wiUuid == null) {
+            return []
+        }
+        String procId = idFor.apply(procedureKey(wiUuid), 'prc')
+        Map<String, String> inputs = (wi.get('inputs') ?: [:]) as Map<String, String>
+        Collection<String> tasks = (wi.get('tasks') ?: []) as Collection<String>
+        Collection<String> outputs = (wi.get('outputs') ?: []) as Collection<String>
+
+        // inputs map: input id -> { task_id: <delivering task> } (task_id omitted
+        // for a directly supplied input)
+        Map<String, Object> inputsMap = new LinkedHashMap<>()
+        inputs.each { String inputUuid, String taskUuid ->
+            String inputId = idFor.apply(inputUuid, 'ent')
+            Map<String, Object> entry = new LinkedHashMap<>()
+            if (taskUuid) {
+                entry.put('task_id', idFor.apply(taskUuid, 'tsk'))
             }
-            Map<String, Object> prcProps = [
-                    source_kind : 'esp_workflow',
-                    esp_workflow: workflowName
-            ] as Map<String, Object>
-            putIfPresent(prcProps, 'started', inst.get('start'))
-            putIfPresent(prcProps, 'ended', inst.get('end'))
-            putIfPresent(prcProps, 'esp_sample_sheet', procInstKey)
-            messages.add(message('prc', [
-                    id          : procId,
-                    type_id     : idFor.apply(procedureTypeKey(workflowName), 'typ'),
-                    properties  : prcProps,
-                    links       : [:],
-                    output_input: outputInput
+            inputsMap.put(inputId, entry)
+        }
+        // output_input: each output <- all of the run's inputs (aggregate)
+        Map<String, Object> outputInput = new LinkedHashMap<>()
+        Map<String, Object> inputContribs = new LinkedHashMap<>()
+        inputsMap.keySet().each { String inputId -> inputContribs.put(inputId, [:] as Map<String, Object>) }
+        outputs.each { String outUuid ->
+            outputInput.put(idFor.apply(outUuid, 'ent'), new LinkedHashMap<>(inputContribs))
+        }
+
+        Map<String, Object> prcProps = [
+                source_kind          : 'esp_workflow',
+                esp_workflow         : workflowName,
+                esp_workflow_instance: wiUuid
+        ] as Map<String, Object>
+        putIfPresent(prcProps, 'started', wi.get('started'))
+        putIfPresent(prcProps, 'ended', wi.get('ended'))
+
+        List<MappedImportMessage> messages = []
+        messages.add(message('prc', [
+                id          : procId,
+                type_id     : idFor.apply(procedureTypeKey(workflowName), 'typ'),
+                properties  : prcProps,
+                links       : [:],
+                inputs      : inputsMap,
+                output_input: outputInput
+        ]))
+        tasks.each { String taskUuid ->
+            messages.add(message('lnk', [
+                    id     : idFor.apply('link:esp:fulfills:' + wiUuid + ':' + taskUuid, 'lnk'),
+                    type_id: idFor.apply(KEY_TYPE_LINK_FULFILLS, 'typ'),
+                    left   : procId,
+                    right  : idFor.apply(taskUuid, 'tsk')
             ]))
-            if (inst.get('task_carried') == Boolean.TRUE) {
-                messages.add(message('lnk', [
-                        id     : idFor.apply('link:esp:fulfills:' + procInstKey + ':' + uuid, 'lnk'),
-                        type_id: idFor.apply(KEY_TYPE_LINK_FULFILLS, 'typ'),
-                        left   : procId,
-                        right  : entityId
-                ]))
-            }
-            if (inputId) {
-                messages.add(message('lnk', [
-                        id     : idFor.apply('link:esp:procedure_input:' + procInstKey, 'lnk'),
-                        type_id: idFor.apply(KEY_TYPE_LINK_PROCEDURE_INPUT, 'typ'),
-                        left   : procId,
-                        right  : inputId
-                ]))
-            }
-            outputUuids.each { String outUuid ->
-                messages.add(message('lnk', [
-                        id     : idFor.apply('link:esp:produced_by:' + procInstKey + ':' + outUuid, 'lnk'),
-                        type_id: idFor.apply(KEY_TYPE_LINK_PRODUCED_BY, 'typ'),
-                        left   : idFor.apply(outUuid, 'ent'),
-                        right  : procId
-                ]))
-            }
+        }
+        inputs.keySet().each { String inputUuid ->
+            messages.add(message('lnk', [
+                    id     : idFor.apply('link:esp:procedure_input:' + wiUuid + ':' + inputUuid, 'lnk'),
+                    type_id: idFor.apply(KEY_TYPE_LINK_PROCEDURE_INPUT, 'typ'),
+                    left   : procId,
+                    right  : idFor.apply(inputUuid, 'ent')
+            ]))
+        }
+        outputs.each { String outUuid ->
+            messages.add(message('lnk', [
+                    id     : idFor.apply('link:esp:produced_by:' + wiUuid + ':' + outUuid, 'lnk'),
+                    type_id: idFor.apply(KEY_TYPE_LINK_PRODUCED_BY, 'typ'),
+                    left   : idFor.apply(outUuid, 'ent'),
+                    right  : procId
+            ]))
         }
         return messages
     }

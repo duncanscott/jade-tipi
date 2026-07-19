@@ -4,6 +4,10 @@ Director-ratified 2026-07-05. This document records the design for bulk
 import of the JGI Clarity and ESP LIMS CouchDB replicas into Jade-Tipi,
 grounded in a live survey of both databases.
 
+> **Running an import?** See the operational
+> [ESP-entity import runbook](esp-import-runbook.md) — the exact commands,
+> config, and gotchas for plan → drive → materialize.
+
 ## Sources
 
 Two CouchDB databases with structurally different data — **two importers

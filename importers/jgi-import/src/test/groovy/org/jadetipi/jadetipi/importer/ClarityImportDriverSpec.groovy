@@ -48,7 +48,9 @@ class ClarityImportDriverSpec extends Specification {
         mapper = Mock(ClarityAliquotImportMapper)
         espMapper = Mock(EspEntityImportMapper)
         publisher = Mock(ImportMessagePublisher)
-        driver = new ClarityImportDriver(queue, reader, mapper, espMapper, new EspWorkflowConfigService())
+        driver = new ClarityImportDriver(queue, reader, mapper, espMapper, new EspWorkflowConfigService(),
+                new EspEnrichedEntityClient(
+                        org.springframework.web.reactive.function.client.WebClient.builder(), '', '', 64))
         published = []
         publisher.publish(_ as Message, _ as String) >> { Message m, String key ->
             published.add(m)

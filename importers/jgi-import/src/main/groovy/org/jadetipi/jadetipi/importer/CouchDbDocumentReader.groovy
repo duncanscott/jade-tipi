@@ -45,9 +45,14 @@ class CouchDbDocumentReader {
     CouchDbDocumentReader(WebClient.Builder webClientBuilder,
                           @Value('${jadetipi.import.couchdb.url:http://localhost:5984}') String url,
                           @Value('${jadetipi.import.couchdb.username:admin}') String username,
-                          @Value('${jadetipi.import.couchdb.password:admin}') String password) {
+                          @Value('${jadetipi.import.couchdb.password:admin}') String password,
+                          @Value('${jadetipi.import.couchdb.max-in-memory-mb:64}') int maxInMemoryMb) {
         this.webClient = webClientBuilder
                 .baseUrl(url)
+                // Real esp documents (pools with dozens of children, plates with
+                // 96/384 wells, view pages) far exceed WebFlux's default 256 KB
+                // decode buffer, so raise the in-memory codec limit.
+                .codecs { it.defaultCodecs().maxInMemorySize(maxInMemoryMb * 1024 * 1024) }
                 .filter(ExchangeFilterFunctions.basicAuthentication(username, password))
                 .build()
     }

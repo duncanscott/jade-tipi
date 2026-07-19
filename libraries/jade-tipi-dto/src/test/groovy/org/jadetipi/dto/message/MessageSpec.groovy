@@ -909,6 +909,79 @@ class MessageSpec extends Specification {
         thrown(ValidationException)
     }
 
+    def "prc + create accepts a top-level inputs map keyed by input ids with task_id back-references"() {
+        given: 'a pooling procedure whose inputs map carries two library inputs, each delivered by a task'
+        String json = '''
+            {
+              "txn": {
+                "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+                "group": { "org": "jade-tipi-org", "grp": "dev" },
+                "client": "kli",
+                "user": "0000-0002-1825-0097"
+              },
+              "uuid": "018fd849-3c15-7666-8a06-202020202020",
+              "collection": "prc",
+              "action": "create",
+              "data": {
+                "id": "jade-tipi-org~dev~018fd849-3c15-7666-8a06-202020202020~prc~pool_run_1",
+                "type_id": "jade-tipi-org~dev~018fd849-3c10-7111-8a01-161616161616~typ~dna_pooling",
+                "inputs": {
+                  "jade-tipi-org~dev~018fd849-3c20-7aaa-8a0a-a1a1a1a1a1a1~ent~lib_a": {
+                    "task_id": "jade-tipi-org~dev~018fd849-3c31-7bbb-8a1b-b2b2b2b2b2b2~tsk~sow_a"
+                  },
+                  "jade-tipi-org~dev~018fd849-3c21-7bbb-8a0b-b2b2b2b2b2b2~ent~lib_b": {}
+                }
+              }
+            }
+        '''
+        Message message = JsonMapper.fromJson(json, Message)
+
+        when:
+        message.validate()
+
+        then:
+        noExceptionThrown()
+
+        and: 'the inputs map is keyed by input object ids'
+        Map inputs = message.data().inputs as Map
+        inputs.size() == 2
+        inputs.keySet().every { it.contains('~ent~') }
+
+        and: 'a task-carried input back-references its delivering task; a direct input omits task_id'
+        (inputs.values().find { (it as Map).task_id } as Map).task_id.contains('~tsk~')
+        inputs.values().any { (it as Map).isEmpty() }
+    }
+
+    def "schema rejects a prc create whose inputs value is not an object"() {
+        given: 'an inputs entry whose value is a bare string instead of an open object'
+        String json = '''
+            {
+              "txn": {
+                "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+                "group": { "org": "jade-tipi-org", "grp": "dev" },
+                "client": "kli",
+                "user": "0000-0002-1825-0097"
+              },
+              "uuid": "018fd849-3c15-7666-8a06-202020202020",
+              "collection": "prc",
+              "action": "create",
+              "data": {
+                "id": "jade-tipi-org~dev~018fd849-3c15-7666-8a06-202020202020~prc~pool_run_1",
+                "inputs": {
+                  "jade-tipi-org~dev~018fd849-3c20-7aaa-8a0a-a1a1a1a1a1a1~ent~lib_a": "sow_a"
+                }
+              }
+            }
+        '''
+        Message message = JsonMapper.fromJson(json, Message)
+
+        when:
+        message.validate()
+
+        then:
+        thrown(ValidationException)
+    }
+
     def "schema rejects a non-prc message whose data carries object-id keys under output_input"() {
         given: 'the same output_input map on an ent create, where snake_case keys are required'
         String json = '''
