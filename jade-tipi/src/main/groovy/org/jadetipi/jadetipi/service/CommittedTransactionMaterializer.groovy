@@ -224,7 +224,7 @@ class CommittedTransactionMaterializer {
 
     /**
      * Object identifier convention (TASK-044):
-     * {@code <org>~<grp>~<uuidv7>~<collection>~<suffix>}, where the UUIDv7
+     * {@code <uuidv7>~<org>~<grp>~<collection>~<suffix>}, where the UUIDv7
      * is the creating transaction's or creating message's UUID. The literal
      * {@code genesis} segment is the single sanctioned non-UUID exception
      * (the bootstrap {@code usr}); legacy composite assignment IDs are two
@@ -884,8 +884,8 @@ class CommittedTransactionMaterializer {
 
     /**
      * Structural check against the object identifier convention: at least
-     * five {@code ~}-separated segments, a UUIDv7 (or the sanctioned
-     * {@code genesis} literal) in the third segment, and a known collection
+     * five {@code ~}-separated segments, a leading UUIDv7 (or the sanctioned
+     * {@code genesis} literal) in the first segment, and a known collection
      * abbreviation in the fourth. A composite legacy assignment ID (ten or
      * more segments) must conform in both halves.
      */
@@ -907,7 +907,7 @@ class CommittedTransactionMaterializer {
     }
 
     private static boolean conformingIdCore(String[] segments, int offset) {
-        String uuidSegment = segments[offset + 2]
+        String uuidSegment = segments[offset]
         boolean uuidOk = GENESIS_SEGMENT == uuidSegment ||
                 UUIDV7_SEGMENT.matcher(uuidSegment).matches()
         return uuidOk && ID_COLLECTION_SEGMENTS.contains(segments[offset + 3])
@@ -918,7 +918,7 @@ class CommittedTransactionMaterializer {
                                                     CommittedTransactionMessage message) {
         if (!isConformingObjectId(docId)) {
             log.warn('data.id does not follow the object identifier convention ' +
-                    '<org>~<grp>~<uuidv7>~<collection>~<suffix>: id={}, collection={}, txnId={}, msgUuid={}',
+                    '<uuidv7>~<org>~<grp>~<collection>~<suffix>: id={}, collection={}, txnId={}, msgUuid={}',
                     docId, message.collection, snapshot.txnId, message.msgUuid)
         }
     }

@@ -13,7 +13,7 @@
   "action": "create",
   "data": {
     "kind": "link_type",
-    "id": "jade-tipi-org~dev~018fd849-3c13-7444-8a04-191919191919~typ~task_input",
+    "id": "018fd849-3c13-7444-8a04-191919191919~jade-tipi-org~dev~typ~task_input",
     "name": "task_input",
     "description": "an ent input a task intends to consume",
     "left_role": "task",

@@ -51,7 +51,7 @@ though it runs under the Spring `test` profile; set
 database is needed. The review roots all begin with:
 
 ```text
-jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e501
+018fd849-c0c0-7000-8a01-c1a141e5e501~jade-tipi-org~dev
 ```
 
 Expected review roots:
@@ -116,7 +116,7 @@ an inherited registration, and each `property_values` entry carries
 
 The seed transaction is system-authored: `txn.user` carries the
 TASK-039 bootstrap identity
-(`jade-tipi-org~dev~genesis~usr~jdtp-admin`). Durable writer
+(`genesis~jade-tipi-org~dev~usr~jdtp-admin`). Durable writer
 persistence remains deferred (drift-note plan task C); the envelope
 convention is established now so it resolves cleanly later.
 
@@ -187,7 +187,7 @@ JADETIPI_IT_KAFKA=1 JADETIPI_COUCHDB_IMPORT=1 ./gradlew :jade-tipi:integrationTe
 ```
 
 The imported roots land in database `jdtp` under the stable prefix
-`jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e543` and are left
+`018fd849-c0c0-7000-8a01-c1a141e5e543~jade-tipi-org~dev` and are left
 in place for review; the spec asserts the materialized values
 dynamically against the live source documents (source → JDTP
 fidelity), so it keeps passing as upstream values drift. Mapper unit
@@ -499,17 +499,17 @@ Examples (using a single fabricated transaction UUIDv7
 `018fd849-c0c0-7000-8a01-c1a141e5e500`):
 
 - ESP freezer:
-  `jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_freezer_019a3a62-8fa8`
+  `018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~esp_freezer_019a3a62-8fa8`
 - ESP bin:
-  `jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_bin_019a3a60-9628`
+  `018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~esp_bin_019a3a60-9628`
 - ESP plate:
-  `jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_plate_019a420c-728d`
+  `018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~esp_plate_019a420c-728d`
 - Clarity tube:
-  `jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~clarity_tube_27-10000`
+  `018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~clarity_tube_27-10000`
 - Bin → Plate contents link:
-  `jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~lnk~contents_bin_pp050_to_plate_27-474501_a1`
+  `018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~lnk~contents_bin_pp050_to_plate_27-474501_a1`
 - Freezer → Bin contents link:
-  `jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~lnk~contents_freezer_illumina130-32_to_bin_pp050_slot2`
+  `018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~lnk~contents_freezer_illumina130-32_to_bin_pp050_slot2`
 
 Short-name segments are truncated UUID prefixes for ESP (full UUID
 embedded inside `properties.source_id`); Clarity uses the LIMSID
@@ -518,7 +518,7 @@ verbatim.
 ### D5 — Mint a transaction-local `typ~contents` id
 
 The prototype mints a transaction-local link-type id
-`jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~typ~contents`
+`018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~typ~contents`
 that embeds the same prototype `txn-uuid`
 (`018fd849-c0c0-7000-8a01-c1a141e5e500`) used by the four `loc` and
 two `lnk` roots. The `TASK-019` transaction is therefore
@@ -868,8 +868,8 @@ Common provenance shorthand used below:
 
 ```json
 {
-  "_id":  "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_freezer_019a3a62-8fa8",
-  "id":   "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_freezer_019a3a62-8fa8",
+  "_id":  "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~esp_freezer_019a3a62-8fa8",
+  "id":   "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~esp_freezer_019a3a62-8fa8",
   "collection": "loc",
   "type_id": null,
   "properties": {
@@ -889,8 +889,8 @@ Common provenance shorthand used below:
 
 ```json
 {
-  "_id":  "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_bin_019a3a60-9628",
-  "id":   "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_bin_019a3a60-9628",
+  "_id":  "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~esp_bin_019a3a60-9628",
+  "id":   "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~esp_bin_019a3a60-9628",
   "collection": "loc",
   "type_id": null,
   "properties": {
@@ -911,8 +911,8 @@ Common provenance shorthand used below:
 
 ```json
 {
-  "_id":  "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_plate_019a420c-728d",
-  "id":   "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_plate_019a420c-728d",
+  "_id":  "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~esp_plate_019a420c-728d",
+  "id":   "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~esp_plate_019a420c-728d",
   "collection": "loc",
   "type_id": null,
   "properties": {
@@ -936,8 +936,8 @@ Common provenance shorthand used below:
 
 ```json
 {
-  "_id":  "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~clarity_tube_27-10000",
-  "id":   "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~clarity_tube_27-10000",
+  "_id":  "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~clarity_tube_27-10000",
+  "id":   "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~clarity_tube_27-10000",
   "collection": "loc",
   "type_id": null,
   "properties": {
@@ -956,8 +956,8 @@ Common provenance shorthand used below:
 
 ```json
 {
-  "_id":  "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~typ~contents",
-  "id":   "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~typ~contents",
+  "_id":  "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~typ~contents",
+  "id":   "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~typ~contents",
   "collection": "typ",
   "type_id": null,
   "properties": {
@@ -987,12 +987,12 @@ above for the full rule.
 
 ```json
 {
-  "_id":  "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~lnk~contents_freezer_illumina130-32_to_bin_pp050_slot2",
-  "id":   "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~lnk~contents_freezer_illumina130-32_to_bin_pp050_slot2",
+  "_id":  "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~lnk~contents_freezer_illumina130-32_to_bin_pp050_slot2",
+  "id":   "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~lnk~contents_freezer_illumina130-32_to_bin_pp050_slot2",
   "collection": "lnk",
-  "type_id":    "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~typ~contents",
-  "left":       "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_freezer_019a3a62-8fa8",
-  "right":      "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_bin_019a3a60-9628",
+  "type_id":    "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~typ~contents",
+  "left":       "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~esp_freezer_019a3a62-8fa8",
+  "right":      "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~esp_bin_019a3a60-9628",
   "properties": {
     "position": {
       "kind":  "freezer_slot",
@@ -1009,12 +1009,12 @@ above for the full rule.
 
 ```json
 {
-  "_id":  "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~lnk~contents_bin_pp050_to_plate_27-474501_a1",
-  "id":   "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~lnk~contents_bin_pp050_to_plate_27-474501_a1",
+  "_id":  "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~lnk~contents_bin_pp050_to_plate_27-474501_a1",
+  "id":   "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~lnk~contents_bin_pp050_to_plate_27-474501_a1",
   "collection": "lnk",
-  "type_id":    "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~typ~contents",
-  "left":       "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_bin_019a3a60-9628",
-  "right":      "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_plate_019a420c-728d",
+  "type_id":    "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~typ~contents",
+  "left":       "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~esp_bin_019a3a60-9628",
+  "right":      "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~esp_plate_019a420c-728d",
   "properties": {
     "position": {
       "kind":   "bin_slot",
@@ -1064,7 +1064,7 @@ Loc 1 — ESP Freezer:
   "collection": "loc",
   "action": "create",
   "data": {
-    "id":              "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_freezer_019a3a62-8fa8",
+    "id":              "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~esp_freezer_019a3a62-8fa8",
     "name":            "Illumina 130-32",
     "kind":            "Freezer (6-shelf)",
     "barcode":         "FREEZE012",
@@ -1084,7 +1084,7 @@ Loc 2 — ESP Bin:
   "collection": "loc",
   "action": "create",
   "data": {
-    "id":                "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_bin_019a3a60-9628",
+    "id":                "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~esp_bin_019a3a60-9628",
     "name":              "PP050",
     "kind":              "Bin 9x3",
     "barcode":           "BIN057",
@@ -1105,7 +1105,7 @@ Loc 3 — ESP Plate:
   "collection": "loc",
   "action": "create",
   "data": {
-    "id":                "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_plate_019a420c-728d",
+    "id":                "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~esp_plate_019a420c-728d",
     "name":              "27-474501",
     "kind":              "96W Plate",
     "barcode":           "27-474501",
@@ -1129,7 +1129,7 @@ Loc 4 — Clarity Tube:
   "collection": "loc",
   "action": "create",
   "data": {
-    "id":            "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~clarity_tube_27-10000",
+    "id":            "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~clarity_tube_27-10000",
     "name":          "27-170230",
     "kind":          "Tube",
     "source_system": "clarity",
@@ -1149,7 +1149,7 @@ Typ — `contents` link type (transaction-local declaration):
   "action": "create",
   "data": {
     "kind":                       "link_type",
-    "id":                         "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~typ~contents",
+    "id":                         "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~typ~contents",
     "name":                       "contents",
     "description":                "containment relationship between a container location and its contents",
     "left_role":                  "container",
@@ -1172,10 +1172,10 @@ Lnk 1 — Freezer → Bin:
   "collection": "lnk",
   "action": "create",
   "data": {
-    "id":      "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~lnk~contents_freezer_illumina130-32_to_bin_pp050_slot2",
-    "type_id": "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~typ~contents",
-    "left":    "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_freezer_019a3a62-8fa8",
-    "right":   "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_bin_019a3a60-9628",
+    "id":      "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~lnk~contents_freezer_illumina130-32_to_bin_pp050_slot2",
+    "type_id": "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~typ~contents",
+    "left":    "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~esp_freezer_019a3a62-8fa8",
+    "right":   "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~esp_bin_019a3a60-9628",
     "properties": {
       "position": { "kind": "freezer_slot", "label": "2", "slot": 2 }
     }
@@ -1192,10 +1192,10 @@ Lnk 2 — Bin → Plate:
   "collection": "lnk",
   "action": "create",
   "data": {
-    "id":      "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~lnk~contents_bin_pp050_to_plate_27-474501_a1",
-    "type_id": "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~typ~contents",
-    "left":    "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_bin_019a3a60-9628",
-    "right":   "jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e500~loc~esp_plate_019a420c-728d",
+    "id":      "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~lnk~contents_bin_pp050_to_plate_27-474501_a1",
+    "type_id": "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~typ~contents",
+    "left":    "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~esp_bin_019a3a60-9628",
+    "right":   "018fd849-c0c0-7000-8a01-c1a141e5e500~jade-tipi-org~dev~loc~esp_plate_019a420c-728d",
     "properties": {
       "position": { "kind": "bin_slot", "label": "A1", "row": "A", "column": 1 }
     }

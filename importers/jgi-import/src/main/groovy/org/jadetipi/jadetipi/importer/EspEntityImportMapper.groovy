@@ -188,8 +188,18 @@ class EspEntityImportMapper {
         return TYPE_KEY_PREFIX + className + ':' + typeName
     }
 
+    /**
+     * Sanitize an import key into an id suffix: lowercase, invalid characters
+     * to underscores, runs of separators collapsed to one, none leading or
+     * trailing (the suffix rule — no leading, multiple, or trailing
+     * underscores/dashes).
+     */
     static String suffixFor(String key) {
-        return 'esp_' + key.toLowerCase().replaceAll('[^a-z0-9_-]', '_')
+        String s = key.toLowerCase()
+                .replaceAll('[^a-z0-9_-]', '_')
+                .replaceAll('[_-]{2,}', '_')
+                .replaceAll('^[_-]+|[_-]+$', '')
+        return 'esp_' + s
     }
 
     /** The Mongo collection an esp document's root lands in. */

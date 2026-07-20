@@ -50,7 +50,7 @@ The goal was to redesign for Kafka message streaming while maintaining security 
 
 **Format:** `<UUIDv7>~<organization>~<group>~<client-id>`
 
-**Example:** `018fd849-2a40-7abc-8a45-111111111111~jade-tipi_org~my-group~jade-cli`
+**Example:** `018fd849-2a40-7abc-8a45-111111111111~jade-tipi_org~my-group~txn~jade-cli`
 
 **Components:**
 - UUIDv7: Provides timestamp (epoch ms) + uniqueness, chronologically sortable
@@ -70,7 +70,7 @@ The goal was to redesign for Kafka message streaming while maintaining security 
 
 **Format:** `<transactionId>~<messageId>~<type>~<subtype>`
 
-**Example:** `018fd849-2a40-7abc-8a45-111111111111~jade-org~my-group~jade-cli~018fd849-2a41-7123-8c67-333333333333~sample~plate-384`
+**Example:** `018fd849-2a40-7abc-8a45-111111111111~jade-org~018fd849-2a41-7123-8c67-333333333333~my-group~jade-cli~sample~plate-384`
 
 **Components:**
 - transactionId: Links entity to its creating transaction
@@ -256,9 +256,9 @@ Enum for message actions:
 
 ### ID Composition
 - **Transaction ID:** `txn.uuid~txn.group.org~txn.group.grp~txn.client`
-  - Example: `018fd849-2a40-7abc-8a45-111111111111~jade-tipi-org~development~jade-cli`
+  - Example: `018fd849-2a40-7abc-8a45-111111111111~jade-tipi-org~development~txn~jade-cli`
 - **Message ID:** `<transaction-id>~<message-uuid>`
-  - Example: `018fd849-...~jade-tipi-org~development~jade-cli~018fd849-2a40-7def-8b56-222222222222`
+  - Example: `018fd849-...~jade-tipi-org~018fd849-2a40-7def-8b56-222222222222~development~jade-cli`
 
 ---
 

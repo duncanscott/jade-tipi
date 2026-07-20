@@ -16,15 +16,15 @@ import spock.lang.Specification
 
 /**
  * TASK-044 coverage for the object identifier convention predicate:
- * {@code <org>~<grp>~<uuidv7>~<collection>~<suffix>}, with {@code genesis}
+ * {@code <uuidv7>~<org>~<grp>~<collection>~<suffix>}, with {@code genesis}
  * as the single sanctioned non-UUID segment and composite legacy assignment
  * IDs conforming in both halves. The materializer only warns on
  * nonconforming IDs; this spec pins the structural check itself.
  */
 class CommittedTransactionMaterializerIdConventionSpec extends Specification {
 
-    static final String OBJ = 'jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~freezer_01'
-    static final String PPY = 'lbl_gov~jgi_pps~018fd849-2a41-7123-8c67-333333333333~ppy~barcode'
+    static final String OBJ = '018fd849-2a47-7777-8f01-aaaaaaaaaaaa~jade-tipi-org~dev~loc~freezer_01'
+    static final String PPY = '018fd849-2a41-7123-8c67-333333333333~lbl_gov~jgi_pps~ppy~barcode'
 
     def 'conforming identifiers pass'() {
         expect:
@@ -35,14 +35,14 @@ class CommittedTransactionMaterializerIdConventionSpec extends Specification {
                 OBJ,
                 PPY,
                 // transaction-UUID form with a source-derived suffix (D4)
-                'jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e501~loc~esp_bin_019a3a60-9628',
+                '018fd849-c0c0-7000-8a01-c1a141e5e501~jade-tipi-org~dev~loc~esp_bin_019a3a60-9628',
                 // the sanctioned genesis exception
-                'jade-tipi-org~dev~genesis~usr~jdtp-admin',
+                'genesis~jade-tipi-org~dev~usr~jdtp-admin',
                 // procedure and task collections (TASK-048)
-                'jade-tipi-org~dev~018fd849-3b03-7333-8a03-cccccccccccc~prc~pool_run_1',
-                'jade-tipi-org~dev~018fd849-3b04-7444-8a04-dddddddddddd~tsk~pool_batch_7',
+                '018fd849-3b03-7333-8a03-cccccccccccc~jade-tipi-org~dev~prc~pool_run_1',
+                '018fd849-3b04-7444-8a04-dddddddddddd~jade-tipi-org~dev~tsk~pool_batch_7',
                 // file collection (TASK-049)
-                'jade-tipi-org~dev~018fd849-3e02-7222-8a02-bbbbbbbbbbbb~fil~run42_r1_fastq',
+                '018fd849-3e02-7222-8a02-bbbbbbbbbbbb~jade-tipi-org~dev~fil~run42_r1_fastq',
                 // composite legacy assignment id: object + property
                 OBJ + '~' + PPY
         ]
@@ -63,7 +63,7 @@ class CommittedTransactionMaterializerIdConventionSpec extends Specification {
                 // UUID version 4 in the UUID position
                 'jade-tipi-org~dev~7c2f8f60-4c1e-4d0a-9d2e-1f2e3d4c5b6a~grp~analytics',
                 // unknown collection segment
-                'jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~xyz~thing',
+                '018fd849-2a47-7777-8f01-aaaaaaaaaaaa~jade-tipi-org~dev~xyz~thing',
                 // composite whose second half does not conform
                 OBJ + '~org~grp~not-a-uuid~ppy~barcode'
         ]

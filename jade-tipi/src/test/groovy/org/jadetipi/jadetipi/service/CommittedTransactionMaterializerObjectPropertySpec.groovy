@@ -35,12 +35,12 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
     static final Instant OPENED_AT = Instant.parse('2026-01-01T00:00:00Z')
     static final Instant COMMITTED_AT = Instant.parse('2026-01-01T00:00:05Z')
 
-    static final String PPY_BARCODE = 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-cccccccccccc~ppy~barcode'
-    static final String TYP_CONTAINER = 'jade-tipi-org~dev~018fd849-2a51-7111-8a01-aaaaaaaaaaaa~typ~container'
-    static final String TYP_PLATE = 'jade-tipi-org~dev~018fd849-2a52-7222-8a02-bbbbbbbbbbbb~typ~plate'
-    static final String TYP_PLATE96 = 'jade-tipi-org~dev~018fd849-2a53-7333-8a03-cccccccccccc~typ~plate_96_well'
-    static final String LOC_PLATE = 'jade-tipi-org~dev~018fd849-2a54-7444-8a04-dddddddddddd~loc~plate_0001'
-    static final String ENT_SAMPLE = 'jade-tipi-org~dev~018fd849-2a55-7555-8a05-eeeeeeeeeeee~ent~sample_x'
+    static final String PPY_BARCODE = '018fd849-2a41-7111-8a01-cccccccccccc~jade-tipi-org~dev~ppy~barcode'
+    static final String TYP_CONTAINER = '018fd849-2a51-7111-8a01-aaaaaaaaaaaa~jade-tipi-org~dev~typ~container'
+    static final String TYP_PLATE = '018fd849-2a52-7222-8a02-bbbbbbbbbbbb~jade-tipi-org~dev~typ~plate'
+    static final String TYP_PLATE96 = '018fd849-2a53-7333-8a03-cccccccccccc~jade-tipi-org~dev~typ~plate_96_well'
+    static final String LOC_PLATE = '018fd849-2a54-7444-8a04-dddddddddddd~jade-tipi-org~dev~loc~plate_0001'
+    static final String ENT_SAMPLE = '018fd849-2a55-7555-8a05-eeeeeeeeeeee~jade-tipi-org~dev~ent~sample_x'
     static final String MSG_UUID = '018fd849-2a56-7666-8f06-ffffffffffff'
 
     ReactiveMongoTemplate mongoTemplate
@@ -259,7 +259,7 @@ class CommittedTransactionMaterializerObjectPropertySpec extends Specification {
 
     def 'skips as unregistered when the chain exceeds the inheritance depth cap'() {
         given: 'a 12-type chain with the property registered only past the cap'
-        List<String> chain = (0..11).collect { int i -> "jade-tipi-org~dev~018fd849-2a5c-7ccc-8a0c-121212121212~typ~t${i}" as String }
+        List<String> chain = (0..11).collect { int i -> "018fd849-2a5c-7ccc-8a0c-121212121212~jade-tipi-org~dev~typ~t${i}" as String }
         mongoTemplate.findById(LOC_PLATE, Map.class, 'loc') >>
                 Mono.just(objectRoot(LOC_PLATE, 'loc', chain[0]))
         (0..11).each { int i ->

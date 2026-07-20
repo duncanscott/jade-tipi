@@ -32,17 +32,17 @@ class CommittedTransactionMaterializerSpec extends Specification {
     static final Instant OPENED_AT = Instant.parse('2026-01-01T00:00:00Z')
     static final Instant COMMITTED_AT = Instant.parse('2026-01-01T00:00:05Z')
 
-    static final String LOC_ID = 'jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~freezer_a'
-    static final String TYP_ID = 'jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents'
-    static final String LNK_ID = 'jade-tipi-org~dev~018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~lnk~plate_b1_sample_x1'
-    static final String GRP_ID = 'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-cccccccccccc~grp~analytics'
-    static final String GRP_PEER_RW = 'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~grp~lab_ops'
-    static final String GRP_PEER_R = 'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-bbbbbbbbbbbb~grp~viewers'
-    static final String ENT_ID = 'jade-tipi-org~dev~018fd849-2a42-7222-8a02-dddddddddddd~ent~plate_a'
-    static final String ENT_TYPE_ID = 'jade-tipi-org~dev~018fd849-2a48-7888-8a08-eeeeeeeeeeee~typ~plate_96'
+    static final String LOC_ID = '018fd849-2a47-7777-8f01-aaaaaaaaaaaa~jade-tipi-org~dev~loc~freezer_a'
+    static final String TYP_ID = '018fd849-2a49-7999-8a09-aaaaaaaaaaab~jade-tipi-org~dev~typ~contents'
+    static final String LNK_ID = '018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~jade-tipi-org~dev~lnk~plate_b1_sample_x1'
+    static final String GRP_ID = '018fd849-2a4d-7d0d-8d0d-cccccccccccc~jade-tipi-org~dev~grp~analytics'
+    static final String GRP_PEER_RW = '018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~jade-tipi-org~dev~grp~lab_ops'
+    static final String GRP_PEER_R = '018fd849-2a4d-7d0d-8d0d-bbbbbbbbbbbb~jade-tipi-org~dev~grp~viewers'
+    static final String ENT_ID = '018fd849-2a42-7222-8a02-dddddddddddd~jade-tipi-org~dev~ent~plate_a'
+    static final String ENT_TYPE_ID = '018fd849-2a48-7888-8a08-eeeeeeeeeeee~jade-tipi-org~dev~typ~plate_96'
     static final String ENT_MSG_UUID = '018fd849-2a42-7222-8a02-dddddddddddd'
     static final String ENTITY_TYPE_MSG_UUID = '018fd849-2a48-7888-8a08-eeeeeeeeeeee'
-    static final String PPY_ID = 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-cccccccccccc~ppy~barcode'
+    static final String PPY_ID = '018fd849-2a41-7111-8a01-cccccccccccc~jade-tipi-org~dev~ppy~barcode'
     static final String PPY_MSG_UUID = '018fd849-2a41-7111-8a01-cccccccccccc'
     static final String PPY_ASSIGNMENT_ID = ENT_ID + '~' + PPY_ID
     static final String PPY_ASSIGNMENT_MSG_UUID = '018fd849-2a46-7666-8f06-ffffffffffff'
@@ -138,7 +138,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
                 data: [
                         id         : ENT_TYPE_ID,
                         operation  : 'add_property',
-                        property_id: 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode',
+                        property_id: '018fd849-2a41-7111-8a01-aaaaaaaaaaaa~jade-tipi-org~dev~ppy~barcode',
                         required   : true
                 ],
                 receivedAt: Instant.parse('2026-01-01T00:00:02Z'),
@@ -150,8 +150,8 @@ class CommittedTransactionMaterializerSpec extends Specification {
         Map<String, Object> data = [
                 id     : LNK_ID,
                 type_id: TYP_ID,
-                left   : 'jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~plate_b1',
-                right  : 'jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~sample_x1',
+                left   : '018fd849-2a47-7777-8f01-aaaaaaaaaaaa~jade-tipi-org~dev~loc~plate_b1',
+                right  : '018fd849-2a45-7555-8e05-eeeeeeeeeeee~jade-tipi-org~dev~ent~sample_x1',
                 properties: [
                         position: [kind: 'plate_well', label: 'A1', row: 'A', column: 1]
                 ]
@@ -381,7 +381,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
 
     def 'human-readable loc create with explicit data.type_id sets top-level type_id and keeps properties clean'() {
         given:
-        String typeId = 'jade-tipi-org~dev~018fd849-2a4c-7ccc-8c0c-cccccccccccc~typ~freezer'
+        String typeId = '018fd849-2a4c-7ccc-8c0c-cccccccccccc~jade-tipi-org~dev~typ~freezer'
         Map<String, Object> captured = null
         mongoTemplate.insert(_ as Map, 'loc') >> { Map doc, String _coll ->
             captured = doc
@@ -449,7 +449,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
 
     def 'loc with an explicit data.type_id sets top-level type_id and excludes it from properties'() {
         given:
-        String typeId = 'jade-tipi-org~dev~018fd849-2a4c-7ccc-8c0c-cccccccccccc~typ~freezer'
+        String typeId = '018fd849-2a4c-7ccc-8c0c-cccccccccccc~jade-tipi-org~dev~typ~freezer'
         Map<String, Object> captured = null
         mongoTemplate.insert(_ as Map, 'loc') >> { Map doc, String _coll ->
             captured = doc
@@ -652,7 +652,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
         capturedQuery.queryObject.get('_id') == ENT_TYPE_ID
         Map setOps = capturedUpdate.updateObject.get('$set') as Map
         setOps.size() == 1
-        String expectedKey = 'properties.property_refs.jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
+        String expectedKey = 'properties.property_refs.018fd849-2a41-7111-8a01-aaaaaaaaaaaa~jade-tipi-org~dev~ppy~barcode'
         setOps[expectedKey] == [required: true]
 
         and: 'no insert path is taken for the update message'
@@ -684,7 +684,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
                 data: [
                         id         : ENT_TYPE_ID,
                         operation  : 'add_property',
-                        property_id: 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
+                        property_id: '018fd849-2a41-7111-8a01-aaaaaaaaaaaa~jade-tipi-org~dev~ppy~barcode'
                 ],
                 receivedAt: Instant.parse('2026-01-01T00:00:02Z'),
                 kafka: null
@@ -696,7 +696,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
         then: 'the reference entry is an empty map; required is not invented'
         result.materialized == 1
         Map setOps = capturedUpdate.updateObject.get('$set') as Map
-        String expectedKey = 'properties.property_refs.jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
+        String expectedKey = 'properties.property_refs.018fd849-2a41-7111-8a01-aaaaaaaaaaaa~jade-tipi-org~dev~ppy~barcode'
         setOps[expectedKey] == [:]
     }
 
@@ -709,7 +709,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
                 data: [
                         id         : ENT_TYPE_ID,
                         operation  : operation,
-                        property_id: 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
+                        property_id: '018fd849-2a41-7111-8a01-aaaaaaaaaaaa~jade-tipi-org~dev~ppy~barcode'
                 ],
                 receivedAt: Instant.parse('2026-01-01T00:00:02Z'),
                 kafka: null
@@ -752,7 +752,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
 
     def 'idempotent typ + update add_property with matching reference metadata is duplicate-matching and does not re-write'() {
         given: 'existing root already carries the same property_ref entry'
-        String propertyId = 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
+        String propertyId = '018fd849-2a41-7111-8a01-aaaaaaaaaaaa~jade-tipi-org~dev~ppy~barcode'
         Map existing = [
                 _id        : ENT_TYPE_ID,
                 id         : ENT_TYPE_ID,
@@ -786,7 +786,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
 
     def 'conflicting typ + update add_property is conflicting-duplicate and not overwritten'() {
         given: 'existing root carries the same property_id with a different required value'
-        String propertyId = 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
+        String propertyId = '018fd849-2a41-7111-8a01-aaaaaaaaaaaa~jade-tipi-org~dev~ppy~barcode'
         Map existing = [
                 _id        : ENT_TYPE_ID,
                 id         : ENT_TYPE_ID,
@@ -826,7 +826,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
                 data: [
                         id         : missingId,
                         operation  : 'add_property',
-                        property_id: 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode',
+                        property_id: '018fd849-2a41-7111-8a01-aaaaaaaaaaaa~jade-tipi-org~dev~ppy~barcode',
                         required   : true
                 ],
                 receivedAt: Instant.parse('2026-01-01T00:00:02Z'),
@@ -881,7 +881,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
 
     def 'typ + update add_property with no existing property_refs sub-map adds the keyed entry without disturbing other properties'() {
         given: 'existing root has scalar facts but no property_refs sub-map'
-        String propertyId = 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
+        String propertyId = '018fd849-2a41-7111-8a01-aaaaaaaaaaaa~jade-tipi-org~dev~ppy~barcode'
         Map existing = [
                 _id        : ENT_TYPE_ID,
                 id         : ENT_TYPE_ID,
@@ -1612,7 +1612,7 @@ class CommittedTransactionMaterializerSpec extends Specification {
                 _id        : ENT_ID,
                 id         : ENT_ID,
                 collection : 'ent',
-                type_id    : 'jade-tipi-org~dev~018fd849-2a48-7888-8a08-ffffffffffff~typ~older_type',
+                type_id    : '018fd849-2a48-7888-8a08-ffffffffffff~jade-tipi-org~dev~typ~older_type',
                 properties : [:],
                 links      : [:],
                 _head      : [

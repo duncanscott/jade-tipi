@@ -34,7 +34,7 @@ class EspEntityImportMapperSpec extends Specification {
 
     private BiFunction<String, String, String> idFor = { String key, String collection ->
         return minted.computeIfAbsent(key, {
-            ('jade-itest-org~import~018fd849-9a02-7222-8a02-929292929292~' + collection + '~' +
+            ('018fd849-9a02-7222-8a02-929292929292~jade-itest-org~import~' + collection + '~' +
                     EspEntityImportMapper.suffixFor(key)).toString()
         })
     } as BiFunction<String, String, String>
@@ -124,10 +124,10 @@ class EspEntityImportMapperSpec extends Specification {
 
     def 'an overlay container reuses the (pre-resolved) root id and emits NO duplicate create (TASK-071)'() {
         given: 'the driver pre-seeded the resolver to the clarity id and flagged the doc as an overlay'
-        String clarityRootId = 'lbl-gov~jgi-pps~018fd849-c0c0-7000-8000-000000000001~loc~clarity_containers_27-279088'
+        String clarityRootId = '018fd849-c0c0-7000-8000-000000000001~lbl-gov~jgi-pps~loc~clarity_containers_27-279088'
         BiFunction<String, String, String> overlayIdFor = { String key, String collection ->
             key == CONTAINER_UUID ? clarityRootId : minted.computeIfAbsent(key, {
-                "jade-itest-org~import~018fd849-9a02-7222-8a02-929292929292~${collection}~" +
+                "018fd849-9a02-7222-8a02-929292929292~jade-itest-org~import~${collection}~" +
                         EspEntityImportMapper.suffixFor(key)
             })
         } as BiFunction<String, String, String>
@@ -150,7 +150,7 @@ class EspEntityImportMapperSpec extends Specification {
         String reused = 'clarity~root~id'
         BiFunction<String, String, String> overlayIdFor = { String key, String collection ->
             key == ENTITY_UUID ? reused : minted.computeIfAbsent(key, {
-                "jade-itest-org~import~018fd849-9a02-7222-8a02-929292929292~${collection}~" +
+                "018fd849-9a02-7222-8a02-929292929292~jade-itest-org~import~${collection}~" +
                         EspEntityImportMapper.suffixFor(key)
             })
         } as BiFunction<String, String, String>

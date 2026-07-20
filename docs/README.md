@@ -68,7 +68,7 @@ organization~group~uuidv7~collection~suffix
 
 For example:
 ```
-lbl_gov~jgi_pps~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~plate_a
+018fd849-2a45-7555-8e05-eeeeeeeeeeee~lbl_gov~jgi_pps~ent~plate_a
 ```
 
 The UUIDv7 provides world-uniqueness plus chronological sortability without

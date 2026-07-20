@@ -12,8 +12,8 @@
   "collection": "tsk",
   "action": "create",
   "data": {
-    "id": "jade-tipi-org~dev~018fd849-3c12-7333-8a03-181818181818~tsk~pool_batch_7",
-    "type_id": "jade-tipi-org~dev~018fd849-3c11-7222-8a02-171717171717~typ~dna_pooling_task",
+    "id": "018fd849-3c12-7333-8a03-181818181818~jade-tipi-org~dev~tsk~pool_batch_7",
+    "type_id": "018fd849-3c11-7222-8a02-171717171717~jade-tipi-org~dev~typ~dna_pooling_task",
     "name": "pool_batch_7",
     "description": "pool the batch 7 samples into one library pool"
   }

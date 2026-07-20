@@ -12,8 +12,8 @@
   "collection": "typ",
   "action": "update",
   "data": {
-    "id": "jade-tipi-org~dev~018fd849-3d01-7111-8a01-232323232323~typ~fastq",
+    "id": "018fd849-3d01-7111-8a01-232323232323~jade-tipi-org~dev~typ~fastq",
     "operation": "add_property",
-    "property_id": "jade-tipi-org~dev~018fd849-3d02-7222-8a02-242424242424~ppy~retrieval_url"
+    "property_id": "018fd849-3d02-7222-8a02-242424242424~jade-tipi-org~dev~ppy~retrieval_url"
   }
 }

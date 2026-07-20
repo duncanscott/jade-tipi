@@ -35,14 +35,14 @@ class CommittedTransactionMaterializerProcedureTaskSpec extends Specification {
     static final Instant OPENED_AT = Instant.parse('2026-01-01T00:00:00Z')
     static final Instant COMMITTED_AT = Instant.parse('2026-01-01T00:00:05Z')
 
-    static final String TYP_PROCEDURE = 'jade-tipi-org~dev~018fd849-3b01-7111-8a01-aaaaaaaaaaaa~typ~dna_pooling'
-    static final String TYP_TASK = 'jade-tipi-org~dev~018fd849-3b02-7222-8a02-bbbbbbbbbbbb~typ~dna_pooling_task'
-    static final String PRC_ID = 'jade-tipi-org~dev~018fd849-3b03-7333-8a03-cccccccccccc~prc~pool_run_1'
-    static final String TSK_ID = 'jade-tipi-org~dev~018fd849-3b04-7444-8a04-dddddddddddd~tsk~pool_batch_7'
-    static final String ENT_IN_1 = 'jade-tipi-org~dev~018fd849-3b05-7555-8a05-eeeeeeeeeeee~ent~sample_a'
-    static final String ENT_IN_2 = 'jade-tipi-org~dev~018fd849-3b06-7666-8a06-ffffffffffff~ent~sample_b'
-    static final String ENT_OUT = 'jade-tipi-org~dev~018fd849-3b07-7777-8a07-aaaaaaaaaaab~ent~pool_1'
-    static final String PPY_NAME = 'jade-tipi-org~dev~018fd849-3b08-7888-8a08-bbbbbbbbbbbc~ppy~name'
+    static final String TYP_PROCEDURE = '018fd849-3b01-7111-8a01-aaaaaaaaaaaa~jade-tipi-org~dev~typ~dna_pooling'
+    static final String TYP_TASK = '018fd849-3b02-7222-8a02-bbbbbbbbbbbb~jade-tipi-org~dev~typ~dna_pooling_task'
+    static final String PRC_ID = '018fd849-3b03-7333-8a03-cccccccccccc~jade-tipi-org~dev~prc~pool_run_1'
+    static final String TSK_ID = '018fd849-3b04-7444-8a04-dddddddddddd~jade-tipi-org~dev~tsk~pool_batch_7'
+    static final String ENT_IN_1 = '018fd849-3b05-7555-8a05-eeeeeeeeeeee~jade-tipi-org~dev~ent~sample_a'
+    static final String ENT_IN_2 = '018fd849-3b06-7666-8a06-ffffffffffff~jade-tipi-org~dev~ent~sample_b'
+    static final String ENT_OUT = '018fd849-3b07-7777-8a07-aaaaaaaaaaab~jade-tipi-org~dev~ent~pool_1'
+    static final String PPY_NAME = '018fd849-3b08-7888-8a08-bbbbbbbbbbbc~jade-tipi-org~dev~ppy~name'
     static final String PRC_MSG_UUID = '018fd849-3b03-7333-8a03-cccccccccccc'
     static final String TSK_MSG_UUID = '018fd849-3b04-7444-8a04-dddddddddddd'
     static final String ASSIGN_MSG_UUID = '018fd849-3b09-7999-8f09-cccccccccccd'

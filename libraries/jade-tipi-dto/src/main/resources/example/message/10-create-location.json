@@ -12,7 +12,7 @@
   "collection": "loc",
   "action": "create",
   "data": {
-    "id": "jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~freezer_a",
+    "id": "018fd849-2a47-7777-8f01-aaaaaaaaaaaa~jade-tipi-org~dev~loc~freezer_a",
     "properties": {
       "name": "freezer_a",
       "description": "minus-80 freezer in room 110"

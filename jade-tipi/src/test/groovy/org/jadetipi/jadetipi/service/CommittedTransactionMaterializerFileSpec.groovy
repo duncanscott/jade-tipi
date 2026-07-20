@@ -33,9 +33,9 @@ class CommittedTransactionMaterializerFileSpec extends Specification {
     static final Instant OPENED_AT = Instant.parse('2026-01-01T00:00:00Z')
     static final Instant COMMITTED_AT = Instant.parse('2026-01-01T00:00:05Z')
 
-    static final String TYP_FASTQ = 'jade-tipi-org~dev~018fd849-3e01-7111-8a01-aaaaaaaaaaaa~typ~fastq'
-    static final String FIL_ID = 'jade-tipi-org~dev~018fd849-3e02-7222-8a02-bbbbbbbbbbbb~fil~run42_r1_fastq'
-    static final String PPY_RETRIEVAL_URL = 'jade-tipi-org~dev~018fd849-3e03-7333-8a03-cccccccccccc~ppy~retrieval_url'
+    static final String TYP_FASTQ = '018fd849-3e01-7111-8a01-aaaaaaaaaaaa~jade-tipi-org~dev~typ~fastq'
+    static final String FIL_ID = '018fd849-3e02-7222-8a02-bbbbbbbbbbbb~jade-tipi-org~dev~fil~run42_r1_fastq'
+    static final String PPY_RETRIEVAL_URL = '018fd849-3e03-7333-8a03-cccccccccccc~jade-tipi-org~dev~ppy~retrieval_url'
     static final String FIL_MSG_UUID = '018fd849-3e02-7222-8a02-bbbbbbbbbbbb'
     static final String ASSIGN_MSG_UUID = '018fd849-3e04-7444-8f04-dddddddddddd'
 

@@ -85,7 +85,7 @@ export default function ContainersEntryPage() {
           value={containerId}
           onChange={(e) => setContainerId(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') openContainer(); }}
-          placeholder="org~grp~<uuidv7>~loc~suffix"
+          placeholder="<uuidv7>~org~grp~loc~suffix"
           aria-label="Container ID"
           style={{
             flex: 1,
@@ -116,7 +116,7 @@ export default function ContainersEntryPage() {
       </div>
       <p style={{ color: 'var(--muted)', fontSize: '0.875rem', lineHeight: 1.6 }}>
         Container IDs follow the object identifier convention
-        (<code>&lt;org&gt;~&lt;grp&gt;~&lt;uuidv7&gt;~loc~&lt;suffix&gt;</code>).
+        (<code>&lt;uuidv7&gt;~&lt;org&gt;~&lt;grp&gt;~loc~&lt;suffix&gt;</code>).
         The kli plate runbook (<code>docs/kli-plate-runbook.md</code>) and the
         Clarity/ESP review seed both create containers you can open here.
       </p>

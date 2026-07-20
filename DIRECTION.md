@@ -20,13 +20,21 @@ tentatively `msg`, until they have been applied to the domain object documents.
 ## Object Identifiers
 
 Object IDs are world-unique text strings of the form
-`<org>~<grp>~<uuidv7>~<collection>~<suffix>`. The UUID version 7 segment is
-the creating transaction's or the creating message's UUID — both forms are
-sanctioned — giving world-uniqueness and chronological sortability without a
-central registry. When the transaction's UUID is used, clients must keep
-suffixes unique within that transaction. The single sanctioned non-UUID
+`<uuidv7>~<org>~<grp>~<collection>~<suffix>`. The leading UUID version 7
+segment is the creating transaction's or the creating message's UUID — both
+forms are sanctioned — giving world-uniqueness and chronological sortability
+without a central registry; leading with the UUID (director ruling
+2026-07-19) makes identifiers sort chronologically across organizations and
+groups, matching the transaction ID convention. When the transaction's UUID
+is used, clients must keep suffixes unique within that transaction. The
+suffix is lowercase `[a-z0-9_-]` with no leading, multiple, or trailing
+underscores or dashes (director ruling 2026-07-19). Transaction IDs follow
+the same shape with collection `txn` and the client in the suffix position
+(`<uuidv7>~<org>~<grp>~txn~<client>`, director ruling 2026-07-19), so every
+Jade-Tipi ID begins `<uuidv7>~<org>~<grp>~<collection>` and the fourth
+segment names what the ID identifies. The single sanctioned non-UUID
 segment is the literal `genesis` in the reserved bootstrap `usr` ID
-(`...~genesis~usr~jdtp-admin`), which must be well-known before any
+(`genesis~...~usr~jdtp-admin`), which must be well-known before any
 transaction exists. Demo, test, and documentation IDs follow the same rule.
 
 ## Objects, Types, And Properties

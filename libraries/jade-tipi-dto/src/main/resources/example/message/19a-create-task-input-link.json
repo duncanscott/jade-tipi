@@ -12,9 +12,9 @@
   "collection": "lnk",
   "action": "create",
   "data": {
-    "id": "jade-tipi-org~dev~018fd849-3c14-7555-8a05-1a1a1a1a1a1a~lnk~pool_batch_7_sample_a",
-    "type_id": "jade-tipi-org~dev~018fd849-3c13-7444-8a04-191919191919~typ~task_input",
-    "left": "jade-tipi-org~dev~018fd849-3c12-7333-8a03-181818181818~tsk~pool_batch_7",
-    "right": "jade-tipi-org~dev~018fd849-3c20-7aaa-8a0a-a1a1a1a1a1a1~ent~sample_a"
+    "id": "018fd849-3c14-7555-8a05-1a1a1a1a1a1a~jade-tipi-org~dev~lnk~pool_batch_7_sample_a",
+    "type_id": "018fd849-3c13-7444-8a04-191919191919~jade-tipi-org~dev~typ~task_input",
+    "left": "018fd849-3c12-7333-8a03-181818181818~jade-tipi-org~dev~tsk~pool_batch_7",
+    "right": "018fd849-3c20-7aaa-8a0a-a1a1a1a1a1a1~jade-tipi-org~dev~ent~sample_a"
   }
 }

@@ -12,8 +12,8 @@
   "collection": "fil",
   "action": "create",
   "data": {
-    "id": "jade-tipi-org~dev~018fd849-3d04-7444-8a04-262626262626~fil~run42_r1_fastq",
-    "type_id": "jade-tipi-org~dev~018fd849-3d01-7111-8a01-232323232323~typ~fastq",
+    "id": "018fd849-3d04-7444-8a04-262626262626~jade-tipi-org~dev~fil~run42_r1_fastq",
+    "type_id": "018fd849-3d01-7111-8a01-232323232323~jade-tipi-org~dev~typ~fastq",
     "name": "run42_r1.fastq",
     "description": "forward reads for sequencing run 42"
   }

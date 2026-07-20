@@ -12,15 +12,15 @@
   "collection": "prc",
   "action": "create",
   "data": {
-    "id": "jade-tipi-org~dev~018fd849-3c15-7666-8a06-202020202020~prc~pool_run_1",
-    "type_id": "jade-tipi-org~dev~018fd849-3c10-7111-8a01-161616161616~typ~dna_pooling",
+    "id": "018fd849-3c15-7666-8a06-202020202020~jade-tipi-org~dev~prc~pool_run_1",
+    "type_id": "018fd849-3c10-7111-8a01-161616161616~jade-tipi-org~dev~typ~dna_pooling",
     "name": "pool_run_1",
     "output_input": {
-      "jade-tipi-org~dev~018fd849-3c22-7ccc-8a0c-c3c3c3c3c3c3~ent~pool_1": {
-        "jade-tipi-org~dev~018fd849-3c20-7aaa-8a0a-a1a1a1a1a1a1~ent~sample_a": {
+      "018fd849-3c22-7ccc-8a0c-c3c3c3c3c3c3~jade-tipi-org~dev~ent~pool_1": {
+        "018fd849-3c20-7aaa-8a0a-a1a1a1a1a1a1~jade-tipi-org~dev~ent~sample_a": {
           "volume": 5.0
         },
-        "jade-tipi-org~dev~018fd849-3c21-7bbb-8a0b-b2b2b2b2b2b2~ent~sample_b": {
+        "018fd849-3c21-7bbb-8a0b-b2b2b2b2b2b2~jade-tipi-org~dev~ent~sample_b": {
           "volume": 7.5
         }
       }

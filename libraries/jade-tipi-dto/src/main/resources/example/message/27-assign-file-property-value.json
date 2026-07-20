@@ -14,8 +14,8 @@
   "data": {
     "kind": "assignment",
     "object_collection": "fil",
-    "object_id": "jade-tipi-org~dev~018fd849-3d04-7444-8a04-262626262626~fil~run42_r1_fastq",
-    "property_id": "jade-tipi-org~dev~018fd849-3d02-7222-8a02-242424242424~ppy~retrieval_url",
+    "object_id": "018fd849-3d04-7444-8a04-262626262626~jade-tipi-org~dev~fil~run42_r1_fastq",
+    "property_id": "018fd849-3d02-7222-8a02-242424242424~jade-tipi-org~dev~ppy~retrieval_url",
     "value": {
       "url": "https://data.example.org/run42/r1.fastq"
     }

@@ -20,11 +20,11 @@ import spock.lang.Specification
 
 class TypeEffectivePropertiesReadServiceSpec extends Specification {
 
-    static final String TYP_CONTAINER = 'jade-tipi-org~dev~018fd849-2a61-7111-8a01-aaaaaaaaaaaa~typ~container'
-    static final String TYP_PLATE = 'jade-tipi-org~dev~018fd849-2a62-7222-8a02-bbbbbbbbbbbb~typ~plate'
-    static final String TYP_PLATE96 = 'jade-tipi-org~dev~018fd849-2a63-7333-8a03-cccccccccccc~typ~plate_96_well'
-    static final String PPY_BARCODE = 'jade-tipi-org~dev~018fd849-2a64-7444-8a04-dddddddddddd~ppy~barcode'
-    static final String PPY_FORMAT = 'jade-tipi-org~dev~018fd849-2a65-7555-8a05-eeeeeeeeeeee~ppy~format'
+    static final String TYP_CONTAINER = '018fd849-2a61-7111-8a01-aaaaaaaaaaaa~jade-tipi-org~dev~typ~container'
+    static final String TYP_PLATE = '018fd849-2a62-7222-8a02-bbbbbbbbbbbb~jade-tipi-org~dev~typ~plate'
+    static final String TYP_PLATE96 = '018fd849-2a63-7333-8a03-cccccccccccc~jade-tipi-org~dev~typ~plate_96_well'
+    static final String PPY_BARCODE = '018fd849-2a64-7444-8a04-dddddddddddd~jade-tipi-org~dev~ppy~barcode'
+    static final String PPY_FORMAT = '018fd849-2a65-7555-8a05-eeeeeeeeeeee~jade-tipi-org~dev~ppy~format'
 
     ReactiveMongoTemplate mongoTemplate
     TypeEffectivePropertiesReadService service
@@ -137,7 +137,7 @@ class TypeEffectivePropertiesReadServiceSpec extends Specification {
 
     def 'a chain longer than the depth cap is truncated with chainComplete false'() {
         given:
-        List<String> chain = (0..11).collect { int i -> "jade-tipi-org~dev~018fd849-2a5c-7ccc-8a0c-121212121212~typ~t${i}" as String }
+        List<String> chain = (0..11).collect { int i -> "018fd849-2a5c-7ccc-8a0c-121212121212~jade-tipi-org~dev~typ~t${i}" as String }
         (0..11).each { int i ->
             Map properties = [name: "t${i}" as String]
             if (i < 11) {

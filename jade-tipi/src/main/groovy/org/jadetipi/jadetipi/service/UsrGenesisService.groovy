@@ -114,13 +114,13 @@ class UsrGenesisService implements CommandLineRunner {
 
     /**
      * The stable, well-known bootstrap {@code usr} ID:
-     * {@code <instance_org>~<instance_grp>~genesis~usr~jdtp-admin}. The
-     * literal {@code genesis} segment sits in the timestamp position of the
-     * world-unique ID convention, marking the record as a genesis fact rather
-     * than a generated ID.
+     * {@code genesis~<instance_org>~<instance_grp>~usr~jdtp-admin}. The
+     * literal {@code genesis} segment sits in the leading timestamp position
+     * of the world-unique ID convention (uuid~org~grp~collection~suffix),
+     * marking the record as a genesis fact rather than a generated ID.
      */
     String bootstrapUsrId() {
-        return instanceOrg + ID_SEPARATOR + instanceGrp + ID_SEPARATOR + GENESIS_SEGMENT +
+        return GENESIS_SEGMENT + ID_SEPARATOR + instanceOrg + ID_SEPARATOR + instanceGrp +
                 ID_SEPARATOR + COLLECTION_USR + ID_SEPARATOR + BOOTSTRAP_SUFFIX
     }
 

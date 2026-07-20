@@ -12,9 +12,9 @@
   "collection": "typ",
   "action": "update",
   "data": {
-    "id": "jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~typ~plate_96",
+    "id": "018fd849-2a43-7333-8c03-cccccccccccc~jade-tipi-org~dev~typ~plate_96",
     "operation": "add_property",
-    "property_id": "jade-tipi-org~dev~018fd849-2a42-7222-8b02-bbbbbbbbbbbb~ppy~volume",
+    "property_id": "018fd849-2a42-7222-8b02-bbbbbbbbbbbb~jade-tipi-org~dev~ppy~volume",
     "required": false
   }
 }

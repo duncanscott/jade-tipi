@@ -32,7 +32,11 @@ import java.util.Objects;
  * }
  * </pre>
  *
- * <p>Transaction ID string format: {@code <uuid>~<org>~<grp>~<client>}
+ * <p>Transaction ID string format: {@code <uuid>~<org>~<grp>~txn~<client>}.
+ * The literal {@code txn} collection segment gives every Jade-Tipi ID the
+ * same leading shape — {@code <uuid>~<org>~<grp>~<collection>~<tail>} — so
+ * a transaction ID is visually recognizable by its fourth segment exactly
+ * as an object ID is, with the client in the suffix position.
  *
  * <p>Note: {@code user} is not included in {@link #equals} or {@link #hashCode}
  * because transaction identity is determined solely by uuid, group, and client.
@@ -52,9 +56,14 @@ public record Transaction(
         return new Transaction(UuidCreator.getTimeOrderedEpoch().toString(), group, client, user);
     }
 
+    /** The {@code txn} collection segment carried by every transaction ID. */
+    private static final String COLLECTION_SEGMENT = "txn";
+
     @JsonIgnore
     public String getId() {
-        return uuid + Constants.ID_SEPARATOR + group.getId() + Constants.ID_SEPARATOR + client;
+        return uuid + Constants.ID_SEPARATOR + group.getId()
+                + Constants.ID_SEPARATOR + COLLECTION_SEGMENT
+                + Constants.ID_SEPARATOR + client;
     }
 
     @Override

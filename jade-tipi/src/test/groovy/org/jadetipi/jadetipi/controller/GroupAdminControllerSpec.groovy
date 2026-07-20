@@ -41,7 +41,7 @@ import java.time.Instant
  */
 class GroupAdminControllerSpec extends Specification {
 
-    static final String GRP_ID = 'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-cccccccccccc~grp~analytics'
+    static final String GRP_ID = '018fd849-2a4d-7d0d-8d0d-cccccccccccc~jade-tipi-org~dev~grp~analytics'
 
     GroupAdminService service
     GroupAdminController controller

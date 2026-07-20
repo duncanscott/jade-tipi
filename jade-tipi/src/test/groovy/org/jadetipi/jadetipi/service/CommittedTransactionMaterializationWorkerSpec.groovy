@@ -35,7 +35,7 @@ import java.time.Instant
  */
 class CommittedTransactionMaterializationWorkerSpec extends Specification {
 
-    static final String TXN_ID = 'aaaaaaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee~test-org~test-grp~jade-cli'
+    static final String TXN_ID = 'aaaaaaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee~test-org~test-grp~txn~jade-cli'
     static final String COLLECTION = 'txn'
     // v7 uuids: SNAPSHOT_OLD < COMMIT_MID < SNAPSHOT_NEW lexicographically and temporally
     static final String SNAPSHOT_OLD = '018fd849-9b01-7111-8a01-a1a1a1a1a1a1'
@@ -67,7 +67,7 @@ class CommittedTransactionMaterializationWorkerSpec extends Specification {
 
     private static Map openHeader(Map overrides = [:]) {
         Map base = [
-                _id        : 'bbbbbbbb-0000-7000-8000-000000000000~test-org~test-grp~jade-cli',
+                _id        : 'bbbbbbbb-0000-7000-8000-000000000000~test-org~test-grp~txn~jade-cli',
                 record_type: 'transaction',
                 state      : 'open',
                 opened_at  : Instant.parse('2026-01-01T00:00:00Z'),
@@ -188,7 +188,7 @@ class CommittedTransactionMaterializationWorkerSpec extends Specification {
 
     def 'sweepOnce isolates per-transaction failures so one broken transaction cannot stall the rest'() {
         given: 'two committed headers; the first projection fails'
-        String otherTxnId = 'bbbbbbbb-cccc-7ddd-8eee-ffffffffffff~test-org~test-grp~jade-cli'
+        String otherTxnId = 'bbbbbbbb-cccc-7ddd-8eee-ffffffffffff~test-org~test-grp~txn~jade-cli'
         stubSweepFinds([], [], [committedHeader(), committedHeader(_id: otherTxnId, txn_id: otherTxnId)])
         mongoTemplate.findById(TXN_ID, Map.class, COLLECTION) >> Mono.just(committedHeader())
         mongoTemplate.findById(otherTxnId, Map.class, COLLECTION) >> Mono.just(

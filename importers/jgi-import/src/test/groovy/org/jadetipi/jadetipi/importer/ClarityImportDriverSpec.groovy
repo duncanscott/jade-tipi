@@ -107,11 +107,12 @@ class ClarityImportDriverSpec extends Specification {
         published[0].txn().group().org() == ORG
         published[0].txn().user() == USER
 
-        and: 'the mapped ids are message-UUID form under the drive org/grp'
+        and: 'the mapped ids are message-UUID form (uuid leads) under the drive org/grp'
         String typId = published[1].data().id as String
-        typId.startsWith("${ORG}~${GRP}~")
         typId.split('~').length == 5
-        published[1].uuid() == typId.split('~')[2]
+        typId.split('~')[1] == ORG
+        typId.split('~')[2] == GRP
+        published[1].uuid() == typId.split('~')[0]
 
         and: 'ids are recorded before the drive completes and rows marked done with the txn id'
         1 * queue.recordJdtpId(ImportQueueService.rowId('clarity', TYPE_KEY), { it != null }) >> Mono.empty()
@@ -131,7 +132,7 @@ class ClarityImportDriverSpec extends Specification {
 
     def 'the resolver prefers a recorded id over a fresh mint (resume and cross-batch references)'() {
         given: 'the artifact references the analyte type, imported by an earlier run'
-        String recordedTypeId = "${ORG}~${GRP}~018fd849-9b01-7111-8a01-a1a1a1a1a1a1~typ~clarity_analyte"
+        String recordedTypeId = "018fd849-9b01-7111-8a01-a1a1a1a1a1a1~${ORG}~${GRP}~typ~clarity_analyte"
         queue.pendingInOrder(200) >>> [Flux.just(item(ARTIFACT_KEY, 'artifact', 7)), Flux.empty()]
         queue.jdtpIdOf(ImportQueueService.rowId('clarity', TYPE_KEY)) >> Mono.just(recordedTypeId)
         queue.jdtpIdOf(_) >> Mono.empty()
@@ -226,7 +227,7 @@ class ClarityImportDriverSpec extends Specification {
     def 'an esp container matching an imported clarity container reuses the clarity id, no duplicate create (TASK-071)'() {
         given: 'clarity container 27-279088 already imported — its queue row carries a jdtp_id'
         String espUuid = '019a3ea7-8f4b-771c-9f58-8c833082e9b6'
-        String clarityId = 'jade-test-org~import~018fd849-c0c0-7000-8000-000000000009~loc~clarity_containers_27-279088'
+        String clarityId = '018fd849-c0c0-7000-8000-000000000009~jade-test-org~import~loc~clarity_containers_27-279088'
         ImportQueueItem espItem = new ImportQueueItem(
                 id: ImportQueueService.rowId('esp', espUuid),
                 source: 'esp', key: espUuid, kind: 'esp_entity', state: 'pending', seq: 5)

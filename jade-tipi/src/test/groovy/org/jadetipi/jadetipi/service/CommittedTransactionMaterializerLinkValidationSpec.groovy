@@ -32,12 +32,12 @@ class CommittedTransactionMaterializerLinkValidationSpec extends Specification {
     static final String TXN_ID = 'aaaaaaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee'
     static final String COMMIT_ID = 'COMMIT-001'
 
-    static final String TYP_CONTENTS = 'jade-tipi-org~dev~018fd849-8a01-7111-8a01-818181818181~typ~contents'
-    static final String TYP_BARE = 'jade-tipi-org~dev~018fd849-8a02-7222-8a02-828282828282~typ~container'
-    static final String LOC_PLATE = 'jade-tipi-org~dev~018fd849-8a03-7333-8a03-838383838383~loc~plate_b1'
-    static final String ENT_SAMPLE = 'jade-tipi-org~dev~018fd849-8a04-7444-8a04-848484848484~ent~sample_x1'
-    static final String GRP_TEAM = 'jade-tipi-org~dev~018fd849-8a05-7555-8a05-858585858585~grp~team'
-    static final String LNK_ID = 'jade-tipi-org~dev~018fd849-8a06-7666-8a06-868686868686~lnk~plate_sample'
+    static final String TYP_CONTENTS = '018fd849-8a01-7111-8a01-818181818181~jade-tipi-org~dev~typ~contents'
+    static final String TYP_BARE = '018fd849-8a02-7222-8a02-828282828282~jade-tipi-org~dev~typ~container'
+    static final String LOC_PLATE = '018fd849-8a03-7333-8a03-838383838383~jade-tipi-org~dev~loc~plate_b1'
+    static final String ENT_SAMPLE = '018fd849-8a04-7444-8a04-848484848484~jade-tipi-org~dev~ent~sample_x1'
+    static final String GRP_TEAM = '018fd849-8a05-7555-8a05-858585858585~jade-tipi-org~dev~grp~team'
+    static final String LNK_ID = '018fd849-8a06-7666-8a06-868686868686~jade-tipi-org~dev~lnk~plate_sample'
     static final String MSG_UUID = '018fd849-8a06-7666-8a06-868686868686'
 
     ReactiveMongoTemplate mongoTemplate

@@ -12,12 +12,12 @@
   "collection": "grp",
   "action": "create",
   "data": {
-    "id": "jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-cccccccccccc~grp~analytics",
+    "id": "018fd849-2a4d-7d0d-8d0d-cccccccccccc~jade-tipi-org~dev~grp~analytics",
     "name": "analytics",
     "description": "analytics team",
     "permissions": {
-      "jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~grp~lab_ops": "rw",
-      "jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-bbbbbbbbbbbb~grp~viewers": "r"
+      "018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~jade-tipi-org~dev~grp~lab_ops": "rw",
+      "018fd849-2a4d-7d0d-8d0d-bbbbbbbbbbbb~jade-tipi-org~dev~grp~viewers": "r"
     }
   }
 }

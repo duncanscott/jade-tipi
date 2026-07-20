@@ -13,7 +13,7 @@
   "action": "create",
   "data": {
     "kind": "link_type",
-    "id": "jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents",
+    "id": "018fd849-2a49-7999-8a09-aaaaaaaaaaab~jade-tipi-org~dev~typ~contents",
     "name": "contents",
     "description": "containment relationship between a container location and its contents",
     "left_role": "container",

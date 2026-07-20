@@ -1,5 +1,5 @@
 {
-  "id": "jade-tipi-org~dev~018fd84a-51a7-7e96-8de1-000000000001~typ~container",
+  "id": "018fd84a-51a7-7e96-8de1-000000000001~jade-tipi-org~dev~typ~container",
   "operation": "add_property",
-  "property_id": "jade-tipi-org~dev~018fd84a-51a7-7e96-8de1-000000000001~ppy~barcode"
+  "property_id": "018fd84a-51a7-7e96-8de1-000000000001~jade-tipi-org~dev~ppy~barcode"
 }

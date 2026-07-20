@@ -14,8 +14,8 @@
   "data": {
     "kind": "assignment",
     "object_collection": "ent",
-    "object_id": "jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~plate_a",
-    "property_id": "jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode",
+    "object_id": "018fd849-2a45-7555-8e05-eeeeeeeeeeee~jade-tipi-org~dev~ent~plate_a",
+    "property_id": "018fd849-2a41-7111-8a01-aaaaaaaaaaaa~jade-tipi-org~dev~ppy~barcode",
     "value": {
       "text": "barcode-1"
     }

@@ -327,10 +327,11 @@ class GroupAdminService {
 
     /**
      * Synthesize a world-unique grp id following the object identifier
-     * convention {@code jade-tipi-org~dev~<uuidv7>~grp~<slug>} (TASK-044:
-     * the UUID segment is a time-ordered UUIDv7, not a random v4). Slug is
-     * derived from the group name with non-alphanumerics collapsed to
-     * single dashes and lowercased.
+     * convention {@code <uuidv7>~jade-tipi-org~dev~grp~<slug>} (TASK-044:
+     * the leading UUID segment is a time-ordered UUIDv7, not a random v4,
+     * so ids sort chronologically across orgs and groups). Slug is derived
+     * from the group name with non-alphanumerics collapsed to single
+     * dashes and lowercased.
      */
     private static String synthesizeId(String name) {
         String slug = name == null ? '' : name.toLowerCase(Locale.ROOT)
@@ -339,7 +340,7 @@ class GroupAdminService {
         if (slug.isEmpty()) {
             slug = 'grp'
         }
-        return "jade-tipi-org~dev~${com.github.f4b6a3.uuid.UuidCreator.timeOrderedEpoch}~grp~${slug}"
+        return "${com.github.f4b6a3.uuid.UuidCreator.timeOrderedEpoch}~jade-tipi-org~dev~grp~${slug}"
     }
 
     private static String trimToNull(String value) {

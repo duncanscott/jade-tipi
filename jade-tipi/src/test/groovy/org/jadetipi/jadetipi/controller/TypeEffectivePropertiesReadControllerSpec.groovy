@@ -24,9 +24,9 @@ import spock.lang.Specification
 
 class TypeEffectivePropertiesReadControllerSpec extends Specification {
 
-    static final String TYP_PLATE96 = 'jade-tipi-org~dev~018fd849-2a63-7333-8a03-cccccccccccc~typ~plate_96_well'
-    static final String TYP_CONTAINER = 'jade-tipi-org~dev~018fd849-2a61-7111-8a01-aaaaaaaaaaaa~typ~container'
-    static final String PPY_BARCODE = 'jade-tipi-org~dev~018fd849-2a64-7444-8a04-dddddddddddd~ppy~barcode'
+    static final String TYP_PLATE96 = '018fd849-2a63-7333-8a03-cccccccccccc~jade-tipi-org~dev~typ~plate_96_well'
+    static final String TYP_CONTAINER = '018fd849-2a61-7111-8a01-aaaaaaaaaaaa~jade-tipi-org~dev~typ~container'
+    static final String PPY_BARCODE = '018fd849-2a64-7444-8a04-dddddddddddd~jade-tipi-org~dev~ppy~barcode'
     static final String PATH = '/api/types/{id}/effective-properties'
 
     TypeEffectivePropertiesReadService readService

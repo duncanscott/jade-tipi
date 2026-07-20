@@ -12,7 +12,7 @@ data-only JSON files (the `data` portion of each message; `kli` builds the
 envelope from your session).
 
 Every ID in the step files follows the object identifier convention
-`<org>~<grp>~<uuidv7>~<collection>~<suffix>`: this demo's fixed UUIDv7 is
+`<uuidv7>~<org>~<grp>~<collection>~<suffix>`: this demo's fixed UUIDv7 is
 `018fd84a-51a7-7e96-8de1-000000000001` (the demo transaction's UUID, shared
 by all its roots, with suffixes unique within the transaction).
 
@@ -76,8 +76,8 @@ MongoDB (database `jdtp` for `bootRun`'s default profile):
 
 ```sh
 docker exec jade-tipi-mongo mongosh jdtp --quiet --eval '
-  printjson(db.typ.findOne({_id: "jade-tipi-org~dev~018fd84a-51a7-7e96-8de1-000000000001~typ~plate_96_well"}));
-  printjson(db.loc.findOne({_id: "jade-tipi-org~dev~018fd84a-51a7-7e96-8de1-000000000001~loc~plate_0001"}));
+  printjson(db.typ.findOne({_id: "018fd84a-51a7-7e96-8de1-000000000001~jade-tipi-org~dev~typ~plate_96_well"}));
+  printjson(db.loc.findOne({_id: "018fd84a-51a7-7e96-8de1-000000000001~jade-tipi-org~dev~loc~plate_0001"}));
 '
 ```
 

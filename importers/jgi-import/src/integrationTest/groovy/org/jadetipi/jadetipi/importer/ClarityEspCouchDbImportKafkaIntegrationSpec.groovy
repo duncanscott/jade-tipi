@@ -71,7 +71,7 @@ import java.util.regex.Pattern
  *     --tests '*ClarityEspCouchDbImportKafkaIntegrationSpec*'
  * </pre>
  * Then inspect database {@code jdtp}; the imported roots all start with
- * {@code jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e543}.
+ * {@code 018fd849-c0c0-7000-8a01-c1a141e5e543~jade-tipi-org~dev}.
  */
 @Slf4j
 @SpringBootTest(classes = JadetipiApplication)
@@ -108,7 +108,7 @@ class ClarityEspCouchDbImportKafkaIntegrationSpec extends Specification {
 
     private static final String IMPORT_TXN_UUID = '018fd849-c0c0-7000-8a01-c1a141e5e543'
     private static final String ID_PREFIX = "jade-tipi-org~dev~${IMPORT_TXN_UUID}"
-    private static final String SEED_WRITER_USER = 'jade-tipi-org~dev~genesis~usr~jdtp-admin'
+    private static final String SEED_WRITER_USER = 'genesis~jade-tipi-org~dev~usr~jdtp-admin'
 
     /** The sampled source documents (see clarity-esp-container-mapping.md). */
     private static final String ESP_DB = 'esp-entity'

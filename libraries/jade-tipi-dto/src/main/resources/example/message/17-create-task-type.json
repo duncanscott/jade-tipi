@@ -13,10 +13,10 @@
   "action": "create",
   "data": {
     "kind": "task_type",
-    "id": "jade-tipi-org~dev~018fd849-3c11-7222-8a02-171717171717~typ~dna_pooling_task",
+    "id": "018fd849-3c11-7222-8a02-171717171717~jade-tipi-org~dev~typ~dna_pooling_task",
     "name": "dna_pooling_task",
     "description": "intention to run dna_pooling on a set of input samples",
-    "procedure_type_id": "jade-tipi-org~dev~018fd849-3c10-7111-8a01-161616161616~typ~dna_pooling",
+    "procedure_type_id": "018fd849-3c10-7111-8a01-161616161616~jade-tipi-org~dev~typ~dna_pooling",
     "procedure_name": "dna_pooling"
   }
 }

@@ -13,7 +13,7 @@
   "action": "create",
   "data": {
     "kind": "link_type",
-    "id": "jade-tipi-org~dev~018fd849-3c16-7777-8a07-212121212121~typ~fulfills",
+    "id": "018fd849-3c16-7777-8a07-212121212121~jade-tipi-org~dev~typ~fulfills",
     "name": "fulfills",
     "description": "the performed procedure that fulfilled a task",
     "left_role": "procedure",

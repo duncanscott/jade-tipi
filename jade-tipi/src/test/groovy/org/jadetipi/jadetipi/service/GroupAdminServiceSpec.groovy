@@ -34,9 +34,9 @@ import java.time.Instant
 
 class GroupAdminServiceSpec extends Specification {
 
-    static final String EXISTING_ID = 'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-cccccccccccc~grp~analytics'
-    static final String PEER_RW = 'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~grp~lab_ops'
-    static final String PEER_R = 'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-bbbbbbbbbbbb~grp~viewers'
+    static final String EXISTING_ID = '018fd849-2a4d-7d0d-8d0d-cccccccccccc~jade-tipi-org~dev~grp~analytics'
+    static final String PEER_RW = '018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~jade-tipi-org~dev~grp~lab_ops'
+    static final String PEER_R = '018fd849-2a4d-7d0d-8d0d-bbbbbbbbbbbb~jade-tipi-org~dev~grp~viewers'
 
     ReactiveMongoTemplate mongoTemplate
     GroupAdminService service
@@ -127,12 +127,12 @@ class GroupAdminServiceSpec extends Specification {
         then:
         record != null
         record.id != null
-        record.id.startsWith('jade-tipi-org~dev~')
+        record.id.contains('~jade-tipi-org~dev~')
         record.id.endsWith('~grp~analytics')
         captured['_id'] == record.id
 
-        and: 'the synthesized UUID segment is a version-7 UUID per the object identifier convention'
-        String uuidSegment = record.id.split('~')[2]
+        and: 'the synthesized leading UUID segment is a version-7 UUID per the object identifier convention'
+        String uuidSegment = record.id.split('~')[0]
         uuidSegment ==~ /[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/
     }
 

@@ -33,10 +33,10 @@ class CommittedTransactionMaterializerValueUpdateSpec extends Specification {
     static final String TXN_ID = 'aaaaaaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee'
     static final String COMMIT_ID = 'COMMIT-002'
 
-    static final String TYP_SENSOR = 'jade-tipi-org~dev~018fd849-9b01-7111-8a01-a1a1a1a1a1a1~typ~sensor'
-    static final String TYP_BASE = 'jade-tipi-org~dev~018fd849-9b02-7222-8a02-a2a2a2a2a2a2~typ~device'
-    static final String ENT_PROBE = 'jade-tipi-org~dev~018fd849-9b03-7333-8a03-a3a3a3a3a3a3~ent~probe_1'
-    static final String PPY_READING = 'jade-tipi-org~dev~018fd849-9b04-7444-8a04-a4a4a4a4a4a4~ppy~reading'
+    static final String TYP_SENSOR = '018fd849-9b01-7111-8a01-a1a1a1a1a1a1~jade-tipi-org~dev~typ~sensor'
+    static final String TYP_BASE = '018fd849-9b02-7222-8a02-a2a2a2a2a2a2~jade-tipi-org~dev~typ~device'
+    static final String ENT_PROBE = '018fd849-9b03-7333-8a03-a3a3a3a3a3a3~jade-tipi-org~dev~ent~probe_1'
+    static final String PPY_READING = '018fd849-9b04-7444-8a04-a4a4a4a4a4a4~jade-tipi-org~dev~ppy~reading'
     // v7 uuids: OLD < CURRENT < NEW lexicographically and temporally
     static final String MSG_OLD = '018fd849-9b05-7555-8a05-a5a5a5a5a5a5'
     static final String MSG_CURRENT = '018fd849-9b06-7666-8a06-a6a6a6a6a6a6'

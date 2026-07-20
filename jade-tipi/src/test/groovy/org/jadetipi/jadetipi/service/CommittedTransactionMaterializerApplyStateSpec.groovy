@@ -32,9 +32,9 @@ class CommittedTransactionMaterializerApplyStateSpec extends Specification {
     static final String TXN_ID = 'aaaaaaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee'
     static final String COMMIT_ID = 'COMMIT-001'
 
-    static final String LOC_ID = 'jade-tipi-org~dev~018fd849-7a01-7111-8a01-717171717171~loc~freezer_a'
-    static final String TYP_ID = 'jade-tipi-org~dev~018fd849-7a02-7222-8a02-727272727272~typ~container'
-    static final String PPY_ID = 'jade-tipi-org~dev~018fd849-7a03-7333-8a03-737373737373~ppy~barcode'
+    static final String LOC_ID = '018fd849-7a01-7111-8a01-717171717171~jade-tipi-org~dev~loc~freezer_a'
+    static final String TYP_ID = '018fd849-7a02-7222-8a02-727272727272~jade-tipi-org~dev~typ~container'
+    static final String PPY_ID = '018fd849-7a03-7333-8a03-737373737373~jade-tipi-org~dev~ppy~barcode'
     static final String MSG_LOC = '018fd849-7a04-7444-8a04-747474747474'
     static final String MSG_TYP_UPDATE = '018fd849-7a05-7555-8a05-757575757575'
     static final String MSG_UNSUPPORTED = '018fd849-7a06-7666-8a06-767676767676'

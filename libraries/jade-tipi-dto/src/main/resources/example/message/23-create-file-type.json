@@ -12,7 +12,7 @@
   "collection": "typ",
   "action": "create",
   "data": {
-    "id": "jade-tipi-org~dev~018fd849-3d01-7111-8a01-232323232323~typ~fastq",
+    "id": "018fd849-3d01-7111-8a01-232323232323~jade-tipi-org~dev~typ~fastq",
     "name": "fastq",
     "description": "FASTQ sequencing-reads file"
   }

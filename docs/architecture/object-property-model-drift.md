@@ -366,7 +366,7 @@ The plan builds on these verified current behaviors:
   `message.txn().user()` is discarded at persistence: writer identity exists
   nowhere in MongoDB today, only on the Kafka wire. `org`, `grp`, and `client`
   survive only inside the `txn_id` string
-  (`<uuid>~<org>~<grp>~<client>`), not as queryable fields.
+  (`<uuid>~<org>~<grp>~txn~<client>`), not as queryable fields.
 - `TransactionMessagePersistenceService.appendDataMessage` inserts message
   records into `txn` with `_id = txn_id~msg_uuid` plus `record_type`,
   `txn_id`, `msg_uuid`, `collection`, `action`, `data`, `received_at`, and
@@ -417,7 +417,7 @@ noted in parentheses; all others already exist.
 
 ```json
 {
-  "_id": "<uuid>~<org>~<grp>~<client>",
+  "_id": "<uuid>~<org>~<grp>~txn~<client>",
   "record_type": "transaction",
   "txn_id": "<same as _id>",
   "org": "lbl_gov",
@@ -535,7 +535,7 @@ paths) that explicitly declare it.
 
 #### 8.2.5 `jdtp-admin` genesis contract
 
-- Recommended stable ID: `<instance_org>~<instance_grp>~genesis~usr~jdtp-admin`,
+- Recommended stable ID: `genesis~<instance_org>~<instance_grp>~usr~jdtp-admin`,
   with `instance_org`/`instance_grp` from new application configuration and
   the literal `genesis` segment in the timestamp position marking it as a
   genesis fact rather than a generated ID. Exact convention is director

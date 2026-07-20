@@ -1,7 +1,19 @@
 # JDTP Specification
 
-**Version:** 0.8.0-draft · **Date:** 2026-07-19 · **Status:** Draft for
+**Version:** 0.9.0-draft · **Date:** 2026-07-19 · **Status:** Draft for
 director review
+
+*Changes in 0.9.0: identifiers unify on one leading shape (director
+rulings 2026-07-19). Object IDs lead with the UUID — the segment order
+becomes `<uuidv7>~<org>~<grp>~<collection>~<suffix>`, so identifiers sort
+chronologically across organizations and groups — and transaction IDs
+gain the literal `txn` collection segment
+(`<uuidv7>~<org>~<grp>~txn~<client>`), so EVERY Jade-Tipi ID begins
+`<uuidv7>~<org>~<grp>~<collection>` and the fourth segment names what the
+ID identifies. The suffix additionally admits no leading, multiple, or
+trailing underscores or dashes (`[a-z0-9]+([_-][a-z0-9]+)*`). A breaking
+identifier change: previously materialized stores must be rebuilt (§1.2,
+§2.1).*
 
 *Changes in 0.8.0: the procedure root gains the top-level `inputs` map
 (director-ratified 2026-07-08; TASK-072) — the canonical structured
@@ -205,28 +217,43 @@ including instances of container subtypes such as `plate_96_well`, are
 Every object ID is a world-unique text string:
 
 ```text
-<org>~<grp>~<uuidv7>~<collection>~<suffix>
+<uuidv7>~<org>~<grp>~<collection>~<suffix>
 ```
 
-- `org` and `grp` identify the owning organization and group
-  (`[a-z][a-z0-9_-]*` each). Organizations are responsible for issuing
-  unique names beneath themselves; no central registry is required.
-- The third segment is a **UUID version 7** (RFC 9562): either the creating
-  **transaction's** UUID (all roots in the transaction share it, and the
-  client MUST keep suffixes unique within that transaction) or the creating
-  **message's** UUID (uniqueness is automatic). Both forms are sanctioned.
-  UUIDv7 supplies world-uniqueness plus chronological sortability with no
-  ID server.
+- The **leading** segment is a **UUID version 7** (RFC 9562): either the
+  creating **transaction's** UUID (all roots in the transaction share it,
+  and the client MUST keep suffixes unique within that transaction) or the
+  creating **message's** UUID (uniqueness is automatic). Both forms are
+  sanctioned. UUIDv7 supplies world-uniqueness plus chronological
+  sortability with no ID server — and because it leads the ID, identifiers
+  sort chronologically **across organizations and groups** (director
+  ruling 2026-07-19; the transaction ID convention already led with its
+  UUID).
+- `org` and `grp` (second and third segments) identify the owning
+  organization and group (`[a-z][a-z0-9_-]*` each). Organizations are
+  responsible for issuing unique names beneath themselves; no central
+  registry is required.
 - The fourth segment is the collection abbreviation from §1.1 (three-letter
   forms; `usr` included).
-- The suffix is a human-readable label (`[a-z0-9_-]+` — lowercase letters,
-  digits, underscore, hyphen; no dots); it is **not** the uniqueness
-  carrier.
+- The suffix is a human-readable label over `[a-z0-9_-]` (lowercase
+  letters, digits, underscore, hyphen; no dots) with **no leading,
+  multiple, or trailing underscores or dashes** — structurally,
+  `[a-z0-9]+([_-][a-z0-9]+)*` (director ruling 2026-07-19). It is **not**
+  the uniqueness carrier.
+
+**One leading shape for every ID.** Transaction IDs follow the same
+convention with collection `txn` and the client in the suffix position
+(`<uuidv7>~<org>~<grp>~txn~<client>`, §2.1). Every Jade-Tipi identifier —
+object or transaction — therefore begins
+`<uuidv7>~<org>~<grp>~<collection>`, and the fourth segment always says
+what kind of thing the ID names. An object created with the
+transaction-UUID form shares its first three segments verbatim with its
+creating transaction's ID.
 
 **Sanctioned exceptions.**
 
 - The literal `genesis` may appear in the UUID position only in the
-  reserved bootstrap user ID `<org>~<grp>~genesis~usr~jdtp-admin`, which
+  reserved bootstrap user ID `genesis~<org>~<grp>~usr~jdtp-admin`, which
   must be constructible before any transaction exists.
 - A **composite** ID — two conforming IDs joined
   (`<object_id>~<property_id>`) — is tolerated on deprecated legacy
@@ -486,10 +513,13 @@ declarations (a file is typically the output of a `prc` via
 ### 2.1 Transaction identity [Normative]
 
 A transaction is identified by
-`<uuidv7>~<org>~<grp>~<client>`. The UUIDv7 provides uniqueness and
-chronological sortability; `org`/`grp` name the writing group; `client`
-names the submitting application. Transactions are opened, then carry data
-messages, then commit (or roll back).
+`<uuidv7>~<org>~<grp>~txn~<client>`. The UUIDv7 provides uniqueness and
+chronological sortability; `org`/`grp` name the writing group; the literal
+`txn` collection segment marks the ID as a transaction ID — giving every
+Jade-Tipi ID the same leading shape,
+`<uuidv7>~<org>~<grp>~<collection>~<tail>` (§1.2) — and `client` (in the
+suffix position) names the submitting application. Transactions are
+opened, then carry data messages, then commit (or roll back).
 
 ### 2.2 Message envelope [Normative]
 

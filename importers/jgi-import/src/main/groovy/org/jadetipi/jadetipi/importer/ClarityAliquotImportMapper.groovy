@@ -127,9 +127,18 @@ class ClarityAliquotImportMapper {
     /** Kept for the original slice's fixture (now just one of the 51). */
     static final String KEY_TYPE_PROCEDURE_AC = processTypeKey('AC Sample Aliquot Creation')
 
-    /** Convention-conformant id suffix for any import key. */
+    /**
+     * Convention-conformant id suffix for any import key: lowercase, invalid
+     * characters to underscores, runs of separators collapsed to one, none
+     * leading or trailing (the suffix rule — no leading, multiple, or
+     * trailing underscores/dashes).
+     */
     static String suffixFor(String key) {
-        return 'clarity_' + key.toLowerCase().replaceAll('[^a-z0-9_-]', '_')
+        String s = key.toLowerCase()
+                .replaceAll('[^a-z0-9_-]', '_')
+                .replaceAll('[_-]{2,}', '_')
+                .replaceAll('^[_-]+|[_-]+$', '')
+        return 'clarity_' + s
     }
 
     /** Lowercase snake name for a clarity process type display name. */

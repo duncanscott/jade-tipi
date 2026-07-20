@@ -25,9 +25,9 @@ import spock.lang.Specification
  */
 class LocationBrowseReadServiceSpec extends Specification {
 
-    static final String LOC_A = 'jade-tipi-org~dev~018fd849-6a01-7111-8a01-616161616161~loc~freezer_a'
-    static final String LOC_B = 'jade-tipi-org~dev~018fd849-6a02-7222-8a02-626262626262~loc~plate_0001'
-    static final String TYP_ID = 'jade-tipi-org~dev~018fd849-6a03-7333-8a03-636363636363~typ~container'
+    static final String LOC_A = '018fd849-6a01-7111-8a01-616161616161~jade-tipi-org~dev~loc~freezer_a'
+    static final String LOC_B = '018fd849-6a02-7222-8a02-626262626262~jade-tipi-org~dev~loc~plate_0001'
+    static final String TYP_ID = '018fd849-6a03-7333-8a03-636363636363~jade-tipi-org~dev~typ~container'
 
     ReactiveMongoTemplate mongoTemplate
     LocationBrowseReadService service

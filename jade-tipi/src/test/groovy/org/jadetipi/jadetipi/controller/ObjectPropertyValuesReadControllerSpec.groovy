@@ -30,9 +30,9 @@ import spock.lang.Specification
  */
 class ObjectPropertyValuesReadControllerSpec extends Specification {
 
-    static final String ID_PREFIX = 'jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee'
+    static final String ID_PREFIX = '018fd849-2a45-7555-8e05-eeeeeeeeeeee~jade-tipi-org~dev'
     static final String ENT_ID = "${ID_PREFIX}~ent~plate_a"
-    static final String PPY_BARCODE = 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
+    static final String PPY_BARCODE = '018fd849-2a41-7111-8a01-aaaaaaaaaaaa~jade-tipi-org~dev~ppy~barcode'
     static final String PATH = '/api/objects/{id}/property-values'
 
     ObjectPropertyValuesReadService readService
@@ -55,7 +55,7 @@ class ObjectPropertyValuesReadControllerSpec extends Specification {
         return new ObjectPropertyValuesRecord(
                 objectId: objectId,
                 collection: collection,
-                typeId: 'jade-tipi-org~dev~018fd849-2a44-7444-8d04-dddddddddddd~typ~plate_96',
+                typeId: '018fd849-2a44-7444-8d04-dddddddddddd~jade-tipi-org~dev~typ~plate_96',
                 properties: [:],
                 links: [:],
                 provenance: [commit_id: '018fd849-2a46-7666-8f06-ffffffffffff'],

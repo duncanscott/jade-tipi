@@ -18,7 +18,7 @@ test.describe('Containers view', () => {
   });
 
   test('container detail page requires authentication', async ({ page }) => {
-    await page.goto('/containers/jade-tipi-org~dev~018fd84a-51a7-7e96-8de1-000000000001~loc~plate_0001');
+    await page.goto('/containers/018fd84a-51a7-7e96-8de1-000000000001~jade-tipi-org~dev~loc~plate_0001');
 
     await expect(page.getByRole('heading', { name: 'Sign in to view containers' })).toBeVisible();
   });

@@ -95,7 +95,7 @@ import java.util.regex.Pattern
  * {@code JADETIPI_REVIEW_SEED_MONGO_DATABASE}, when set) collections
  * {@code loc}, {@code lnk}, {@code ent}, {@code typ}, and {@code ppy} in
  * Mongo Express at {@code http://localhost:8081}. The review roots all
- * start with {@code jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e501}.
+ * start with {@code 018fd849-c0c0-7000-8a01-c1a141e5e501~jade-tipi-org~dev}.
  */
 @Slf4j
 @SpringBootTest(classes = JadetipiApplication)
@@ -127,7 +127,7 @@ class ClarityEspContainerReviewSeedKafkaIntegrationSpec extends Specification {
     private static final String ID_PREFIX = "jade-tipi-org~dev~${REVIEW_TXN_UUID}"
 
     /** TASK-039 bootstrap identity: the seed is a system-authored transaction. */
-    private static final String SEED_WRITER_USER = 'jade-tipi-org~dev~genesis~usr~jdtp-admin'
+    private static final String SEED_WRITER_USER = 'genesis~jade-tipi-org~dev~usr~jdtp-admin'
 
     private static final String PPY_NAME_ID = "${ID_PREFIX}~ppy~name"
     private static final String PPY_BARCODE_ID = "${ID_PREFIX}~ppy~barcode"

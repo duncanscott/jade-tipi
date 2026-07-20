@@ -34,7 +34,7 @@ class ClarityAliquotImportMapperSpec extends Specification {
 
     private BiFunction<String, String, String> idFor = { String key, String collection ->
         return minted.computeIfAbsent(key, {
-            "jade-itest-org~import~018fd849-9a01-7111-8a01-919191919191~${collection}~" +
+            "018fd849-9a01-7111-8a01-919191919191~jade-itest-org~import~${collection}~" +
                     ClarityAliquotImportMapper.suffixFor(key)
         })
     } as BiFunction<String, String, String>

@@ -13,7 +13,7 @@
   "action": "create",
   "data": {
     "kind": "link_type",
-    "id": "jade-tipi-org~dev~018fd849-3c18-7999-8a09-222222222222~typ~produced_by",
+    "id": "018fd849-3c18-7999-8a09-222222222222~jade-tipi-org~dev~typ~produced_by",
     "name": "produced_by",
     "description": "an output ent and the performed procedure that created it",
     "left_role": "output",

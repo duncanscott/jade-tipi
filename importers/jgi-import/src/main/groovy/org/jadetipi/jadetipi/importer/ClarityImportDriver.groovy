@@ -34,7 +34,7 @@ import java.util.function.BiFunction
  * own mappers, and ids resolve within source-scoped namespaces.
  *
  * <p><b>Ids and resume.</b> Object ids are message-UUID form
- * ({@code <org>~<grp>~<uuid>~<collection>~<suffix>}, plain-String concat —
+ * ({@code <uuid>~<org>~<grp>~<collection>~<suffix>}, plain-String concat —
  * a GString would serialize as a JSON object). The resolver consults, in
  * order: this run's minted ids, the queue row's recorded {@code jdtp_id}
  * (the cross-batch/cross-run mechanism), then mints fresh and records it
@@ -110,7 +110,7 @@ class ClarityImportDriver {
                         ? EspEntityImportMapper.suffixFor(key)
                         : ClarityAliquotImportMapper.suffixFor(key)
                 String id = recorded ?:
-                        (org + '~' + grp + '~' + UuidCreator.timeOrderedEpoch.toString() +
+                        (UuidCreator.timeOrderedEpoch.toString() + '~' + org + '~' + grp +
                                 '~' + collection + '~' + suffix)
                 minted[cacheKey] = id
                 if (recorded == null) {
@@ -185,7 +185,7 @@ class ClarityImportDriver {
                 boolean rootCreate = action == Action.CREATE && dataId != null &&
                         'assignment' != m.data.kind
                 String uuid = rootCreate
-                        ? dataId.split('~')[2]
+                        ? dataId.split('~')[0]   // uuid leads the id (uuid~org~grp~collection~suffix)
                         : UuidCreator.timeOrderedEpoch.toString()
                 if (rootCreate && !seenRootUuids.add(uuid)) {
                     return

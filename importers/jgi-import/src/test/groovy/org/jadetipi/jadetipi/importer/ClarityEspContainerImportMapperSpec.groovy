@@ -22,7 +22,7 @@ import spock.lang.Specification
  */
 class ClarityEspContainerImportMapperSpec extends Specification {
 
-    static final String PREFIX = 'jade-tipi-org~dev~018fd84a-1109-7000-8a01-000000000043'
+    static final String PREFIX = '018fd84a-1109-7000-8a01-000000000043~jade-tipi-org~dev'
     static final String PPY_NAME = "${PREFIX}~ppy~name"
     static final String PPY_BARCODE = "${PREFIX}~ppy~barcode"
     static final String TYP_CONTENTS = "${PREFIX}~typ~contents"

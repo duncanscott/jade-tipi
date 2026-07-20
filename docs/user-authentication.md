@@ -140,7 +140,7 @@ root at startup as an idempotent insert-if-absent (`UsrGenesisService`,
 gated by `jadetipi.genesis.enabled`, default `true`). The ID is
 `<org>~<grp>~genesis~usr~jdtp-admin`, with org/grp from
 `jadetipi.instance.org` / `jadetipi.instance.grp` (local development
-default: `jade-tipi-org~dev~genesis~usr~jdtp-admin`). The root is written
+default: `genesis~jade-tipi-org~dev~usr~jdtp-admin`). The root is written
 directly with the `genesis~jdtp-admin` provenance sentinel under
 `_head.provenance.txn_id`/`commit_id`, mirroring the accepted
 `admin~<uuid>` sentinel pattern; its creation is a genesis storage fact,

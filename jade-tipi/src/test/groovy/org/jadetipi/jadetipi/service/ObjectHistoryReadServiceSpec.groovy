@@ -29,9 +29,9 @@ import java.time.Instant
  */
 class ObjectHistoryReadServiceSpec extends Specification {
 
-    static final String ENT_ID = 'jade-tipi-org~dev~018fd849-9b03-7333-8a03-a3a3a3a3a3a3~ent~probe_1'
-    static final String PPY_READING = 'jade-tipi-org~dev~018fd849-9b04-7444-8a04-a4a4a4a4a4a4~ppy~reading'
-    static final String PPY_ORPHAN = 'jade-tipi-org~dev~018fd849-9b05-7555-8a05-a5a5a5a5a5a5~ppy~orphan'
+    static final String ENT_ID = '018fd849-9b03-7333-8a03-a3a3a3a3a3a3~jade-tipi-org~dev~ent~probe_1'
+    static final String PPY_READING = '018fd849-9b04-7444-8a04-a4a4a4a4a4a4~jade-tipi-org~dev~ppy~reading'
+    static final String PPY_ORPHAN = '018fd849-9b05-7555-8a05-a5a5a5a5a5a5~jade-tipi-org~dev~ppy~orphan'
     static final String MSG_1 = '018fd849-9b06-7666-8a06-a6a6a6a6a6a6'
     static final String MSG_2 = '018fd849-9b07-7777-8a07-a7a7a7a7a7a7'
 

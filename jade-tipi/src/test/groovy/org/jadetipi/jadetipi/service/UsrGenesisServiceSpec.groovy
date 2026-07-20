@@ -23,7 +23,7 @@ class UsrGenesisServiceSpec extends Specification {
 
     static final String ORG = 'jade-tipi-org'
     static final String GRP = 'dev'
-    static final String EXPECTED_ID = 'jade-tipi-org~dev~genesis~usr~jdtp-admin'
+    static final String EXPECTED_ID = 'genesis~jade-tipi-org~dev~usr~jdtp-admin'
     static final String COLLECTION = 'usr'
 
     ReactiveMongoTemplate mongoTemplate
@@ -40,7 +40,7 @@ class UsrGenesisServiceSpec extends Specification {
 
         and: 'a different instance org/grp changes only the prefix'
         new UsrGenesisService(mongoTemplate, 'lbl_gov', 'jgi_pps', true).bootstrapUsrId() ==
-                'lbl_gov~jgi_pps~genesis~usr~jdtp-admin'
+                'genesis~lbl_gov~jgi_pps~usr~jdtp-admin'
     }
 
     def 'ensure inserts the bootstrap usr root when absent'() {

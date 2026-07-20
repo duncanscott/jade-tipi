@@ -12,9 +12,9 @@
   "collection": "typ",
   "action": "create",
   "data": {
-    "id": "jade-tipi-org~dev~018fd849-2a58-7888-8a08-abababababab~typ~plate",
+    "id": "018fd849-2a58-7888-8a08-abababababab~jade-tipi-org~dev~typ~plate",
     "name": "plate",
     "description": "sample plate container",
-    "parent_type_id": "jade-tipi-org~dev~018fd849-2a57-7777-8a07-cdcdcdcdcdcd~typ~container"
+    "parent_type_id": "018fd849-2a57-7777-8a07-cdcdcdcdcdcd~jade-tipi-org~dev~typ~container"
   }
 }

@@ -23,21 +23,21 @@ import java.time.Instant
 class ContentsLinkReadServiceSpec extends Specification {
 
     static final String CONTENTS_TYPE_ID =
-            'jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents'
+            '018fd849-2a49-7999-8a09-aaaaaaaaaaab~jade-tipi-org~dev~typ~contents'
     static final String CONTENTS_TYPE_ID_ALT =
-            'jade-tipi-org~dev~018fd849-2b00-7000-8000-000000000000~typ~contents'
+            '018fd849-2b00-7000-8000-000000000000~jade-tipi-org~dev~typ~contents'
 
     static final String CONTAINER_ID =
-            'jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~plate_b1'
+            '018fd849-2a47-7777-8f01-aaaaaaaaaaaa~jade-tipi-org~dev~loc~plate_b1'
     static final String OBJECT_ID =
-            'jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~sample_x1'
+            '018fd849-2a45-7555-8e05-eeeeeeeeeeee~jade-tipi-org~dev~ent~sample_x1'
 
     static final String LNK_ID_A =
-            'jade-tipi-org~dev~018fd849-2a4a-7aaa-8b0a-aaaaaaaaaaaa~lnk~plate_b1_sample_x1'
+            '018fd849-2a4a-7aaa-8b0a-aaaaaaaaaaaa~jade-tipi-org~dev~lnk~plate_b1_sample_x1'
     static final String LNK_ID_B =
-            'jade-tipi-org~dev~018fd849-2a4b-7bbb-8b0b-bbbbbbbbbbbb~lnk~plate_b1_sample_y1'
+            '018fd849-2a4b-7bbb-8b0b-bbbbbbbbbbbb~jade-tipi-org~dev~lnk~plate_b1_sample_y1'
     static final String LNK_ID_C =
-            'jade-tipi-org~dev~018fd849-2a4c-7ccc-8b0c-cccccccccccc~lnk~plate_b1_sample_z1'
+            '018fd849-2a4c-7ccc-8b0c-cccccccccccc~jade-tipi-org~dev~lnk~plate_b1_sample_z1'
 
     ReactiveMongoTemplate mongoTemplate
     ContentsLinkReadService service
@@ -261,7 +261,7 @@ class ContentsLinkReadServiceSpec extends Specification {
     def 'findContents returns a lnk verbatim even when its right endpoint string would not resolve in loc or ent'() {
         given:
         mongoTemplate.find(_ as Query, Map.class, 'typ') >> Flux.just(typRow(CONTENTS_TYPE_ID))
-        Map lnk = lnkRow(LNK_ID_A, CONTAINER_ID, 'jade-tipi-org~dev~018fd849-9999-7999-8999-999999999999~ent~not_yet_materialized')
+        Map lnk = lnkRow(LNK_ID_A, CONTAINER_ID, '018fd849-9999-7999-8999-999999999999~jade-tipi-org~dev~ent~not_yet_materialized')
         mongoTemplate.find(_ as Query, Map.class, 'lnk') >> Flux.just(lnk)
 
         when:
@@ -269,7 +269,7 @@ class ContentsLinkReadServiceSpec extends Specification {
 
         then:
         results.size() == 1
-        results[0].right == 'jade-tipi-org~dev~018fd849-9999-7999-8999-999999999999~ent~not_yet_materialized'
+        results[0].right == '018fd849-9999-7999-8999-999999999999~jade-tipi-org~dev~ent~not_yet_materialized'
 
         and: 'the reader does not attempt endpoint resolution against loc or ent'
         0 * mongoTemplate.find(_, _, 'loc')
@@ -345,7 +345,7 @@ class ContentsLinkReadServiceSpec extends Specification {
         given:
         mongoTemplate.find(_ as Query, Map.class, 'typ') >> Flux.just(typRow(CONTENTS_TYPE_ID))
         String leftLocId = CONTAINER_ID
-        String leftOtherId = 'jade-tipi-org~dev~018fd849-7777-7777-8777-777777777777~loc~freezer_a'
+        String leftOtherId = '018fd849-7777-7777-8777-777777777777~jade-tipi-org~dev~loc~freezer_a'
         mongoTemplate.find(_ as Query, Map.class, 'lnk') >> Flux.just(
                 lnkRow(LNK_ID_A, leftLocId, OBJECT_ID),
                 lnkRow(LNK_ID_B, leftOtherId, OBJECT_ID)

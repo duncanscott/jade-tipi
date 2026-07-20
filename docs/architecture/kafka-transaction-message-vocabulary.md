@@ -58,7 +58,7 @@ convention (TASK-044, restoring the 2026-02-02 Kafka design decision to use
 UUID version 7 for all ID generation):
 
 ```text
-<org>~<grp>~<uuidv7>~<collection>~<suffix>
+<uuidv7>~<org>~<grp>~<collection>~<suffix>
 ```
 
 - The UUIDv7 segment is either the creating transaction's UUID (the
@@ -69,7 +69,7 @@ UUID version 7 for all ID generation):
 - The `<collection>` segment is the target collection abbreviation; the
   `<suffix>` is a human-readable label and is not the uniqueness carrier.
 - The single sanctioned non-UUID segment is the literal `genesis` in the
-  reserved bootstrap `usr` ID (`...~genesis~usr~jdtp-admin`), which must be
+  reserved bootstrap `usr` ID (`genesis~...~usr~jdtp-admin`), which must be
   constructible before any transaction exists.
 - Legacy composite assignment IDs (`<object_id>~<property_id>`, ten
   segments) must conform in both halves; they retire with the
@@ -92,8 +92,8 @@ envelope:
   "collection": "loc",
   "action": "create",
   "data": {
-    "id": "jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~freezer_01",
-    "type_id": "jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~freezer",
+    "id": "018fd849-2a47-7777-8f01-aaaaaaaaaaaa~jade-tipi-org~dev~loc~freezer_01",
+    "type_id": "018fd849-2a49-7999-8a09-aaaaaaaaaaab~jade-tipi-org~dev~typ~freezer",
     "properties": {
       "name": "Freezer 01",
       "description": "Minus 80 freezer in room 214"
@@ -248,7 +248,7 @@ Current implementation note (TASK-039): the backend ensures this root at
 startup with an idempotent insert-if-absent (`UsrGenesisService`, gated by
 `jadetipi.genesis.enabled`, default `true`). The ID is
 `<jadetipi.instance.org>~<jadetipi.instance.grp>~genesis~usr~jdtp-admin`
-(local development default `jade-tipi-org~dev~genesis~usr~jdtp-admin`), and
+(local development default `genesis~jade-tipi-org~dev~usr~jdtp-admin`), and
 `_head.provenance.txn_id`/`commit_id` carry the `genesis~jdtp-admin`
 sentinel, mirroring the accepted `admin~<uuid>` sentinel. The bootstrap root
 carries no external identity keys, so identity resolution can never match
@@ -558,9 +558,9 @@ pointer:
   "action": "create",
   "data": {
     "kind": "task_type",
-    "id": "jade-tipi-org~dev~018fd849-3c11-7222-8a02-171717171717~typ~dna_pooling_task",
+    "id": "018fd849-3c11-7222-8a02-171717171717~jade-tipi-org~dev~typ~dna_pooling_task",
     "name": "dna_pooling_task",
-    "procedure_type_id": "jade-tipi-org~dev~018fd849-3c10-7111-8a01-161616161616~typ~dna_pooling",
+    "procedure_type_id": "018fd849-3c10-7111-8a01-161616161616~jade-tipi-org~dev~typ~dna_pooling",
     "procedure_name": "dna_pooling"
   }
 }
@@ -580,8 +580,8 @@ hoisted to the top level of the root document — parallel to `lnk`'s
   "collection": "prc",
   "action": "create",
   "data": {
-    "id": "jade-tipi-org~dev~018fd849-3c15-7666-8a06-202020202020~prc~pool_run_1",
-    "type_id": "jade-tipi-org~dev~018fd849-3c10-7111-8a01-161616161616~typ~dna_pooling",
+    "id": "018fd849-3c15-7666-8a06-202020202020~jade-tipi-org~dev~prc~pool_run_1",
+    "type_id": "018fd849-3c10-7111-8a01-161616161616~jade-tipi-org~dev~typ~dna_pooling",
     "name": "pool_run_1",
     "output_input": {
       "<output id>": {
@@ -638,8 +638,8 @@ object-targeted property values:
   "collection": "fil",
   "action": "create",
   "data": {
-    "id": "jade-tipi-org~dev~018fd849-3d04-7444-8a04-262626262626~fil~run42_r1_fastq",
-    "type_id": "jade-tipi-org~dev~018fd849-3d01-7111-8a01-232323232323~typ~fastq",
+    "id": "018fd849-3d04-7444-8a04-262626262626~jade-tipi-org~dev~fil~run42_r1_fastq",
+    "type_id": "018fd849-3d01-7111-8a01-232323232323~jade-tipi-org~dev~typ~fastq",
     "name": "run42_r1.fastq",
     "description": "forward reads for sequencing run 42"
   }
@@ -680,12 +680,12 @@ Keycloak/ORCID claims.
   "collection": "grp",
   "action": "create",
   "data": {
-    "id": "jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-cccccccccccc~grp~analytics",
+    "id": "018fd849-2a4d-7d0d-8d0d-cccccccccccc~jade-tipi-org~dev~grp~analytics",
     "name": "analytics",
     "description": "analytics team",
     "permissions": {
-      "jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~grp~lab_ops": "rw",
-      "jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-bbbbbbbbbbbb~grp~viewers": "r"
+      "018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~jade-tipi-org~dev~grp~lab_ops": "rw",
+      "018fd849-2a4d-7d0d-8d0d-bbbbbbbbbbbb~jade-tipi-org~dev~grp~viewers": "r"
     }
   }
 }

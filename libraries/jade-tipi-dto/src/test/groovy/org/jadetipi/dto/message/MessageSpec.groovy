@@ -248,7 +248,7 @@ class MessageSpec extends Specification {
                 Collection.LOCATION,
                 Action.CREATE,
                 [
-                        id: 'jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~freezer_a',
+                        id: '018fd849-2a47-7777-8f01-aaaaaaaaaaaa~jade-tipi-org~dev~loc~freezer_a',
                         name: 'freezer_a'
                 ]
         )
@@ -331,7 +331,7 @@ class MessageSpec extends Specification {
 
         and: 'data.id is the materialized object id; type_id is omitted on this minimal example'
         Map data = message.data()
-        data.id == 'jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~freezer_a'
+        data.id == '018fd849-2a47-7777-8f01-aaaaaaaaaaaa~jade-tipi-org~dev~loc~freezer_a'
         !data.containsKey('type_id')
 
         and: 'human-authored properties live under data.properties, not at the data root'
@@ -359,7 +359,7 @@ class MessageSpec extends Specification {
         and:
         Map data = message.data()
         data.kind == 'link_type'
-        data.id == 'jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents'
+        data.id == '018fd849-2a49-7999-8a09-aaaaaaaaaaab~jade-tipi-org~dev~typ~contents'
         data.name == 'contents'
         data.left_role == 'container'
         data.right_role == 'content'
@@ -382,15 +382,15 @@ class MessageSpec extends Specification {
 
         and:
         Map data = message.data()
-        data.id == 'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-cccccccccccc~grp~analytics'
+        data.id == '018fd849-2a4d-7d0d-8d0d-cccccccccccc~jade-tipi-org~dev~grp~analytics'
         data.name == 'analytics'
         data.description == 'analytics team'
 
         and: 'permissions is a map whose keys are peer grp ids and whose values are exactly rw or r'
         Map permissions = data.permissions as Map
         permissions.size() == 2
-        permissions['jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~grp~lab_ops'] == 'rw'
-        permissions['jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-bbbbbbbbbbbb~grp~viewers'] == 'r'
+        permissions['018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~jade-tipi-org~dev~grp~lab_ops'] == 'rw'
+        permissions['018fd849-2a4d-7d0d-8d0d-bbbbbbbbbbbb~jade-tipi-org~dev~grp~viewers'] == 'r'
     }
 
     def "schema rejects a grp create whose permissions value is not 'rw' or 'r'"() {
@@ -406,10 +406,10 @@ class MessageSpec extends Specification {
                 Collection.GROUP,
                 Action.CREATE,
                 [
-                        id         : 'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-cccccccccccc~grp~analytics',
+                        id         : '018fd849-2a4d-7d0d-8d0d-cccccccccccc~jade-tipi-org~dev~grp~analytics',
                         name       : 'analytics',
                         permissions: [
-                                'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~grp~lab_ops': 'admin'
+                                '018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~jade-tipi-org~dev~grp~lab_ops': 'admin'
                         ]
                 ]
         )
@@ -437,8 +437,8 @@ class MessageSpec extends Specification {
                 Collection.LOCATION,
                 Action.CREATE,
                 [
-                        id                                                             : 'jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~freezer_a',
-                        'jade-tipi-org~dev~018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~grp~x': 'rw'
+                        id                                                             : '018fd849-2a47-7777-8f01-aaaaaaaaaaaa~jade-tipi-org~dev~loc~freezer_a',
+                        '018fd849-2a4d-7d0d-8d0d-aaaaaaaaaaaa~jade-tipi-org~dev~grp~x': 'rw'
                 ]
         )
 
@@ -488,7 +488,7 @@ class MessageSpec extends Specification {
 
         and: 'data.id is the materialized entity-type object id ending with the ~typ~ segment'
         Map data = message.data()
-        data.id == 'jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~typ~plate_96'
+        data.id == '018fd849-2a43-7333-8c03-cccccccccccc~jade-tipi-org~dev~typ~plate_96'
 
         and: 'human-authored facts live flat under data, with no link-type kind discriminator and no data.links block'
         data.name == 'plate_96'
@@ -513,8 +513,8 @@ class MessageSpec extends Specification {
 
         and: 'data.id is the materialized entity object id; data.type_id references the entity type'
         Map data = message.data()
-        data.id == 'jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~plate_a'
-        data.type_id == 'jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~typ~plate_96'
+        data.id == '018fd849-2a45-7555-8e05-eeeeeeeeeeee~jade-tipi-org~dev~ent~plate_a'
+        data.type_id == '018fd849-2a43-7333-8c03-cccccccccccc~jade-tipi-org~dev~typ~plate_96'
 
         and: 'data.properties and data.links are present and explicitly empty on a simple create'
         data.properties == [:]
@@ -570,13 +570,13 @@ class MessageSpec extends Specification {
 
         and: 'data.id targets the existing bare entity-type root by id'
         Map data = message.data()
-        data.id == 'jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~typ~plate_96'
+        data.id == '018fd849-2a43-7333-8c03-cccccccccccc~jade-tipi-org~dev~typ~plate_96'
 
         and: 'data.operation names the bounded supported variant'
         data.operation == 'add_property'
 
         and: 'data.property_id references the property-definition by id; data.required carries the wire-shape boolean'
-        data.property_id == 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
+        data.property_id == '018fd849-2a41-7111-8a01-aaaaaaaaaaaa~jade-tipi-org~dev~ppy~barcode'
         data.required == true
 
         and: 'no other facts leak onto the data root next to id, operation, property_id, and required'
@@ -596,13 +596,13 @@ class MessageSpec extends Specification {
 
         and: 'data.id targets the same bare entity-type root as 05'
         Map data = message.data()
-        data.id == 'jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~typ~plate_96'
+        data.id == '018fd849-2a43-7333-8c03-cccccccccccc~jade-tipi-org~dev~typ~plate_96'
 
         and: 'data.operation names the bounded supported variant'
         data.operation == 'add_property'
 
         and: 'data.property_id references the numeric property-definition; required carries the wire-shape false'
-        data.property_id == 'jade-tipi-org~dev~018fd849-2a42-7222-8b02-bbbbbbbbbbbb~ppy~volume'
+        data.property_id == '018fd849-2a42-7222-8b02-bbbbbbbbbbbb~jade-tipi-org~dev~ppy~volume'
         data.required == false
 
         and: 'no other facts leak onto the data root next to id, operation, property_id, and required'
@@ -795,8 +795,8 @@ class MessageSpec extends Specification {
 
         and: 'the root facts are the id, the procedure type, a name, and output_input'
         Map data = message.data()
-        data.id == 'jade-tipi-org~dev~018fd849-3c15-7666-8a06-202020202020~prc~pool_run_1'
-        data.type_id == 'jade-tipi-org~dev~018fd849-3c10-7111-8a01-161616161616~typ~dna_pooling'
+        data.id == '018fd849-3c15-7666-8a06-202020202020~jade-tipi-org~dev~prc~pool_run_1'
+        data.type_id == '018fd849-3c10-7111-8a01-161616161616~jade-tipi-org~dev~typ~dna_pooling'
         data.keySet() == ['id', 'type_id', 'name', 'output_input'] as Set
 
         and: 'output_input maps each output ent to its inputs and open contribution objects'
@@ -891,10 +891,10 @@ class MessageSpec extends Specification {
               "collection": "prc",
               "action": "create",
               "data": {
-                "id": "jade-tipi-org~dev~018fd849-3c15-7666-8a06-202020202020~prc~pool_run_1",
+                "id": "018fd849-3c15-7666-8a06-202020202020~jade-tipi-org~dev~prc~pool_run_1",
                 "output_input": {
-                  "jade-tipi-org~dev~018fd849-3c22-7ccc-8a0c-c3c3c3c3c3c3~ent~pool_1": {
-                    "jade-tipi-org~dev~018fd849-3c20-7aaa-8a0a-a1a1a1a1a1a1~ent~sample_a": 5.0
+                  "018fd849-3c22-7ccc-8a0c-c3c3c3c3c3c3~jade-tipi-org~dev~ent~pool_1": {
+                    "018fd849-3c20-7aaa-8a0a-a1a1a1a1a1a1~jade-tipi-org~dev~ent~sample_a": 5.0
                   }
                 }
               }
@@ -923,13 +923,13 @@ class MessageSpec extends Specification {
               "collection": "prc",
               "action": "create",
               "data": {
-                "id": "jade-tipi-org~dev~018fd849-3c15-7666-8a06-202020202020~prc~pool_run_1",
-                "type_id": "jade-tipi-org~dev~018fd849-3c10-7111-8a01-161616161616~typ~dna_pooling",
+                "id": "018fd849-3c15-7666-8a06-202020202020~jade-tipi-org~dev~prc~pool_run_1",
+                "type_id": "018fd849-3c10-7111-8a01-161616161616~jade-tipi-org~dev~typ~dna_pooling",
                 "inputs": {
-                  "jade-tipi-org~dev~018fd849-3c20-7aaa-8a0a-a1a1a1a1a1a1~ent~lib_a": {
-                    "task_id": "jade-tipi-org~dev~018fd849-3c31-7bbb-8a1b-b2b2b2b2b2b2~tsk~sow_a"
+                  "018fd849-3c20-7aaa-8a0a-a1a1a1a1a1a1~jade-tipi-org~dev~ent~lib_a": {
+                    "task_id": "018fd849-3c31-7bbb-8a1b-b2b2b2b2b2b2~jade-tipi-org~dev~tsk~sow_a"
                   },
-                  "jade-tipi-org~dev~018fd849-3c21-7bbb-8a0b-b2b2b2b2b2b2~ent~lib_b": {}
+                  "018fd849-3c21-7bbb-8a0b-b2b2b2b2b2b2~jade-tipi-org~dev~ent~lib_b": {}
                 }
               }
             }
@@ -966,9 +966,9 @@ class MessageSpec extends Specification {
               "collection": "prc",
               "action": "create",
               "data": {
-                "id": "jade-tipi-org~dev~018fd849-3c15-7666-8a06-202020202020~prc~pool_run_1",
+                "id": "018fd849-3c15-7666-8a06-202020202020~jade-tipi-org~dev~prc~pool_run_1",
                 "inputs": {
-                  "jade-tipi-org~dev~018fd849-3c20-7aaa-8a0a-a1a1a1a1a1a1~ent~lib_a": "sow_a"
+                  "018fd849-3c20-7aaa-8a0a-a1a1a1a1a1a1~jade-tipi-org~dev~ent~lib_a": "sow_a"
                 }
               }
             }
@@ -996,10 +996,10 @@ class MessageSpec extends Specification {
               "collection": "ent",
               "action": "create",
               "data": {
-                "id": "jade-tipi-org~dev~018fd849-3c23-7ddd-8a0d-d4d4d4d4d4d4~ent~pool_1",
+                "id": "018fd849-3c23-7ddd-8a0d-d4d4d4d4d4d4~jade-tipi-org~dev~ent~pool_1",
                 "output_input": {
-                  "jade-tipi-org~dev~018fd849-3c22-7ccc-8a0c-c3c3c3c3c3c3~ent~pool_1": {
-                    "jade-tipi-org~dev~018fd849-3c20-7aaa-8a0a-a1a1a1a1a1a1~ent~sample_a": { "volume": 5.0 }
+                  "018fd849-3c22-7ccc-8a0c-c3c3c3c3c3c3~jade-tipi-org~dev~ent~pool_1": {
+                    "018fd849-3c20-7aaa-8a0a-a1a1a1a1a1a1~jade-tipi-org~dev~ent~sample_a": { "volume": 5.0 }
                   }
                 }
               }
@@ -1026,7 +1026,7 @@ class MessageSpec extends Specification {
         and:
         Map data = message.data()
         data.kind == 'definition'
-        data.id == 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
+        data.id == '018fd849-2a41-7111-8a01-aaaaaaaaaaaa~jade-tipi-org~dev~ppy~barcode'
         data.name == 'barcode'
 
         and: 'value_schema is preserved verbatim as a JSON-object value contract'
@@ -1053,7 +1053,7 @@ class MessageSpec extends Specification {
         and:
         Map data = message.data()
         data.kind == 'definition'
-        data.id == 'jade-tipi-org~dev~018fd849-2a42-7222-8b02-bbbbbbbbbbbb~ppy~volume'
+        data.id == '018fd849-2a42-7222-8b02-bbbbbbbbbbbb~jade-tipi-org~dev~ppy~volume'
         data.name == 'volume'
 
         and: 'value_schema accepts multi-key required arrays for compound JSON-object values'
@@ -1081,8 +1081,8 @@ class MessageSpec extends Specification {
         Map data = message.data()
         data.kind == 'assignment'
         data.object_collection == 'ent'
-        data.object_id == 'jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~plate_a'
-        data.property_id == 'jade-tipi-org~dev~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode'
+        data.object_id == '018fd849-2a45-7555-8e05-eeeeeeeeeeee~jade-tipi-org~dev~ent~plate_a'
+        data.property_id == '018fd849-2a41-7111-8a01-aaaaaaaaaaaa~jade-tipi-org~dev~ppy~barcode'
         data.value == [text: 'barcode-1']
 
         and: 'no other facts leak onto the data root next to the canonical assignment keys'
@@ -1167,8 +1167,8 @@ class MessageSpec extends Specification {
 
         where:
         description                                     | collection          | data
-        'message-UUID form'                             | Collection.LOCATION | [id: 'jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~freezer_01']
-        'transaction-UUID form, source-derived suffix'  | Collection.LOCATION | [id: 'jade-tipi-org~dev~018fd849-c0c0-7000-8a01-c1a141e5e501~loc~esp_bin_019a3a60-9628']
-        'deprecated legacy composite alias id'          | Collection.PROPERTY | [kind: 'assignment', id: 'lbl_gov~jgi_pps~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~plate_a~lbl_gov~jgi_pps~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode', entity_id: 'lbl_gov~jgi_pps~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~plate_a', property_id: 'lbl_gov~jgi_pps~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~ppy~barcode', value: [text: 'barcode-1']]
+        'message-UUID form'                             | Collection.LOCATION | [id: '018fd849-2a47-7777-8f01-aaaaaaaaaaaa~jade-tipi-org~dev~loc~freezer_01']
+        'transaction-UUID form, source-derived suffix'  | Collection.LOCATION | [id: '018fd849-c0c0-7000-8a01-c1a141e5e501~jade-tipi-org~dev~loc~esp_bin_019a3a60-9628']
+        'deprecated legacy composite alias id'          | Collection.PROPERTY | [kind: 'assignment', id: '018fd849-2a45-7555-8e05-eeeeeeeeeeee~lbl_gov~jgi_pps~ent~plate_a~018fd849-2a41-7111-8a01-aaaaaaaaaaaa~lbl_gov~jgi_pps~ppy~barcode', entity_id: '018fd849-2a45-7555-8e05-eeeeeeeeeeee~lbl_gov~jgi_pps~ent~plate_a', property_id: '018fd849-2a41-7111-8a01-aaaaaaaaaaaa~lbl_gov~jgi_pps~ppy~barcode', value: [text: 'barcode-1']]
     }
 }

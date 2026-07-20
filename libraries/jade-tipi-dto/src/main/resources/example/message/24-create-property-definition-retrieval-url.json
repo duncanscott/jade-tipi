@@ -13,7 +13,7 @@
   "action": "create",
   "data": {
     "kind": "definition",
-    "id": "jade-tipi-org~dev~018fd849-3d02-7222-8a02-242424242424~ppy~retrieval_url",
+    "id": "018fd849-3d02-7222-8a02-242424242424~jade-tipi-org~dev~ppy~retrieval_url",
     "name": "retrieval_url",
     "value_schema": {
       "type": "object",

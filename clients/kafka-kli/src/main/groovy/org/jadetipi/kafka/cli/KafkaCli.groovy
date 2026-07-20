@@ -424,7 +424,7 @@ class KafkaCli {
         if (session.txn) {
             Map txn = session.txn as Map
             Map grp = txn.group as Map
-            System.err.println("Transaction: ${txn.uuid}~${grp.org}~${grp.grp}~${txn.client}")
+            System.err.println("Transaction: ${txn.id}")
         }
         if (session.config) {
             Map config = session.config as Map

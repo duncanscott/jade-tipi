@@ -12,10 +12,10 @@
   "collection": "lnk",
   "action": "create",
   "data": {
-    "id": "jade-tipi-org~dev~018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~lnk~plate_b1_sample_x1",
-    "type_id": "jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents",
-    "left": "jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~plate_b1",
-    "right": "jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~sample_x1",
+    "id": "018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~jade-tipi-org~dev~lnk~plate_b1_sample_x1",
+    "type_id": "018fd849-2a49-7999-8a09-aaaaaaaaaaab~jade-tipi-org~dev~typ~contents",
+    "left": "018fd849-2a47-7777-8f01-aaaaaaaaaaaa~jade-tipi-org~dev~loc~plate_b1",
+    "right": "018fd849-2a45-7555-8e05-eeeeeeeeeeee~jade-tipi-org~dev~ent~sample_x1",
     "properties": {
       "position": {
         "kind": "plate_well",

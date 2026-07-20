@@ -76,8 +76,8 @@ Shared root fields:
 
 ```json
 {
-  "_id": "jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~plate_b1",
-  "id": "jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~plate_b1",
+  "_id": "018fd849-2a47-7777-8f01-aaaaaaaaaaaa~jade-tipi-org~dev~loc~plate_b1",
+  "id": "018fd849-2a47-7777-8f01-aaaaaaaaaaaa~jade-tipi-org~dev~loc~plate_b1",
   "collection": "loc",
   "type_id": null,
   "properties": {
@@ -85,12 +85,12 @@ Shared root fields:
     "description": "96-well plate B1"
   },
   "links": {
-    "jade-tipi-org~dev~018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~lnk~plate_b1_sample_x1": {
-      "link_id": "jade-tipi-org~dev~018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~lnk~plate_b1_sample_x1",
-      "type_id": "jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents",
+    "018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~jade-tipi-org~dev~lnk~plate_b1_sample_x1": {
+      "link_id": "018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~jade-tipi-org~dev~lnk~plate_b1_sample_x1",
+      "type_id": "018fd849-2a49-7999-8a09-aaaaaaaaaaab~jade-tipi-org~dev~typ~contents",
       "direction": "out",
       "role": "container",
-      "other_id": "jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~sample_x1",
+      "other_id": "018fd849-2a45-7555-8e05-eeeeeeeeeeee~jade-tipi-org~dev~ent~sample_x1",
       "other_collection": "ent",
       "properties": {
         "position": {
@@ -105,9 +105,9 @@ Shared root fields:
   "_head": {
     "schema_version": 1,
     "document_kind": "root",
-    "root_id": "jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~plate_b1",
+    "root_id": "018fd849-2a47-7777-8f01-aaaaaaaaaaaa~jade-tipi-org~dev~loc~plate_b1",
     "provenance": {
-      "txn_id": "018fd849-2a40-7abc-8a45-111111111111~jade-tipi-org~dev~kli",
+      "txn_id": "018fd849-2a40-7abc-8a45-111111111111~jade-tipi-org~dev~txn~kli",
       "commit_id": "commit-1",
       "msg_uuid": "018fd849-2a47-7777-8f01-aaaaaaaaaaaa",
       "collection": "loc",
@@ -123,8 +123,8 @@ Shared root fields:
 
 ```json
 {
-  "_id": "jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents",
-  "id": "jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents",
+  "_id": "018fd849-2a49-7999-8a09-aaaaaaaaaaab~jade-tipi-org~dev~typ~contents",
+  "id": "018fd849-2a49-7999-8a09-aaaaaaaaaaab~jade-tipi-org~dev~typ~contents",
   "collection": "typ",
   "type_id": null,
   "properties": {
@@ -142,9 +142,9 @@ Shared root fields:
   "_head": {
     "schema_version": 1,
     "document_kind": "root",
-    "root_id": "jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents",
+    "root_id": "018fd849-2a49-7999-8a09-aaaaaaaaaaab~jade-tipi-org~dev~typ~contents",
     "provenance": {
-      "txn_id": "018fd849-2a40-7abc-8a45-111111111111~jade-tipi-org~dev~kli",
+      "txn_id": "018fd849-2a40-7abc-8a45-111111111111~jade-tipi-org~dev~txn~kli",
       "commit_id": "commit-1",
       "msg_uuid": "018fd849-2a49-7999-8a09-aaaaaaaaaaab",
       "collection": "typ",
@@ -161,12 +161,12 @@ endpoint `links` entries above and below are denormalized projections:
 
 ```json
 {
-  "_id": "jade-tipi-org~dev~018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~lnk~plate_b1_sample_x1",
-  "id": "jade-tipi-org~dev~018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~lnk~plate_b1_sample_x1",
+  "_id": "018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~jade-tipi-org~dev~lnk~plate_b1_sample_x1",
+  "id": "018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~jade-tipi-org~dev~lnk~plate_b1_sample_x1",
   "collection": "lnk",
-  "type_id": "jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents",
-  "left": "jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~plate_b1",
-  "right": "jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~sample_x1",
+  "type_id": "018fd849-2a49-7999-8a09-aaaaaaaaaaab~jade-tipi-org~dev~typ~contents",
+  "left": "018fd849-2a47-7777-8f01-aaaaaaaaaaaa~jade-tipi-org~dev~loc~plate_b1",
+  "right": "018fd849-2a45-7555-8e05-eeeeeeeeeeee~jade-tipi-org~dev~ent~sample_x1",
   "properties": {
     "position": {
       "kind": "plate_well",
@@ -179,9 +179,9 @@ endpoint `links` entries above and below are denormalized projections:
   "_head": {
     "schema_version": 1,
     "document_kind": "root",
-    "root_id": "jade-tipi-org~dev~018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~lnk~plate_b1_sample_x1",
+    "root_id": "018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~jade-tipi-org~dev~lnk~plate_b1_sample_x1",
     "provenance": {
-      "txn_id": "018fd849-2a40-7abc-8a45-111111111111~jade-tipi-org~dev~kli",
+      "txn_id": "018fd849-2a40-7abc-8a45-111111111111~jade-tipi-org~dev~txn~kli",
       "commit_id": "commit-1",
       "msg_uuid": "018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb",
       "collection": "lnk",
@@ -197,18 +197,18 @@ Ordinary `ent` root with a denormalized incoming `contents` projection:
 
 ```json
 {
-  "_id": "jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~sample_x1",
-  "id": "jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~sample_x1",
+  "_id": "018fd849-2a45-7555-8e05-eeeeeeeeeeee~jade-tipi-org~dev~ent~sample_x1",
+  "id": "018fd849-2a45-7555-8e05-eeeeeeeeeeee~jade-tipi-org~dev~ent~sample_x1",
   "collection": "ent",
-  "type_id": "jade-tipi-org~dev~018fd849-2a43-7333-8c03-cccccccccccc~typ~sample",
+  "type_id": "018fd849-2a43-7333-8c03-cccccccccccc~jade-tipi-org~dev~typ~sample",
   "properties": {},
   "links": {
-    "jade-tipi-org~dev~018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~lnk~plate_b1_sample_x1": {
-      "link_id": "jade-tipi-org~dev~018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~lnk~plate_b1_sample_x1",
-      "type_id": "jade-tipi-org~dev~018fd849-2a49-7999-8a09-aaaaaaaaaaab~typ~contents",
+    "018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~jade-tipi-org~dev~lnk~plate_b1_sample_x1": {
+      "link_id": "018fd849-2a4a-7aaa-8b0a-bbbbbbbbbbbb~jade-tipi-org~dev~lnk~plate_b1_sample_x1",
+      "type_id": "018fd849-2a49-7999-8a09-aaaaaaaaaaab~jade-tipi-org~dev~typ~contents",
       "direction": "in",
       "role": "content",
-      "other_id": "jade-tipi-org~dev~018fd849-2a47-7777-8f01-aaaaaaaaaaaa~loc~plate_b1",
+      "other_id": "018fd849-2a47-7777-8f01-aaaaaaaaaaaa~jade-tipi-org~dev~loc~plate_b1",
       "other_collection": "loc",
       "properties": {
         "position": {
@@ -223,9 +223,9 @@ Ordinary `ent` root with a denormalized incoming `contents` projection:
   "_head": {
     "schema_version": 1,
     "document_kind": "root",
-    "root_id": "jade-tipi-org~dev~018fd849-2a45-7555-8e05-eeeeeeeeeeee~ent~sample_x1",
+    "root_id": "018fd849-2a45-7555-8e05-eeeeeeeeeeee~jade-tipi-org~dev~ent~sample_x1",
     "provenance": {
-      "txn_id": "018fd849-2a40-7abc-8a45-111111111111~jade-tipi-org~dev~kli",
+      "txn_id": "018fd849-2a40-7abc-8a45-111111111111~jade-tipi-org~dev~txn~kli",
       "commit_id": "commit-1",
       "msg_uuid": "018fd849-2a45-7555-8e05-eeeeeeeeeeee",
       "collection": "ent",
