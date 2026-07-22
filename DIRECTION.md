@@ -28,7 +28,12 @@ without a central registry; leading with the UUID (director ruling
 groups, matching the transaction ID convention. When the transaction's UUID
 is used, clients must keep suffixes unique within that transaction. The
 suffix is lowercase `[a-z0-9_-]` with no leading, multiple, or trailing
-underscores or dashes (director ruling 2026-07-19). Transaction IDs follow
+underscores or dashes (director ruling 2026-07-19). Sizes are bounded
+(director ruling 2026-07-20): org and grp at most 32 characters, the
+suffix (and a transaction ID's client) at most 128 — so every ID stays
+within 235 characters, inside the 250-byte key limit of the most
+restrictive popular database (Couchbase); overlong IDs are rejected at
+the wire, never truncated. Transaction IDs follow
 the same shape with collection `txn` and the client in the suffix position
 (`<uuidv7>~<org>~<grp>~txn~<client>`, director ruling 2026-07-19), so every
 Jade-Tipi ID begins `<uuidv7>~<org>~<grp>~<collection>` and the fourth

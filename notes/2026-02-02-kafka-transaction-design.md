@@ -48,7 +48,9 @@ The goal was to redesign for Kafka message streaming while maintaining security 
 
 #### Transaction ID
 
-**Format:** `<UUIDv7>~<organization>~<group>~<client-id>`
+**Format:** `<UUIDv7>~<organization>~<group>~txn~<client-id>` *(the literal
+`txn` collection segment was added by the 2026-07-19 director ruling; the
+original 2026-02-02 design was `<UUIDv7>~<organization>~<group>~<client-id>`)*
 
 **Example:** `018fd849-2a40-7abc-8a45-111111111111~jade-tipi_org~my-group~txn~jade-cli`
 

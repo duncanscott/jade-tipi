@@ -281,6 +281,30 @@ class EspEntityImportMapperSpec extends Specification {
         messages.findAll { it.data.type_id == minted[EspEntityImportMapper.KEY_TYPE_LINK_PRODUCED_BY] }.size() == 1
     }
 
+    def 'suffixFor caps a pathologically long key at 128 characters with a stable, distinct hash tail'() {
+        given: 'two long keys that agree beyond the truncation point'
+        String base = 'type:esp:Container:' + ('Very Long Type Name ' * 10)
+        String keyA = base + 'variant-alpha'
+        String keyB = base + 'variant-beta'
+
+        when:
+        String a = EspEntityImportMapper.suffixFor(keyA)
+        String b = EspEntityImportMapper.suffixFor(keyB)
+
+        then: 'both fit the 128-character suffix limit and stay well-formed'
+        a.length() <= EspEntityImportMapper.MAX_SUFFIX_LENGTH
+        b.length() <= EspEntityImportMapper.MAX_SUFFIX_LENGTH
+        a.startsWith('esp_')
+        !a.matches('.*[_-]{2,}.*') && !a.matches('.*[_-]$')
+
+        and: 'the hash tail keeps distinct keys distinct and the result deterministic'
+        a != b
+        a == EspEntityImportMapper.suffixFor(keyA)
+
+        and: 'a short key is untouched'
+        EspEntityImportMapper.suffixFor('plain-key') == 'esp_plain-key'
+    }
+
     def 'esp type keys declare dynamic typ roots and the esp link types'() {
         expect: 'the dynamic entity type'
         MappedImportMessage typ = mapper.mapBootstrapType(

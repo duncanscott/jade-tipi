@@ -127,18 +127,31 @@ class ClarityAliquotImportMapper {
     /** Kept for the original slice's fixture (now just one of the 51). */
     static final String KEY_TYPE_PROCEDURE_AC = processTypeKey('AC Sample Aliquot Creation')
 
+    /** Suffix segments are at most 128 characters (director ruling 2026-07-20). */
+    static final int MAX_SUFFIX_LENGTH = 128
+
     /**
      * Convention-conformant id suffix for any import key: lowercase, invalid
      * characters to underscores, runs of separators collapsed to one, none
      * leading or trailing (the suffix rule — no leading, multiple, or
-     * trailing underscores/dashes).
+     * trailing underscores/dashes). A pathologically long key is shortened to
+     * the 128-character suffix limit with a stable hash tail of the full key —
+     * safe here ONLY because the importer mints message-UUID-form ids (each
+     * root's leading UUID is unique, so the suffix never carries uniqueness);
+     * the raw queue key remains the dedup identity either way.
      */
     static String suffixFor(String key) {
         String s = key.toLowerCase()
                 .replaceAll('[^a-z0-9_-]', '_')
                 .replaceAll('[_-]{2,}', '_')
                 .replaceAll('^[_-]+|[_-]+$', '')
-        return 'clarity_' + s
+        String full = 'clarity_' + s
+        if (full.length() > MAX_SUFFIX_LENGTH) {
+            String tail = String.format('%08x', key.hashCode())
+            full = full.substring(0, MAX_SUFFIX_LENGTH - 9)
+                    .replaceAll('[_-]+$', '') + '_' + tail
+        }
+        return full
     }
 
     /** Lowercase snake name for a clarity process type display name. */

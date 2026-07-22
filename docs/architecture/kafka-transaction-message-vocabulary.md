@@ -67,21 +67,29 @@ UUID version 7 for all ID generation):
   message's UUID (the canonical-examples convention — uniqueness is
   automatic). Both forms are sanctioned.
 - The `<collection>` segment is the target collection abbreviation; the
-  `<suffix>` is a human-readable label and is not the uniqueness carrier.
+  `<suffix>` is a human-readable label (no leading, multiple, or trailing
+  underscores or dashes). It does not carry world-uniqueness — the UUID
+  does — but under the transaction-UUID form it is the
+  within-transaction disambiguator.
+- Size limits (director ruling 2026-07-20): `org`/`grp` at most 32
+  characters, the suffix at most 128 — a single-form ID never exceeds 235
+  characters, inside Couchbase's 250-byte key limit (the tightest popular
+  database). Overlong IDs are rejected, never truncated.
 - The single sanctioned non-UUID segment is the literal `genesis` in the
   reserved bootstrap `usr` ID (`genesis~...~usr~jdtp-admin`), which must be
   constructible before any transaction exists.
 - Legacy composite assignment IDs (`<object_id>~<property_id>`, ten
-  segments) must conform in both halves; they retire with the
-  standalone-assignment-root cleanup.
+  segments) must conform in both halves (exempt from the single-form size
+  total); they retire with the standalone-assignment-root cleanup.
 
 Enforcement is two-layered (TASK-046): `message.schema.json` rejects any
 submitted top-level `data.id` that does not match the `ObjectId` pattern
-(org/grp segments, UUIDv7-or-`genesis` third segment, known collection
-abbreviation fourth, `[a-z0-9_-]+` suffix, optional second conforming
-block for the deprecated legacy composite alias id), so nonconforming
-messages never reach the WAL; and `CommittedTransactionMaterializer` keeps
-its structural warning as defense in depth for non-Kafka writers. Nested
+(leading UUIDv7-or-`genesis` segment, bounded org/grp segments, known
+collection abbreviation fourth, structured bounded suffix, optional second
+conforming block for the deprecated legacy composite alias id), so
+nonconforming messages never reach the WAL; and
+`CommittedTransactionMaterializer` keeps its structural warning as defense
+in depth for non-Kafka writers. Nested
 `id` keys inside `properties` bags are not constrained.
 
 A simple location creation should look like this inside the normal message

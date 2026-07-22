@@ -982,6 +982,71 @@ class MessageSpec extends Specification {
         thrown(ValidationException)
     }
 
+    private static Message sizedSuffixMessage(int suffixLength) {
+        String suffix = 'a' * suffixLength
+        String json = """
+            {
+              "txn": {
+                "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+                "group": { "org": "jade-tipi-org", "grp": "dev" },
+                "client": "kli",
+                "user": "0000-0002-1825-0097"
+              },
+              "uuid": "018fd849-3c23-7ddd-8a0d-d4d4d4d4d4d4",
+              "collection": "ent",
+              "action": "create",
+              "data": {
+                "id": "018fd849-3c23-7ddd-8a0d-d4d4d4d4d4d4~jade-tipi-org~dev~ent~${suffix}"
+              }
+            }
+        """
+        return JsonMapper.fromJson(json, Message)
+    }
+
+    def "schema accepts a suffix at the 128-character size limit"() {
+        when:
+        sizedSuffixMessage(128).validate()
+
+        then:
+        noExceptionThrown()
+    }
+
+    def "schema rejects a suffix over the 128-character size limit"() {
+        when:
+        sizedSuffixMessage(129).validate()
+
+        then:
+        thrown(ValidationException)
+    }
+
+    def "schema rejects an org segment longer than 32 characters"() {
+        given: 'a 33-character org in the id (the envelope org is bounded separately)'
+        String longOrg = 'o' * 33
+        String json = """
+            {
+              "txn": {
+                "uuid": "018fd849-2a40-7abc-8a45-111111111111",
+                "group": { "org": "jade-tipi-org", "grp": "dev" },
+                "client": "kli",
+                "user": "0000-0002-1825-0097"
+              },
+              "uuid": "018fd849-3c23-7ddd-8a0d-d4d4d4d4d4d4",
+              "collection": "ent",
+              "action": "create",
+              "data": {
+                "id": "018fd849-3c23-7ddd-8a0d-d4d4d4d4d4d4~${longOrg}~dev~ent~plate_a"
+              }
+            }
+        """
+        Message message = JsonMapper.fromJson(json, Message)
+
+        when:
+        message.validate()
+
+        then:
+        thrown(ValidationException)
+    }
+
     def "schema rejects a non-prc message whose data carries object-id keys under output_input"() {
         given: 'the same output_input map on an ent create, where snake_case keys are required'
         String json = '''

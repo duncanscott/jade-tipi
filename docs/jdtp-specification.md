@@ -1,7 +1,19 @@
 # JDTP Specification
 
-**Version:** 0.9.0-draft · **Date:** 2026-07-19 · **Status:** Draft for
+**Version:** 0.10.0-draft · **Date:** 2026-07-20 · **Status:** Draft for
 director review
+
+*Changes in 0.10.0: identifiers gain size limits (director ruling
+2026-07-20) — `org` and `grp` at most 32 characters, the suffix (and the
+transaction ID's client) at most 128, so a single-form ID never exceeds
+235 characters, inside the 250-byte key limit of the most restrictive
+portability target (Couchbase document keys; the manifesto's
+usable-as-a-key-in-popular-databases promise, now quantified). An
+overlong ID is rejected at the wire, never truncated — under the
+transaction-UUID form the suffix is the within-transaction uniqueness
+carrier, so silent truncation could collide distinct IDs. The deprecated
+legacy composite assignment ID is exempt (two blocks; retired with the
+legacy path) (§1.2, §2.1).*
 
 *Changes in 0.9.0: identifiers unify on one leading shape (director
 rulings 2026-07-19). Object IDs lead with the UUID — the segment order
@@ -238,8 +250,24 @@ Every object ID is a world-unique text string:
 - The suffix is a human-readable label over `[a-z0-9_-]` (lowercase
   letters, digits, underscore, hyphen; no dots) with **no leading,
   multiple, or trailing underscores or dashes** — structurally,
-  `[a-z0-9]+([_-][a-z0-9]+)*` (director ruling 2026-07-19). It is **not**
-  the uniqueness carrier.
+  `[a-z0-9]+([_-][a-z0-9]+)*` (director ruling 2026-07-19). It does not
+  carry world-uniqueness (the UUID does); under the transaction-UUID
+  form it IS the within-transaction disambiguator among the
+  transaction's roots.
+- **Size limits** (director ruling 2026-07-20): `org` and `grp` are at
+  most **32** characters each; the suffix is at most **128**. With the
+  36-character UUID, four separators, and the 3-character collection
+  segment, a single-form ID never exceeds **235** characters — inside the
+  250-byte key limit of the most restrictive popular-database portability
+  target (Couchbase document keys), quantifying the manifesto's promise
+  that IDs are usable directly as database keys. The charset is pure
+  ASCII, so characters equal bytes. **An overlong ID is rejected at the
+  wire, never truncated**: under the transaction-UUID form the suffix
+  carries within-transaction uniqueness, so silent truncation could
+  collide two distinct IDs. Composing a unique suffix within the limit
+  is the client's responsibility, exactly as the charset rules are. The
+  deprecated legacy composite assignment ID (two blocks) is exempt from
+  the single-form total and retires with the legacy path.
 
 **One leading shape for every ID.** Transaction IDs follow the same
 convention with collection `txn` and the client in the suffix position
@@ -518,8 +546,11 @@ chronological sortability; `org`/`grp` name the writing group; the literal
 `txn` collection segment marks the ID as a transaction ID — giving every
 Jade-Tipi ID the same leading shape,
 `<uuidv7>~<org>~<grp>~<collection>~<tail>` (§1.2) — and `client` (in the
-suffix position) names the submitting application. Transactions are
-opened, then carry data messages, then commit (or roll back).
+suffix position) names the submitting application. The §1.2 size limits
+apply: `org`/`grp` at most 32 characters and `client`, sitting in the
+suffix position, at most 128 — so a transaction ID is likewise bounded by
+235 characters. Transactions are opened, then carry data messages, then
+commit (or roll back).
 
 ### 2.2 Message envelope [Normative]
 

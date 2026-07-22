@@ -195,11 +195,12 @@
         "client": {
           "type": "string",
           "minLength": 1,
-          "description": "Keycloak client identifier",
+          "description": "Keycloak client identifier (at most 128 characters — the transaction id suffix position; director ruling 2026-07-20)",
           "examples": [
             "jade-cli",
             "tipi-cli"
-          ]
+          ],
+          "maxLength": 128
         },
         "user": {
           "type": "string",
@@ -221,19 +222,21 @@
         "org": {
           "type": "string",
           "minLength": 1,
-          "description": "Organization identifier",
+          "description": "Organization identifier (at most 32 characters; director ruling 2026-07-20)",
           "examples": [
             "jade-tipi-org"
-          ]
+          ],
+          "maxLength": 32
         },
         "grp": {
           "type": "string",
           "minLength": 1,
-          "description": "Group identifier",
+          "description": "Group identifier (at most 32 characters; director ruling 2026-07-20)",
           "examples": [
             "dev",
             "production"
-          ]
+          ],
+          "maxLength": 32
         }
       }
     },
@@ -386,9 +389,9 @@
     },
     "ObjectId": {
       "title": "ObjectId",
-      "description": "World-unique object identifier: <uuidv7>~<org>~<grp>~<collection>~<suffix>. The leading UUIDv7 is the creating transaction's or message's UUID, so identifiers sort chronologically across orgs and groups. The literal genesis segment is sanctioned only for the reserved bootstrap usr. The suffix contains no leading, multiple, or trailing underscores or dashes. An optional second conforming block tolerates the deprecated legacy composite assignment id, which the materializer ignores.",
+      "description": "World-unique object identifier: <uuidv7>~<org>~<grp>~<collection>~<suffix>. The leading UUIDv7 is the creating transaction's or message's UUID, so identifiers sort chronologically across orgs and groups. The literal genesis segment is sanctioned only for the reserved bootstrap usr. The suffix contains no leading, multiple, or trailing underscores or dashes. Size limits (director ruling 2026-07-20): org and grp are at most 32 characters, the suffix at most 128, so a single-form id never exceeds 235 characters — inside the 250-byte key limit of the most restrictive portability target (Couchbase). An overlong id is rejected, never truncated. An optional second conforming block tolerates the deprecated legacy composite assignment id, which the materializer ignores (and which may exceed the single-form bound).",
       "type": "string",
-      "pattern": "^([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|genesis)~[a-z][a-z0-9_-]*~[a-z][a-z0-9_-]*~(ent|fil|ppy|lnk|loc|prc|tsk|uni|grp|typ|vdn|usr)~[a-z0-9]+([_-][a-z0-9]+)*(~([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|genesis)~[a-z][a-z0-9_-]*~[a-z][a-z0-9_-]*~(ent|fil|ppy|lnk|loc|prc|tsk|uni|grp|typ|vdn|usr)~[a-z0-9]+([_-][a-z0-9]+)*)?$"
+      "pattern": "^([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|genesis)~[a-z][a-z0-9_-]{0,31}~[a-z][a-z0-9_-]{0,31}~(ent|fil|ppy|lnk|loc|prc|tsk|uni|grp|typ|vdn|usr)~(?=[a-z0-9_-]{1,128}(~|$))[a-z0-9]+([_-][a-z0-9]+)*(~([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|genesis)~[a-z][a-z0-9_-]{0,31}~[a-z][a-z0-9_-]{0,31}~(ent|fil|ppy|lnk|loc|prc|tsk|uni|grp|typ|vdn|usr)~(?=[a-z0-9_-]{1,128}$)[a-z0-9]+([_-][a-z0-9]+)*)?$"
     },
     "DataWithObjectId": {
       "title": "DataWithObjectId",

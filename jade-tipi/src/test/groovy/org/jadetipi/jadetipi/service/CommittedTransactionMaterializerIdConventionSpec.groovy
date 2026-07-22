@@ -65,7 +65,9 @@ class CommittedTransactionMaterializerIdConventionSpec extends Specification {
                 // unknown collection segment
                 '018fd849-2a47-7777-8f01-aaaaaaaaaaaa~jade-tipi-org~dev~xyz~thing',
                 // composite whose second half does not conform
-                OBJ + '~org~grp~not-a-uuid~ppy~barcode'
+                OBJ + '~org~grp~not-a-uuid~ppy~barcode',
+                // over the 235-character single-form size limit (suffix > 128)
+                '018fd849-2a47-7777-8f01-aaaaaaaaaaaa~jade-tipi-org~dev~ent~' + ('a' * 200)
         ]
     }
 }

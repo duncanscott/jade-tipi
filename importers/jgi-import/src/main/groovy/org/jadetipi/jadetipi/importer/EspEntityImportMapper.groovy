@@ -188,18 +188,31 @@ class EspEntityImportMapper {
         return TYPE_KEY_PREFIX + className + ':' + typeName
     }
 
+    /** Suffix segments are at most 128 characters (director ruling 2026-07-20). */
+    static final int MAX_SUFFIX_LENGTH = 128
+
     /**
      * Sanitize an import key into an id suffix: lowercase, invalid characters
      * to underscores, runs of separators collapsed to one, none leading or
      * trailing (the suffix rule — no leading, multiple, or trailing
-     * underscores/dashes).
+     * underscores/dashes). A pathologically long key is shortened to the
+     * 128-character suffix limit with a stable hash tail of the full key —
+     * safe here ONLY because the importer mints message-UUID-form ids (each
+     * root's leading UUID is unique, so the suffix never carries uniqueness);
+     * the raw queue key remains the dedup identity either way.
      */
     static String suffixFor(String key) {
         String s = key.toLowerCase()
                 .replaceAll('[^a-z0-9_-]', '_')
                 .replaceAll('[_-]{2,}', '_')
                 .replaceAll('^[_-]+|[_-]+$', '')
-        return 'esp_' + s
+        String full = 'esp_' + s
+        if (full.length() > MAX_SUFFIX_LENGTH) {
+            String tail = String.format('%08x', key.hashCode())
+            full = full.substring(0, MAX_SUFFIX_LENGTH - 9)
+                    .replaceAll('[_-]+$', '') + '_' + tail
+        }
+        return full
     }
 
     /** The Mongo collection an esp document's root lands in. */

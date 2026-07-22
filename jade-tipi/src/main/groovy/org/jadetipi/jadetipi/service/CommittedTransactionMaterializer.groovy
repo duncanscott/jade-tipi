@@ -889,6 +889,9 @@ class CommittedTransactionMaterializer {
      * abbreviation in the fourth. A composite legacy assignment ID (ten or
      * more segments) must conform in both halves.
      */
+    /** Single-form ids never exceed this (36 uuid + 4 separators + 3 collection + 32 org + 32 grp + 128 suffix = 235; director ruling 2026-07-20). */
+    static final int MAX_SINGLE_ID_LENGTH = 235
+
     static boolean isConformingObjectId(String id) {
         if (id == null) {
             return false
@@ -901,6 +904,13 @@ class CommittedTransactionMaterializer {
             return false
         }
         if (segments.length >= 10 && !conformingIdCore(segments, 5)) {
+            return false
+        }
+        // Size limit (director ruling 2026-07-20): a single-form id is at most
+        // 235 characters; the deprecated legacy composite (two blocks) is
+        // allowed two blocks' worth.
+        int maxLength = segments.length >= 10 ? MAX_SINGLE_ID_LENGTH * 2 + 1 : MAX_SINGLE_ID_LENGTH
+        if (id.length() > maxLength) {
             return false
         }
         return true
