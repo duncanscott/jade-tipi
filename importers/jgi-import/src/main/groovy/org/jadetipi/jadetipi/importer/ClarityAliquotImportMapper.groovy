@@ -131,27 +131,59 @@ class ClarityAliquotImportMapper {
     static final int MAX_SUFFIX_LENGTH = 128
 
     /**
-     * Convention-conformant id suffix for any import key: lowercase, invalid
-     * characters to underscores, runs of separators collapsed to one, none
-     * leading or trailing (the suffix rule — no leading, multiple, or
-     * trailing underscores/dashes). A pathologically long key is shortened to
-     * the 128-character suffix limit with a stable hash tail of the full key —
-     * safe here ONLY because the importer mints message-UUID-form ids (each
-     * root's leading UUID is unique, so the suffix never carries uniqueness);
-     * the raw queue key remains the dedup identity either way.
+     * A CLEAN id suffix derived from the import key's grammar (director ruling
+     * 2026-07-20: suffixes carry no dataset-specific bloat). Universal TYPES
+     * are kind-qualified with no source branding — a clarity type
+     * {@code type:entity:clarity_analyte} becomes {@code entity_analyte}, a
+     * container {@code location_container}, a link {@code link_contents}, a
+     * process type {@code procedure_<name>}. A source-specific PROPERTY carries
+     * the source as a trailing qualifier — {@code property:file:content_location}
+     * becomes {@code content_location_clarity}. Record INSTANCES drop the
+     * source tag entirely — {@code artifacts_2-79367} stays as-is. The internal
+     * key stays fully source-namespaced for dedup; only this readable suffix is
+     * cleaned. A pathologically long suffix is capped (safe: message-UUID-form
+     * ids, so the suffix never carries uniqueness; the raw queue key does).
      */
     static String suffixFor(String key) {
-        String s = key.toLowerCase()
+        String suffix
+        if (key.startsWith('type:procedure:')) {                    // process type
+            suffix = 'procedure_' + snake(key.substring('type:procedure:'.length()))
+        } else if (key.startsWith('type:link:')) {                  // link type
+            suffix = 'link_' + snake(key.substring('type:link:'.length()))
+        } else if (key.startsWith('type:')) {                       // type:<kind>:clarity_<name>
+            String rest = key.substring('type:'.length())
+            int colon = rest.indexOf(':')
+            String kind = colon > 0 ? rest.substring(0, colon) : rest
+            String name = colon > 0 ? rest.substring(colon + 1) : rest
+            if (name.startsWith('clarity_')) {
+                name = name.substring('clarity_'.length())
+            }
+            suffix = snake(kind) + '_' + snake(name)
+        } else if (key.startsWith(KEY_FILE_PROPERTY_PREFIX)) {       // property:file:<name> — source-specific
+            suffix = snake(key.substring(KEY_FILE_PROPERTY_PREFIX.length())) + '_clarity'
+        } else if (key.startsWith('link:')) {                       // link instance: <relationship>_<endpoints>
+            suffix = snake(key.substring('link:'.length()))
+        } else {                                                    // instance (artifacts_/containers_/... — bare)
+            suffix = snake(key)
+        }
+        return capSuffix(suffix, key)
+    }
+
+    /** Lowercase, invalid chars to underscore, separator runs collapsed, ends trimmed. */
+    static String snake(String raw) {
+        return raw.toLowerCase()
                 .replaceAll('[^a-z0-9_-]', '_')
                 .replaceAll('[_-]{2,}', '_')
                 .replaceAll('^[_-]+|[_-]+$', '')
-        String full = 'clarity_' + s
-        if (full.length() > MAX_SUFFIX_LENGTH) {
-            String tail = String.format('%08x', key.hashCode())
-            full = full.substring(0, MAX_SUFFIX_LENGTH - 9)
-                    .replaceAll('[_-]+$', '') + '_' + tail
+    }
+
+    /** Cap an over-length suffix at {@link #MAX_SUFFIX_LENGTH} with a stable hash tail of the source key. */
+    static String capSuffix(String suffix, String key) {
+        if (suffix.length() <= MAX_SUFFIX_LENGTH) {
+            return suffix
         }
-        return full
+        String tail = String.format('%08x', key.hashCode())
+        return suffix.substring(0, MAX_SUFFIX_LENGTH - 9).replaceAll('[_-]+$', '') + '_' + tail
     }
 
     /** Lowercase snake name for a clarity process type display name. */
@@ -184,19 +216,19 @@ class ClarityAliquotImportMapper {
             case KEY_TYPE_ANALYTE:
                 return message('typ', [
                         id         : id,
-                        name       : 'clarity_analyte',
+                        name       : 'analyte',
                         description: 'Clarity analyte artifact'
                 ])
             case KEY_TYPE_RESULT_FILE:
                 return message('typ', [
                         id         : id,
-                        name       : 'clarity_result_file',
+                        name       : 'result_file',
                         description: 'Clarity result-file artifact'
                 ])
             case KEY_TYPE_CONTAINER:
                 return message('typ', [
                         id         : id,
-                        name       : 'clarity_container',
+                        name       : 'container',
                         description: 'Clarity container'
                 ])
             case KEY_TYPE_LINK_CONTENTS:
@@ -241,7 +273,7 @@ class ClarityAliquotImportMapper {
             case KEY_TYPE_SAMPLE:
                 return message('typ', [
                         id         : id,
-                        name       : 'clarity_sample',
+                        name       : 'sample',
                         description: 'Clarity submitted sample'
                 ])
             case KEY_TYPE_LINK_SAMPLE_OF:
@@ -386,7 +418,7 @@ class ClarityAliquotImportMapper {
                 message('ppy', [
                         kind        : 'definition',
                         id          : propertyId,
-                        name        : name,
+                        name        : name + '_clarity',
                         description : 'Clarity file ' + name.replace('_', ' '),
                         value_schema: valueSchema
                 ]),

@@ -132,7 +132,7 @@ class ClarityImportDriverSpec extends Specification {
 
     def 'the resolver prefers a recorded id over a fresh mint (resume and cross-batch references)'() {
         given: 'the artifact references the analyte type, imported by an earlier run'
-        String recordedTypeId = "018fd849-9b01-7111-8a01-a1a1a1a1a1a1~${ORG}~${GRP}~typ~clarity_analyte"
+        String recordedTypeId = "018fd849-9b01-7111-8a01-a1a1a1a1a1a1~${ORG}~${GRP}~typ~entity_analyte"
         queue.pendingInOrder(200) >>> [Flux.just(item(ARTIFACT_KEY, 'artifact', 7)), Flux.empty()]
         queue.jdtpIdOf(ImportQueueService.rowId('clarity', TYPE_KEY)) >> Mono.just(recordedTypeId)
         queue.jdtpIdOf(_) >> Mono.empty()
@@ -218,7 +218,7 @@ class ClarityImportDriverSpec extends Specification {
         report.itemsDone == 1
         capturedDoc.get(EspEntityImportMapper.IMPORT_WELL) == 'A2'
         String entId = published[1].data().id as String
-        entId.split('~')[4].startsWith('esp_')
+        entId.split('~')[4] == entityUuid
 
         and: 'the recorded id rode the esp-scoped queue row'
         1 * queue.recordJdtpId(ImportQueueService.rowId('esp', entityUuid), { it != null }) >> Mono.empty()
@@ -227,7 +227,7 @@ class ClarityImportDriverSpec extends Specification {
     def 'an esp container matching an imported clarity container reuses the clarity id, no duplicate create (TASK-071)'() {
         given: 'clarity container 27-279088 already imported — its queue row carries a jdtp_id'
         String espUuid = '019a3ea7-8f4b-771c-9f58-8c833082e9b6'
-        String clarityId = '018fd849-c0c0-7000-8000-000000000009~jade-test-org~import~loc~clarity_containers_27-279088'
+        String clarityId = '018fd849-c0c0-7000-8000-000000000009~jade-test-org~import~loc~containers_27-279088'
         ImportQueueItem espItem = new ImportQueueItem(
                 id: ImportQueueService.rowId('esp', espUuid),
                 source: 'esp', key: espUuid, kind: 'esp_entity', state: 'pending', seq: 5)
@@ -283,7 +283,7 @@ class ClarityImportDriverSpec extends Specification {
         then: 'the ordering violation is detected (clarity row existence checked) and the plate mints esp-native'
         1 * queue.rowExists(ImportQueueService.rowId('clarity', 'containers_27-279088')) >> Mono.just(true)
         capturedDoc[EspEntityImportMapper.PRECEDENCE_OVERLAY] == null
-        (published.find { it.collection().abbreviation == 'loc' }.data().id as String).split('~')[4].startsWith('esp_')
+        (published.find { it.collection().abbreviation == 'loc' }.data().id as String).split('~')[4] == espUuid
     }
 
     def 'an esp container with no matching clarity row takes the normal esp mint path (TASK-071)'() {
@@ -310,7 +310,7 @@ class ClarityImportDriverSpec extends Specification {
         then: 'no overlay flag; the container mints a fresh esp-keyed loc root'
         capturedDoc[EspEntityImportMapper.PRECEDENCE_OVERLAY] == null
         published.any { it.collection().abbreviation == 'loc' }
-        (published.find { it.collection().abbreviation == 'loc' }.data().id as String).split('~')[4].startsWith('esp_')
+        (published.find { it.collection().abbreviation == 'loc' }.data().id as String).split('~')[4] == espUuid
     }
 
     def 'a small batch size splits the queue into one transaction per batch'() {

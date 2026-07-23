@@ -124,7 +124,7 @@ class EspEntityImportMapperSpec extends Specification {
 
     def 'an overlay container reuses the (pre-resolved) root id and emits NO duplicate create (TASK-071)'() {
         given: 'the driver pre-seeded the resolver to the clarity id and flagged the doc as an overlay'
-        String clarityRootId = '018fd849-c0c0-7000-8000-000000000001~lbl-gov~jgi-pps~loc~clarity_containers_27-279088'
+        String clarityRootId = '018fd849-c0c0-7000-8000-000000000001~lbl-gov~jgi-pps~loc~containers_27-279088'
         BiFunction<String, String, String> overlayIdFor = { String key, String collection ->
             key == CONTAINER_UUID ? clarityRootId : minted.computeIfAbsent(key, {
                 "018fd849-9a02-7222-8a02-929292929292~jade-itest-org~import~${collection}~" +
@@ -294,7 +294,7 @@ class EspEntityImportMapperSpec extends Specification {
         then: 'both fit the 128-character suffix limit and stay well-formed'
         a.length() <= EspEntityImportMapper.MAX_SUFFIX_LENGTH
         b.length() <= EspEntityImportMapper.MAX_SUFFIX_LENGTH
-        a.startsWith('esp_')
+        a.startsWith('container_')
         !a.matches('.*[_-]{2,}.*') && !a.matches('.*[_-]$')
 
         and: 'the hash tail keeps distinct keys distinct and the result deterministic'
@@ -302,7 +302,7 @@ class EspEntityImportMapperSpec extends Specification {
         a == EspEntityImportMapper.suffixFor(keyA)
 
         and: 'a short key is untouched'
-        EspEntityImportMapper.suffixFor('plain-key') == 'esp_plain-key'
+        EspEntityImportMapper.suffixFor('plain-key') == 'plain-key'
     }
 
     def 'esp type keys declare dynamic typ roots and the esp link types'() {
@@ -310,7 +310,7 @@ class EspEntityImportMapperSpec extends Specification {
         MappedImportMessage typ = mapper.mapBootstrapType(
                 EspEntityImportMapper.typeKey('Sample', 'Nucleic Acid'), idFor)
         typ.collection == 'typ'
-        typ.data.name == 'esp_nucleic_acid'
+        typ.data.name == 'nucleic_acid'
         (typ.data.description as String).contains('Nucleic Acid')
 
         and: 'esp mints its own contents and begat link types'

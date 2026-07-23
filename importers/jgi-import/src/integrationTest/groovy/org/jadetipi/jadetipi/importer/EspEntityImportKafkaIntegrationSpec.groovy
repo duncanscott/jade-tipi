@@ -224,7 +224,7 @@ class EspEntityImportKafkaIntegrationSpec extends Specification {
 
         and: 'the aliquot materialized as a typed ent with esp identity and its begat link'
         String aliquotId = jdtpId(ALIQUOT_UUID)
-        aliquotId.split('~')[4].startsWith('esp_')
+        aliquotId.split('~')[4] == ALIQUOT_UUID
         Map aliquotRoot = awaitMongo(
                 { mongoTemplate.findById(aliquotId, Map, 'ent') },
                 { Map d -> d != null }, 'imported aliquot ent root')

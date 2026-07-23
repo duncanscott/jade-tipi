@@ -192,27 +192,59 @@ class EspEntityImportMapper {
     static final int MAX_SUFFIX_LENGTH = 128
 
     /**
-     * Sanitize an import key into an id suffix: lowercase, invalid characters
-     * to underscores, runs of separators collapsed to one, none leading or
-     * trailing (the suffix rule — no leading, multiple, or trailing
-     * underscores/dashes). A pathologically long key is shortened to the
-     * 128-character suffix limit with a stable hash tail of the full key —
-     * safe here ONLY because the importer mints message-UUID-form ids (each
-     * root's leading UUID is unique, so the suffix never carries uniqueness);
-     * the raw queue key remains the dedup identity either way.
+     * A CLEAN id suffix derived from the import key's grammar (director ruling
+     * 2026-07-20: suffixes carry no dataset-specific bloat). Universal TYPES
+     * are kind-qualified with no source branding — an esp Container type
+     * {@code type:esp:Container:Freezer (6-Shelf)} becomes
+     * {@code container_freezer_6-shelf}, a link type {@code link_contents}, a
+     * workflow procedure type {@code procedure_aliquot_creation}. Record
+     * INSTANCES drop the source tag entirely — an esp entity keyed by its
+     * source uuid becomes that bare uuid (provenance lives in the object's
+     * {@code esp_uuid} property, not the id). The internal key stays fully
+     * source-namespaced for dedup; only this readable suffix is cleaned.
+     *
+     * <p>A pathologically long suffix is capped at 128 characters with a
+     * stable hash tail of the full key — safe ONLY because the importer mints
+     * message-UUID-form ids (each root's leading UUID is unique, so the suffix
+     * never carries uniqueness); the raw queue key remains the dedup identity.
      */
     static String suffixFor(String key) {
-        String s = key.toLowerCase()
+        String suffix
+        if (key.startsWith(PROCEDURE_TYPE_KEY_PREFIX)) {              // type:esp:procedure:<workflow>
+            suffix = 'procedure_' + snake(key.substring(PROCEDURE_TYPE_KEY_PREFIX.length()))
+        } else if (key.startsWith(TYPE_KEY_PREFIX + 'link:')) {      // type:esp:link:<name>
+            suffix = 'link_' + snake(key.substring((TYPE_KEY_PREFIX + 'link:').length()))
+        } else if (key.startsWith(TYPE_KEY_PREFIX)) {                // type:esp:<class>:<type>
+            String qualified = key.substring(TYPE_KEY_PREFIX.length())
+            int colon = qualified.indexOf(':')
+            String className = colon > 0 ? qualified.substring(0, colon) : qualified
+            String typeName = colon > 0 ? qualified.substring(colon + 1) : qualified
+            suffix = snake(className) + '_' + snake(typeName)
+        } else if (key.startsWith('link:esp:')) {                    // link instance: <relationship>_<endpoints>
+            suffix = snake(key.substring('link:esp:'.length()))
+        } else if (key.startsWith('procedure:esp:')) {               // procedure instance (bare wi uuid)
+            suffix = snake(key.substring('procedure:esp:'.length()))
+        } else {                                                     // entity/container instance (bare source uuid)
+            suffix = snake(key)
+        }
+        return capSuffix(suffix, key)
+    }
+
+    /** Lowercase, invalid chars to underscore, separator runs collapsed, ends trimmed. */
+    static String snake(String raw) {
+        return raw.toLowerCase()
                 .replaceAll('[^a-z0-9_-]', '_')
                 .replaceAll('[_-]{2,}', '_')
                 .replaceAll('^[_-]+|[_-]+$', '')
-        String full = 'esp_' + s
-        if (full.length() > MAX_SUFFIX_LENGTH) {
-            String tail = String.format('%08x', key.hashCode())
-            full = full.substring(0, MAX_SUFFIX_LENGTH - 9)
-                    .replaceAll('[_-]+$', '') + '_' + tail
+    }
+
+    /** Cap an over-length suffix at {@link #MAX_SUFFIX_LENGTH} with a stable hash tail of the source key. */
+    static String capSuffix(String suffix, String key) {
+        if (suffix.length() <= MAX_SUFFIX_LENGTH) {
+            return suffix
         }
-        return full
+        String tail = String.format('%08x', key.hashCode())
+        return suffix.substring(0, MAX_SUFFIX_LENGTH - 9).replaceAll('[_-]+$', '') + '_' + tail
     }
 
     /** The Mongo collection an esp document's root lands in. */
@@ -263,7 +295,7 @@ class EspEntityImportMapper {
             return message('typ', [
                     kind       : 'procedure_type',
                     id         : id,
-                    name       : 'esp_' + workflowName.toLowerCase().replaceAll('[^a-z0-9_-]', '_'),
+                    name       : snake(workflowName),
                     description: 'ESP workflow: ' + workflowName
             ])
         }
@@ -274,7 +306,7 @@ class EspEntityImportMapper {
             String typeName = colon > 0 ? qualified.substring(colon + 1) : qualified
             return message('typ', [
                     id         : id,
-                    name       : 'esp_' + typeName.toLowerCase().replaceAll('[^a-z0-9_-]', '_'),
+                    name       : snake(typeName),
                     description: 'ESP ' + className + ' type: ' + typeName
             ])
         }

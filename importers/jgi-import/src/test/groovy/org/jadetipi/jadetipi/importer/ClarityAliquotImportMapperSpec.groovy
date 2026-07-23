@@ -207,7 +207,7 @@ class ClarityAliquotImportMapperSpec extends Specification {
         messages[0].collection == 'ppy'
         messages[0].action == 'create'
         messages[0].data.kind == 'definition'
-        messages[0].data.name == 'content_location'
+        messages[0].data.name == 'content_location_clarity'
         messages[0].data.id == minted[key]
         messages[1].collection == 'typ'
         messages[1].action == 'update'
